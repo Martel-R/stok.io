@@ -3,14 +3,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, writeBatch, doc, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Product, Sale, PaymentCondition, PaymentDetail } from '@/lib/types';
+import type { Product, Sale, PaymentCondition, PaymentDetail, Combo } from '@/lib/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { CreditCard, X, Loader2, PlusCircle, Trash2 } from 'lucide-react';
+import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package } from 'lucide-react';
 import Image from 'next/image';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -19,10 +19,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-interface CartItem extends Product {
-  quantity: number;
-}
+
+type CartItem = (Product & { itemType: 'product'; quantity: number }) | (Combo & { itemType: 'combo'; quantity: number });
+
 
 function CheckoutModal({
   isOpen,
@@ -48,7 +49,6 @@ function CheckoutModal({
 
   useEffect(() => {
     if (isOpen) {
-      // Reset payments when modal opens
       if (grandTotal > 0 && paymentConditions.length > 0) {
         setPayments([{
           conditionId: paymentConditions[0]?.id || '',
@@ -61,7 +61,6 @@ function CheckoutModal({
         setPayments([]);
       }
     } else {
-      // Clear on close
       setPayments([]);
     }
   }, [isOpen, grandTotal, paymentConditions]);
@@ -196,6 +195,7 @@ function CheckoutModal({
 
 export default function POSPage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [combos, setCombos] = useState<Combo[]>([]);
   const [paymentConditions, setPaymentConditions] = useState<PaymentCondition[]>([]);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -206,23 +206,26 @@ export default function POSPage() {
   useEffect(() => {
     if (authLoading || !currentBranch) {
         setProducts([]);
+        setCombos([]);
         setLoading(true);
         return;
     }
 
     const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
+    const combosQuery = query(collection(db, 'combos'), where('branchId', '==', currentBranch.id));
     const conditionsQuery = query(collection(db, 'paymentConditions'));
 
     const unsubscribeProducts = onSnapshot(productsQuery, (querySnapshot) => {
       const productsData: Product[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
       setProducts(productsData);
       setLoading(false);
-    }, (error) => {
-        console.error("Error fetching products for POS: ", error);
-        toast({ title: "Erro ao carregar produtos", variant: "destructive"});
-        setLoading(false);
     });
 
+    const unsubscribeCombos = onSnapshot(combosQuery, (querySnapshot) => {
+      const combosData: Combo[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Combo));
+      setCombos(combosData);
+    });
+    
     const unsubscribeConditions = onSnapshot(conditionsQuery, (snapshot) => {
         const conditionsData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition);
         setPaymentConditions(conditionsData);
@@ -230,35 +233,59 @@ export default function POSPage() {
 
     return () => {
         unsubscribeProducts();
+        unsubscribeCombos();
         unsubscribeConditions();
     }
-  }, [currentBranch, authLoading, toast]);
+  }, [currentBranch, authLoading]);
 
-  const addToCart = (product: Product) => {
-    if (product.stock <= 0) {
-        toast({ title: 'Fora de estoque', description: `${product.name} não está disponível.`, variant: 'destructive'});
-        return;
-    }
-    setCart((prev) => {
-      const existingItem = prev.find((item) => item.id === product.id);
-      if (existingItem) {
-        if (existingItem.quantity >= product.stock) {
-            toast({ title: 'Limite de estoque atingido', description: `Você não pode adicionar mais de ${product.stock} unidades de ${product.name}.`, variant: 'destructive'});
-            return prev;
+  const addToCart = (item: Product | Combo, type: 'product' | 'combo') => {
+    if (type === 'product') {
+        const product = item as Product;
+        if (product.stock <= 0) {
+            toast({ title: 'Fora de estoque', description: `${product.name} não está disponível.`, variant: 'destructive'});
+            return;
         }
-        return prev.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        );
-      }
-      return [...prev, { ...product, quantity: 1 }];
-    });
+         setCart((prev) => {
+            const existingItem = prev.find((cartItem) => cartItem.id === product.id && cartItem.itemType === 'product');
+            if (existingItem) {
+                if (existingItem.quantity >= (existingItem as Product).stock) {
+                     toast({ title: 'Limite de estoque atingido', description: `Você não pode adicionar mais de ${(existingItem as Product).stock} unidades de ${existingItem.name}.`, variant: 'destructive'});
+                    return prev;
+                }
+                return prev.map((ci) =>
+                ci.id === product.id ? { ...ci, quantity: ci.quantity + 1 } : ci
+                );
+            }
+            return [...prev, { ...product, quantity: 1, itemType: 'product' }];
+        });
+    } else {
+        const combo = item as Combo;
+        // Check stock for all products in combo
+        for (const comboProduct of combo.products) {
+            const productInStore = products.find(p => p.id === comboProduct.productId);
+            if (!productInStore || productInStore.stock < comboProduct.quantity) {
+                toast({ title: 'Estoque insuficiente para o combo', description: `O produto ${comboProduct.productName} não tem estoque suficiente para montar o combo ${combo.name}.`, variant: 'destructive'});
+                return;
+            }
+        }
+        setCart(prev => {
+            const existingItem = prev.find(ci => ci.id === combo.id && ci.itemType === 'combo');
+            if (existingItem) {
+                return prev.map(ci => ci.id === combo.id ? {...ci, quantity: ci.quantity + 1} : ci);
+            }
+            return [...prev, {...combo, quantity: 1, itemType: 'combo'}];
+        });
+    }
   };
   
-  const removeFromCart = (productId: string) => {
-      setCart(cart => cart.filter(item => item.id !== productId));
+  const removeFromCart = (itemId: string, itemType: 'product' | 'combo') => {
+      setCart(cart => cart.filter(item => !(item.id === itemId && item.itemType === itemType)));
   }
 
-  const total = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const total = cart.reduce((acc, item) => {
+      const price = item.itemType === 'product' ? item.price : item.finalPrice;
+      return acc + price * item.quantity
+  }, 0);
   const tax = total * 0.08;
   const grandTotal = total + tax;
   
@@ -275,13 +302,11 @@ export default function POSPage() {
       try {
         const batch = writeBatch(db);
         
-        // This process could be done in a single document for the sale,
-        // but for reporting simplicity, we're creating a doc per item sold.
         for (const item of cart) {
             const saleData: Omit<Sale, 'id'> = {
                 productName: item.name,
                 quantity: item.quantity,
-                total: item.price * item.quantity,
+                total: (item.itemType === 'product' ? item.price : item.finalPrice) * item.quantity,
                 date: new Date(),
                 cashier: user.name,
                 branchId: currentBranch.id,
@@ -290,9 +315,21 @@ export default function POSPage() {
             const saleRef = doc(collection(db, "sales"));
             batch.set(saleRef, saleData);
 
-            const productRef = doc(db, "products", item.id);
-            const newStock = item.stock - item.quantity;
-            batch.update(productRef, { stock: newStock });
+            if (item.itemType === 'product') {
+                const productRef = doc(db, "products", item.id);
+                const newStock = item.stock - item.quantity;
+                batch.update(productRef, { stock: newStock });
+            } else {
+                for (const comboProduct of item.products) {
+                    const productRef = doc(db, "products", comboProduct.productId);
+                    // This could be optimized by getting the product doc once
+                    const originalProduct = products.find(p => p.id === comboProduct.productId);
+                    if (originalProduct) {
+                         const newStock = originalProduct.stock - (comboProduct.quantity * item.quantity);
+                         batch.update(productRef, { stock: newStock });
+                    }
+                }
+            }
         }
         
         await batch.commit();
@@ -324,44 +361,74 @@ export default function POSPage() {
     <>
     <div className="grid h-[calc(100vh-8rem)] md:grid-cols-3 gap-8">
       <div className="md:col-span-2">
-        <Card className="h-full">
+        <Card className="h-full flex flex-col">
           <CardHeader>
-            <CardTitle>Produtos</CardTitle>
+             <Tabs defaultValue="products">
+              <TabsList>
+                <TabsTrigger value="products"><Package className="mr-2 h-4 w-4"/> Produtos</TabsTrigger>
+                <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Combos</TabsTrigger>
+              </TabsList>
+              <TabsContent value="products" className="mt-4">
+                 <ScrollArea className="h-[calc(100vh-18rem)]">
+                    {loading ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                        {Array.from({ length: 10 }).map((_, i) => (
+                            <Card key={i}>
+                            <CardContent className="p-2 flex flex-col items-center justify-center">
+                                <Skeleton className="h-[100px] w-[100px] rounded-md" />
+                                <Skeleton className="h-4 w-24 mt-2"/>
+                                <Skeleton className="h-3 w-16 mt-1"/>
+                            </CardContent>
+                            </Card>
+                        ))}
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                        {products.map((product) => (
+                            <Card 
+                            key={product.id} 
+                            onClick={() => addToCart(product, 'product')} 
+                            className="cursor-pointer hover:shadow-lg transition-shadow relative"
+                            >
+                            {product.stock === 0 && <Badge variant="destructive" className="absolute top-1 right-1">Esgotado</Badge>}
+                            <CardContent className="p-2 flex flex-col items-center justify-center">
+                                <Image src={product.imageUrl} alt={product.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="product image"/>
+                                <p className="font-semibold text-sm mt-2 text-center">{product.name}</p>
+                                <p className="text-xs text-muted-foreground">R${product.price.toFixed(2).replace('.', ',')}</p>
+                            </CardContent>
+                            </Card>
+                        ))}
+                        </div>
+                    )}
+                 </ScrollArea>
+              </TabsContent>
+               <TabsContent value="combos" className="mt-4">
+                 <ScrollArea className="h-[calc(100vh-18rem)]">
+                    {loading ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                           {Array.from({ length: 5 }).map((_, i) => ( <Skeleton key={i} className="h-[150px] w-full" /> ))}
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                        {combos.map((combo) => (
+                            <Card 
+                            key={combo.id} 
+                            onClick={() => addToCart(combo, 'combo')} 
+                            className="cursor-pointer hover:shadow-lg transition-shadow relative"
+                            >
+                            <CardContent className="p-2 flex flex-col items-center justify-center">
+                                <Image src={combo.imageUrl} alt={combo.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="combo offer"/>
+                                <p className="font-semibold text-sm mt-2 text-center">{combo.name}</p>
+                                <p className="text-xs text-muted-foreground">R${combo.finalPrice.toFixed(2).replace('.', ',')}</p>
+                            </CardContent>
+                            </Card>
+                        ))}
+                        </div>
+                    )}
+                 </ScrollArea>
+              </TabsContent>
+            </Tabs>
           </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-[calc(100vh-16rem)]">
-              {loading ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                  {Array.from({ length: 10 }).map((_, i) => (
-                    <Card key={i}>
-                       <CardContent className="p-2 flex flex-col items-center justify-center">
-                          <Skeleton className="h-[100px] w-[100px] rounded-md" />
-                          <Skeleton className="h-4 w-24 mt-2"/>
-                          <Skeleton className="h-3 w-16 mt-1"/>
-                       </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                  {products.map((product) => (
-                    <Card 
-                      key={product.id} 
-                      onClick={() => addToCart(product)} 
-                      className="cursor-pointer hover:shadow-lg transition-shadow relative"
-                    >
-                      {product.stock === 0 && <Badge variant="destructive" className="absolute top-1 right-1">Esgotado</Badge>}
-                      <CardContent className="p-2 flex flex-col items-center justify-center">
-                         <Image src={product.imageUrl} alt={product.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="product image"/>
-                        <p className="font-semibold text-sm mt-2 text-center">{product.name}</p>
-                        <p className="text-xs text-muted-foreground">R${product.price.toFixed(2).replace('.', ',')}</p>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </ScrollArea>
-          </CardContent>
         </Card>
       </div>
       
@@ -377,14 +444,19 @@ export default function POSPage() {
                 ) : (
                     <div className="space-y-4">
                         {cart.map(item => (
-                            <div key={item.id} className="flex justify-between items-center">
+                            <div key={`${item.id}-${item.itemType}`} className="flex justify-between items-center">
                                 <div>
-                                    <p className="font-medium">{item.name}</p>
-                                    <p className="text-sm text-muted-foreground">R${item.price.toFixed(2).replace('.', ',')} x {item.quantity}</p>
+                                    <p className="font-medium flex items-center gap-2">
+                                        {item.name}
+                                        {item.itemType === 'combo' && <Badge variant="secondary">Combo</Badge>}
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                        R${(item.itemType === 'product' ? item.price : item.finalPrice).toFixed(2).replace('.', ',')} x {item.quantity}
+                                    </p>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <p className="font-semibold">R${(item.price * item.quantity).toFixed(2).replace('.', ',')}</p>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFromCart(item.id)}>
+                                    <p className="font-semibold">R${((item.itemType === 'product' ? item.price : item.finalPrice) * item.quantity).toFixed(2).replace('.', ',')}</p>
+                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFromCart(item.id, item.itemType)}>
                                         <X className="h-4 w-4 text-destructive"/>
                                     </Button>
                                 </div>
@@ -420,5 +492,3 @@ export default function POSPage() {
     </>
   );
 }
-
-    

@@ -9,12 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc } from 'firebase/firestore';
 import type { User, UserRole } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Eye, EyeOff } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -26,7 +26,6 @@ function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partia
     const [formData, setFormData] = useState<Partial<User>>(
         user || { name: '', email: '', role: 'cashier', avatar: '/avatars/01.png' }
     );
-    const [showPassword, setShowPassword] = useState(false);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -56,8 +55,7 @@ function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partia
                 <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required disabled={isEditing}/>
             </div>
             <div>
-                <Label htmlFor="role">Função</Label>
-                 <Select value={formData.role} onValueChange={handleRoleChange}>
+                <Label htmlFor="role">Função</Label>                 <Select value={formData.role} onValueChange={handleRoleChange}>
                     <SelectTrigger id="role">
                         <SelectValue placeholder="Selecione uma função" />
                     </SelectTrigger>
@@ -83,11 +81,10 @@ function UsersTable() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
     const { toast } = useToast();
-    const { signup } = useAuth();
 
     useEffect(() => {
         const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
-            const usersData = snapshot.docs.map(doc => ({ ...doc.data() })) as User[];
+            const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as User[];
             setUsers(usersData);
             setLoading(false);
         });
@@ -111,14 +108,8 @@ function UsersTable() {
         setEditingUser(user);
         setIsFormOpen(true);
     }
-
-    const openNewDialog = () => {
-        setEditingUser(undefined);
-        setIsFormOpen(true);
-    }
     
     const handleSave = async (userToSave: Partial<User>) => {
-        // We only support editing user roles for now.
         if (editingUser?.id) {
             try {
                 const userRef = doc(db, "users", editingUser.id);
@@ -129,19 +120,13 @@ function UsersTable() {
                 toast({ title: 'Erro ao atualizar usuário', variant: 'destructive' });
             }
         } else {
-            // Logic for creating new users is complex due to Firebase Auth security rules
-            // and is better handled via a dedicated signup flow or backend function.
-            // For this app, new users are created via the signup page.
              toast({ title: 'Funcionalidade não implementada', description: 'Por favor, use a página de cadastro para criar novos usuários.', variant: 'destructive'});
         }
     };
 
     const handleDelete = (userId: string) => {
-        // Deleting users from Firebase Auth is a protected action and should be done from a secure backend environment.
-        // We are not implementing this on the client-side for security reasons.
         toast({ title: 'Funcionalidade não implementada', description: 'A exclusão de usuários deve ser feita a partir de um ambiente seguro.', variant: 'destructive'});
     };
-
 
     return (
         <Card>
@@ -152,9 +137,7 @@ function UsersTable() {
                         <CardDescription>Gerencie as permissões dos usuários.</CardDescription>
                     </div>
                      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                        <DialogTrigger asChild>
-                           {/* The button to add a user is removed as this should be done from signup page */}
-                        </DialogTrigger>
+                        {/* The trigger button is removed, so we only need the Dialog, not the trigger */}
                         <DialogContent className="sm:max-w-[480px]">
                             <DialogHeader>
                                 <DialogTitle>{editingUser ? 'Editar Função do Usuário' : 'Adicionar Novo Usuário'}</DialogTitle>
@@ -268,6 +251,168 @@ function StockSettings() {
     )
 }
 
+
+function PaymentConditions() {
+    const [conditions, setConditions] = useState<{ id: string; name: string }[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [newCondition, setNewCondition] = useState('');
+    const { toast } = useToast();
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(collection(db, 'paymentConditions'), (snapshot) => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as { name: string } }));
+            setConditions(data);
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const handleAdd = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newCondition.trim()) return;
+        try {
+            await addDoc(collection(db, 'paymentConditions'), { name: newCondition });
+            setNewCondition('');
+            toast({ title: 'Condição de pagamento adicionada!' });
+        } catch (error) {
+            toast({ title: 'Erro ao adicionar condição', variant: 'destructive' });
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        try {
+            await deleteDoc(doc(db, 'paymentConditions', id));
+            toast({ title: 'Condição de pagamento removida!', variant: 'destructive' });
+        } catch (error) {
+            toast({ title: 'Erro ao remover condição', variant: 'destructive' });
+        }
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Condições de Pagamento</CardTitle>
+                <CardDescription>Gerencie as formas de pagamento aceitas no PDV.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <form onSubmit={handleAdd} className="flex items-center gap-2 mb-4">
+                    <Input 
+                        value={newCondition} 
+                        onChange={e => setNewCondition(e.target.value)}
+                        placeholder="Ex: Cartão de Débito"
+                    />
+                    <Button type="submit"><PlusCircle className="mr-2 h-4 w-4" /> Adicionar</Button>
+                </form>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Nome</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {loading ? (
+                            <TableRow><TableCell colSpan={2}><Skeleton className="h-5 w-full" /></TableCell></TableRow>
+                        ) : (
+                            conditions.map(c => (
+                                <TableRow key={c.id}>
+                                    <TableCell>{c.name}</TableCell>
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="icon" onClick={() => handleDelete(c.id)}>
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        )}
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+    );
+}
+
+function UnitsSettings() {
+    const [units, setUnits] = useState<{ id: string; name: string }[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [newUnit, setNewUnit] = useState('');
+    const { toast } = useToast();
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(collection(db, 'units'), (snapshot) => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as { name: string } }));
+            setUnits(data);
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const handleAdd = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newUnit.trim()) return;
+        try {
+            await addDoc(collection(db, 'units'), { name: newUnit });
+            setNewUnit('');
+            toast({ title: 'Unidade adicionada!' });
+        } catch (error) {
+            toast({ title: 'Erro ao adicionar unidade', variant: 'destructive' });
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        try {
+            await deleteDoc(doc(db, 'units', id));
+            toast({ title: 'Unidade removida!', variant: 'destructive' });
+        } catch (error) {
+            toast({ title: 'Erro ao remover unidade', variant: 'destructive' });
+        }
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Unidades de Medida</CardTitle>
+                <CardDescription>Gerencie as unidades para seus produtos (ex: Un, Kg, Lt).</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <form onSubmit={handleAdd} className="flex items-center gap-2 mb-4">
+                    <Input 
+                        value={newUnit} 
+                        onChange={e => setNewUnit(e.target.value)}
+                        placeholder="Ex: Caixa (CX)"
+                    />
+                    <Button type="submit"><PlusCircle className="mr-2 h-4 w-4" /> Adicionar</Button>
+                </form>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Nome</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {loading ? (
+                            <TableRow><TableCell colSpan={2}><Skeleton className="h-5 w-full" /></TableCell></TableRow>
+                        ) : (
+                            units.map(u => (
+                                <TableRow key={u.id}>
+                                    <TableCell>{u.name}</TableCell>
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="icon" onClick={() => handleDelete(u.id)}>
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        )}
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+    );
+}
+
+
 export default function SettingsPage() {
     return (
         <div className="space-y-6">
@@ -279,14 +424,20 @@ export default function SettingsPage() {
                 <TabsList>
                     <TabsTrigger value="users">Usuários</TabsTrigger>
                     <TabsTrigger value="stock">Estoque</TabsTrigger>
-                    <TabsTrigger value="payments" disabled>Pagamentos</TabsTrigger>
-                    <TabsTrigger value="units" disabled>Unidades</TabsTrigger>
+                    <TabsTrigger value="payments">Pagamentos</TabsTrigger>
+                    <TabsTrigger value="units">Unidades</TabsTrigger>
                 </TabsList>
                 <TabsContent value="users">
                    <UsersTable />
                 </TabsContent>
                 <TabsContent value="stock">
                     <StockSettings />
+                </TabsContent>
+                <TabsContent value="payments">
+                    <PaymentConditions />
+                </TabsContent>
+                <TabsContent value="units">
+                    <UnitsSettings />
                 </TabsContent>
             </Tabs>
         </div>

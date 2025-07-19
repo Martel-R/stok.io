@@ -4,7 +4,6 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { Button, type ButtonProps } from '@/components/ui/button';
-import { X, Menu } from 'lucide-react';
 
 interface SidebarContextProps {
   isOpen: boolean;
@@ -22,14 +21,7 @@ export function useSidebar() {
 }
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
-  const [isOpen, setIsOpen] = React.useState(true);
-
-  // Close sidebar on mobile by default
-  React.useEffect(() => {
-    if (window.innerWidth < 768) {
-      setIsOpen(false);
-    }
-  }, []);
+  const [isOpen, setIsOpen] = React.useState(false);
 
   return (
     <SidebarContext.Provider value={{ isOpen, setIsOpen }}>
@@ -47,6 +39,7 @@ export const Sidebar = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTM
           ref={ref}
           className={cn(
             'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r bg-background transition-transform duration-300 ease-in-out md:translate-x-0',
+            // Mobile-only transform
             isOpen ? 'translate-x-0' : '-translate-x-full',
             className
           )}
@@ -121,19 +114,3 @@ export const SidebarFooter = React.forwardRef<HTMLDivElement, React.HTMLAttribut
   }
 );
 SidebarFooter.displayName = 'SidebarFooter';
-
-export function SidebarTrigger({ className, ...props }: ButtonProps) {
-  const { isOpen, setIsOpen } = useSidebar();
-  return (
-    <Button
-      variant="ghost"
-      size="icon"
-      onClick={() => setIsOpen(!isOpen)}
-      className={cn("shrink-0", className)}
-      {...props}
-    >
-      {isOpen ? <X /> : <Menu />}
-      <span className="sr-only">Alternar Menu</span>
-    </Button>
-  );
-}

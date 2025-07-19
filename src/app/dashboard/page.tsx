@@ -1,32 +1,117 @@
 
 'use client';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { MOCK_PRODUCTS, MOCK_SALES } from '@/lib/mock-data';
 import { BarChart, DollarSign, Package, Users } from 'lucide-react';
 import { Bar, BarChart as RechartsBarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts';
-import {addDays, format} from 'date-fns';
+import { addDays, format, fromUnixTime } from 'date-fns';
+import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import type { Product, Sale } from '@/lib/types';
+import { Skeleton } from '@/components/ui/skeleton';
 
-const totalRevenue = MOCK_SALES.reduce((acc, sale) => acc + sale.total, 0);
-const totalSales = MOCK_SALES.length;
-const totalProducts = MOCK_PRODUCTS.length;
-const totalStock = MOCK_PRODUCTS.reduce((acc, p) => acc + p.stock, 0);
-
-const salesDataLast7Days = Array.from({length: 7}).map((_, i) => {
-    const date = addDays(new Date(), -i);
-    const salesOnDay = MOCK_SALES.filter(s => format(s.date, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'));
-    return {
-        name: format(date, 'd/MMM'),
-        Vendas: salesOnDay.reduce((acc, s) => acc + s.total, 0),
-    }
-}).reverse();
+// Helper para converter Timestamps do Firebase
+const convertSaleDates = (sale: any): Sale => ({
+  ...sale,
+  date: sale.date instanceof Timestamp ? sale.date.toDate() : (typeof sale.date === 'object' && sale.date.seconds ? fromUnixTime(sale.date.seconds) : new Date(sale.date)),
+});
 
 export default function DashboardPage() {
-    const { user } = useAuth();
+    const { user, currentBranch, loading: authLoading } = useAuth();
+    const [products, setProducts] = useState<Product[]>([]);
+    const [sales, setSales] = useState<Sale[]>([]);
+    const [loadingData, setLoadingData] = useState(true);
+
+    useEffect(() => {
+        if (!currentBranch || authLoading) {
+            setLoadingData(!authLoading);
+            return;
+        }
+
+        setLoadingData(true);
+
+        const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
+        const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
+
+        const unsubscribeProducts = onSnapshot(productsQuery, (snapshot) => {
+            const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+            setProducts(productsData);
+        });
+
+        const unsubscribeSales = onSnapshot(salesQuery, (snapshot) => {
+            const salesData = snapshot.docs.map(doc => convertSaleDates({ id: doc.id, ...doc.data() } as Sale));
+            setSales(salesData);
+            setLoadingData(false);
+        });
+
+        return () => {
+            unsubscribeProducts();
+            unsubscribeSales();
+        };
+    }, [currentBranch, authLoading]);
+    
+    const totalRevenue = sales.reduce((acc, sale) => acc + sale.total, 0);
+    const totalSalesCount = sales.length;
+    const totalProducts = products.length;
+    const totalStock = products.reduce((acc, p) => acc + p.stock, 0);
+
+    const salesDataLast7Days = Array.from({length: 7}).map((_, i) => {
+        const date = addDays(new Date(), -i);
+        const salesOnDay = sales.filter(s => format(s.date, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'));
+        return {
+            name: format(date, 'd/MMM'),
+            Vendas: salesOnDay.reduce((acc, s) => acc + s.total, 0),
+        }
+    }).reverse();
+
+    const recentSales = sales.sort((a,b) => b.date.getTime() - a.date.getTime()).slice(0, 5);
+
+    if (loadingData) {
+        return (
+             <div className="flex flex-col gap-8">
+                 <Skeleton className="h-9 w-1/2" />
+                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                     {Array.from({length: 4}).map((_, i) => (
+                         <Card key={i}>
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                <Skeleton className="h-5 w-24"/>
+                                <Skeleton className="h-4 w-4"/>
+                            </CardHeader>
+                             <CardContent>
+                                 <Skeleton className="h-7 w-32"/>
+                                 <Skeleton className="h-4 w-40 mt-1"/>
+                             </CardContent>
+                         </Card>
+                     ))}
+                 </div>
+                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+                    <Card className="col-span-4">
+                         <CardHeader><Skeleton className="h-7 w-48"/></CardHeader>
+                         <CardContent><Skeleton className="h-[350px] w-full"/></CardContent>
+                    </Card>
+                    <Card className="col-span-4 lg:col-span-3">
+                         <CardHeader><Skeleton className="h-7 w-32"/></CardHeader>
+                         <CardContent className="space-y-4">
+                              {Array.from({length: 5}).map((_, i) => (
+                                 <div key={i} className="flex items-center">
+                                      <div className="flex-1 space-y-1">
+                                          <Skeleton className="h-5 w-3/4"/>
+                                           <Skeleton className="h-4 w-1/2"/>
+                                      </div>
+                                      <Skeleton className="h-5 w-16"/>
+                                 </div>
+                              ))}
+                         </CardContent>
+                    </Card>
+                 </div>
+             </div>
+        )
+    }
 
     return (
         <div className="flex flex-col gap-8">
-            <h1 className="text-3xl font-bold">Bem-vindo(a) de volta, {user?.name}!</h1>
+            <h1 className="text-3xl font-bold">Painel da Filial: {currentBranch?.name}</h1>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card>
@@ -35,8 +120,7 @@ export default function DashboardPage() {
                         <DollarSign className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">R${totalRevenue.toLocaleString('pt-BR')}</div>
-                        <p className="text-xs text-muted-foreground">+20.1% do último mês</p>
+                        <div className="text-2xl font-bold">R${totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                     </CardContent>
                 </Card>
                  <Card>
@@ -45,8 +129,7 @@ export default function DashboardPage() {
                         <BarChart className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">+{totalSales.toLocaleString('pt-BR')}</div>
-                        <p className="text-xs text-muted-foreground">+180.1% do último mês</p>
+                        <div className="text-2xl font-bold">+{totalSalesCount.toLocaleString('pt-BR')}</div>
                     </CardContent>
                 </Card>
                 <Card>
@@ -56,7 +139,7 @@ export default function DashboardPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{totalProducts}</div>
-                        <p className="text-xs text-muted-foreground">em {MOCK_PRODUCTS.map(p => p.category).filter((v,i,a)=>a.indexOf(v)===i).length} categorias</p>
+                        <p className="text-xs text-muted-foreground">em {products.map(p => p.category).filter((v,i,a)=>a.indexOf(v)===i).length} categorias</p>
                     </CardContent>
                 </Card>
                  <Card>
@@ -100,15 +183,17 @@ export default function DashboardPage() {
                     </CardHeader>
                     <CardContent>
                          <div className="space-y-4">
-                            {MOCK_SALES.slice(0, 5).map((sale, index) => (
-                                <div key={index} className="flex items-center">
+                            {recentSales.length > 0 ? recentSales.map((sale) => (
+                                <div key={sale.id} className="flex items-center">
                                     <div className="flex-1 space-y-1">
                                         <p className="text-sm font-medium leading-none">{sale.productName}</p>
                                         <p className="text-sm text-muted-foreground">por {sale.cashier}</p>
                                     </div>
                                     <div className="font-medium">+R${sale.total.toFixed(2).replace('.',',')}</div>
                                 </div>
-                            ))}
+                            )) : (
+                                <p className="text-sm text-muted-foreground text-center">Nenhuma venda registrada nesta filial ainda.</p>
+                            )}
                         </div>
                     </CardContent>
                 </Card>

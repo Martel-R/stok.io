@@ -69,3 +69,18 @@ export interface StockEntry {
     userName: string;
     branchId: string;
 }
+
+export interface ComboProduct {
+  productId: string;
+  productName: string; 
+  quantity: number;
+}
+
+export interface Combo {
+  id: string;
+  name: string;
+  products: ComboProduct[];
+  price: number;
+  imageUrl: string;
+  branchId: string;
+}

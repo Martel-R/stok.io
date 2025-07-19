@@ -474,8 +474,16 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
 function StockSettings() {
     const [lowStockThreshold, setLowStockThreshold] = useState(50);
     const { toast } = useToast();
+    
+    useEffect(() => {
+        const savedThreshold = localStorage.getItem('lowStockThreshold');
+        if (savedThreshold) {
+            setLowStockThreshold(parseInt(savedThreshold, 10));
+        }
+    }, [])
 
     const handleSave = () => {
+        localStorage.setItem('lowStockThreshold', lowStockThreshold.toString());
         toast({
             title: "Configurações Salvas!",
             description: `O limite de estoque baixo foi definido para ${lowStockThreshold} unidades.`
@@ -725,3 +733,4 @@ export default function SettingsPage() {
         </React.Suspense>
     )
 }
+

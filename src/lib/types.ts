@@ -16,15 +16,17 @@ export interface Product {
   price: number;
   stock: number;
   imageUrl: string;
+  branchId: string;
 }
 
 export interface Sale {
-  id: string;
+  id:string;
   productName: string;
   quantity: number;
   total: number;
   date: Date;
   cashier: string;
+  branchId: string;
 }
 
 export interface Branch {

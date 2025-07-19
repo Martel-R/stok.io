@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query, where } from 'firebase/firestore';
 import type { Product } from '@/lib/types';
 import { MoreHorizontal, PlusCircle, Upload, Link, Loader2 } from 'lucide-react';
 import Image from 'next/image';
@@ -16,8 +16,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
+import { useAuth } from '@/lib/auth';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Partial<Product>) => void; onDone: () => void }) {
+function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId'>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Product>>(
     product || { name: '', category: '', price: 0, stock: 0, imageUrl: '' }
   );
@@ -46,7 +48,7 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
     onSave({
       ...formData,
       imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png'
-    });
+    } as Omit<Product, 'id' | 'branchId'>);
     onDone();
   };
 
@@ -112,49 +114,58 @@ export default function ProductsPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
   const { toast } = useToast();
+  const { currentBranch, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    const productsRef = collection(db, 'products');
+    if (authLoading || !currentBranch) {
+        setLoading(true); // Keep loading if auth is not ready or no branch is selected
+        return;
+    }
     
-    // Função para semear o banco de dados se estiver vazio
+    const productsRef = collection(db, 'products');
+    const q = query(productsRef, where("branchId", "==", currentBranch.id));
+
     const seedDatabase = async () => {
-      const q = query(productsRef);
       const querySnapshot = await getDocs(q);
       if (querySnapshot.empty) {
-        console.log("Coleção 'products' vazia. Semeando com dados de exemplo...");
+        console.log("Nenhum produto encontrado para esta filial. Semeando com dados de exemplo...");
         const batch = writeBatch(db);
         MOCK_PRODUCTS.forEach((product) => {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { id, ...data } = product; // não precisamos do id do mock
           const docRef = doc(productsRef); // Gera novo ID
-          batch.set(docRef, data);
+          batch.set(docRef, {...product, branchId: currentBranch.id });
         });
         await batch.commit();
-        toast({ title: 'Bem-vindo!', description: 'Adicionamos alguns produtos de exemplo para você começar.' });
+        toast({ title: 'Bem-vindo à sua nova filial!', description: 'Adicionamos alguns produtos de exemplo para você começar.' });
       }
     };
 
     seedDatabase();
 
-    const unsubscribe = onSnapshot(productsRef, (snapshot) => {
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
       setProducts(productsData);
       setLoading(false);
+    }, (error) => {
+        console.error("Error fetching products:", error);
+        toast({title: "Erro ao buscar produtos", variant: "destructive"});
+        setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [toast]);
+  }, [currentBranch, authLoading, toast]);
 
-  const handleSave = async (productData: Partial<Product>) => {
+  const handleSave = async (productData: Omit<Product, 'id' | 'branchId'>) => {
+    if (!currentBranch) {
+        toast({ title: 'Nenhuma filial selecionada', description: 'Selecione uma filial para salvar o produto.', variant: 'destructive' });
+        return;
+    }
     try {
       if (editingProduct?.id) {
-        // Update existing product
         const productRef = doc(db, "products", editingProduct.id);
         await updateDoc(productRef, productData);
         toast({ title: 'Produto atualizado com sucesso!' });
       } else {
-        // Add new product
-        await addDoc(collection(db, "products"), productData);
+        await addDoc(collection(db, "products"), { ...productData, branchId: currentBranch.id });
         toast({ title: 'Produto adicionado com sucesso!' });
       }
     } catch (error) {
@@ -181,6 +192,20 @@ export default function ProductsPage() {
   const openNewDialog = () => {
     setEditingProduct(undefined);
     setIsFormOpen(true);
+  }
+
+  if (!currentBranch && !authLoading) {
+    return (
+        <Card className="m-auto">
+            <CardHeader>
+                <CardTitle>Nenhuma Filial Selecionada</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <p>Por favor, selecione uma filial no topo da página para ver os produtos.</p>
+                <p className="mt-2 text-sm text-muted-foreground">Se você não tiver nenhuma filial, pode criar uma em <Link href="/dashboard/settings?tab=branches" className="underline">Configurações</Link>.</p>
+            </CardContent>
+        </Card>
+    )
   }
 
   return (

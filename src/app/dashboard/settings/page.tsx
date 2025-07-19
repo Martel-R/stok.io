@@ -115,6 +115,11 @@ function UsersTable() {
         setEditingUser(user);
         setIsFormOpen(true);
     }
+
+    const openNewDialog = () => {
+        setEditingUser(undefined);
+        setIsFormOpen(true);
+    }
     
     const handleSave = async (userToSave: Partial<User>) => {
         if (editingUser?.id) {
@@ -144,6 +149,9 @@ function UsersTable() {
                         <CardDescription>Gerencie as permissões dos usuários.</CardDescription>
                     </div>
                      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                        <DialogTrigger asChild>
+                           <Button onClick={openNewDialog}><PlusCircle className="mr-2" /> Adicionar Usuário</Button>
+                        </DialogTrigger>
                         <DialogContent className="sm:max-w-[480px]">
                             <DialogHeader>
                                 <DialogTitle>{editingUser ? 'Editar Função do Usuário' : 'Adicionar Novo Usuário'}</DialogTitle>
@@ -717,5 +725,3 @@ export default function SettingsPage() {
         </React.Suspense>
     )
 }
-
-    

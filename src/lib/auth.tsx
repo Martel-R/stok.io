@@ -3,9 +3,9 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser } from 'firebase/auth';
+import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
 import type { User } from '@/lib/types';
-import { MOCK_USERS } from '@/lib/mock-data';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 
 
 interface AuthContextType {
@@ -26,23 +26,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseAuthUser | null) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseAuthUser | null) => {
       if (firebaseUser) {
-        // User is signed in. Find the corresponding user profile from our mock data.
-        // In a real app, you'd fetch this from Firestore.
-        const profile = MOCK_USERS.find(u => u.email === firebaseUser.email);
-        if (profile) {
-            const { password, ...userToStore } = profile;
-            setUser(userToStore);
+        // User is signed in. Fetch their profile from Firestore.
+        const userDocRef = doc(db, "users", firebaseUser.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+            setUser(userDoc.data() as User);
         } else {
-            // Handle case where user exists in Firebase Auth but not in our user list
-            setUser({
+             // If no profile, maybe it's a very old user or something is wrong.
+             // We can create a default one or just use basic auth info.
+             const newUser: User = {
                 id: firebaseUser.uid,
                 email: firebaseUser.email || '',
                 name: firebaseUser.displayName || 'Usuário',
-                role: 'admin', // default role for new signups
+                role: 'admin', 
                 avatar: firebaseUser.photoURL || `/avatars/0${Math.ceil(Math.random() * 3)}.png`,
-            })
+            }
+            setUser(newUser);
+            // Optionally save this new profile back to Firestore
+            await setDoc(userDocRef, newUser);
         }
       } else {
         // User is signed out
@@ -58,18 +61,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
-      await updateProfile(userCredential.user, {
+      const firebaseUser = userCredential.user;
+      
+      await updateProfile(firebaseUser, {
         displayName: name,
       });
-      // onAuthStateChanged will handle setting the user.
-      // We can manually set the user here as well to speed up UI update
-      setUser({
-        id: userCredential.user.uid,
-        email: userCredential.user.email || '',
-        name: name,
+
+      // Create user profile in Firestore
+      const newUser: User = {
+        id: firebaseUser.uid,
+        name,
+        email,
         role: 'admin',
         avatar: `/avatars/0${Math.ceil(Math.random() * 3)}.png`,
-      });
+      };
+
+      await setDoc(doc(db, "users", firebaseUser.uid), newUser);
+      
+      setUser(newUser);
+
       return { success: true };
     } catch (error: any) {
       console.error("Firebase Signup Error:", error);

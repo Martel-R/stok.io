@@ -1,4 +1,5 @@
 
+
 export type UserRole = 'admin' | 'manager' | 'cashier';
 
 export interface User {

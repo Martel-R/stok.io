@@ -3,7 +3,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch } from "firebase/firestore";
 import type { User, UserRole, Branch } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
@@ -20,6 +20,8 @@ interface AuthContextType {
   loginWithGoogle: () => Promise<boolean>;
   signup: (email: string, pass: string, name: string) => Promise<{ success: boolean; error?: string, isFirstUser?: boolean }>;
   createUser: (email: string, pass: string, name: string, role: UserRole, organizationId: string) => Promise<{ success: boolean; error?: string }>;
+  updateUserProfile: (data: Partial<User>) => Promise<{ success: boolean; error?: string }>;
+  changeUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean, error?: string }>;
   logout: () => void;
   loading: boolean;
   cancelLogin: () => void;
@@ -49,6 +51,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         let currentUser: User;
         if (userDocSnap.exists()) {
             currentUser = userDocSnap.data() as User;
+            // Sync Firebase Auth profile with Firestore on load, in case it was changed elsewhere
+            if (currentUser.name !== firebaseUser.displayName || currentUser.avatar !== firebaseUser.photoURL) {
+                currentUser.name = firebaseUser.displayName || currentUser.name;
+                currentUser.avatar = firebaseUser.photoURL || currentUser.avatar;
+            }
             setUser(currentUser);
         } else {
              // This case is mainly for Google Sign-in for a new user
@@ -66,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
             await setDoc(userDocRef, newUser);
             // This case needs a flow to either create a new org or join an existing one.
-            // For now, we assume first Google user creates an org.
+            // For now, first Google user creates an org.
             if(isFirstUser) {
                  await setDoc(doc(db, "organizations", organizationId), { ownerId: newUser.id, name: `${newUser.name}'s Organization` });
             }
@@ -124,8 +131,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
       const firebaseUser = userCredential.user;
       
+      const avatar = `/avatars/0${Math.ceil(Math.random() * 3)}.png`;
       await updateProfile(firebaseUser, {
         displayName: name,
+        photoURL: avatar
       });
 
       const newUser: User = {
@@ -133,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name,
         email,
         role: 'admin',
-        avatar: `/avatars/0${Math.ceil(Math.random() * 3)}.png`,
+        avatar: avatar,
         organizationId: organizationId
       };
 
@@ -264,6 +273,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCurrentBranchState(branch);
   }
 
+  const updateUserProfile = async (data: Partial<User>) => {
+    if (!auth.currentUser || !user) {
+        return { success: false, error: 'Usuário não autenticado.'};
+    }
+    try {
+        // Update Firebase Auth profile
+        await updateProfile(auth.currentUser, {
+            displayName: data.name,
+            photoURL: data.avatar,
+        });
+
+        // Update Firestore user document
+        const userRef = doc(db, 'users', user.id);
+        await updateDoc(userRef, data);
+        
+        // Update local user state
+        setUser(prev => prev ? { ...prev, ...data } : null);
+        
+        return { success: true };
+    } catch (error: any) {
+        console.error('Error updating profile:', error);
+        return { success: false, error: 'Falha ao atualizar o perfil.' };
+    }
+  }
+
+  const changeUserPassword = async (currentPass: string, newPass: string) => {
+    if (!auth.currentUser || !auth.currentUser.email) {
+        return { success: false, error: 'Usuário não autenticado.' };
+    }
+    
+    const cred = EmailAuthProvider.credential(auth.currentUser.email, currentPass);
+    
+    try {
+        // Reauthenticate before changing password for security
+        await reauthenticateWithCredential(auth.currentUser, cred);
+        await updatePassword(auth.currentUser, newPass);
+        return { success: true };
+    } catch (error: any) {
+        console.error('Error changing password:', error);
+        let message = 'Falha ao alterar a senha.';
+        if (error.code === 'auth/wrong-password') {
+            message = 'A senha atual está incorreta.';
+        }
+        return { success: false, error: message };
+    }
+  };
+
+
   const isAuthenticated = !!user;
   
   useEffect(() => {
@@ -286,7 +343,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             } else {
                 router.push('/dashboard');
             }
-        } else if (user.role === 'cashier' && pathname !== '/dashboard/pos') {
+        } else if (user.role === 'cashier' && pathname !== '/dashboard/pos' && pathname !== '/dashboard/profile') {
             // If a cashier tries to access any other dashboard page, redirect them to POS
             router.push('/dashboard/pos');
         }
@@ -294,7 +351,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [isAuthenticated, loading, pathname, router, user]);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword }}>
       {children}
     </AuthContext.Provider>
   );
@@ -307,5 +364,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
-    

@@ -7,24 +7,32 @@ import type { Product } from '@/lib/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useAuth } from '@/lib/auth';
 
 export default function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const { isAuthenticated, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    const q = collection(db, 'products');
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const productsData: Product[] = [];
-      querySnapshot.forEach((doc) => {
-        productsData.push({ id: doc.id, ...doc.data() } as Product);
+    // Só busca os dados se a autenticação estiver concluída e o usuário estiver logado.
+    if (!authLoading && isAuthenticated) {
+      const q = collection(db, 'products');
+      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const productsData: Product[] = [];
+        querySnapshot.forEach((doc) => {
+          productsData.push({ id: doc.id, ...doc.data() } as Product);
+        });
+        setProducts(productsData);
+        setLoading(false);
       });
-      setProducts(productsData);
-      setLoading(false);
-    });
 
-    return () => unsubscribe();
-  }, []);
+      return () => unsubscribe();
+    } else if (!authLoading && !isAuthenticated) {
+      // Se não estiver autenticado após o carregamento, para de carregar.
+      setLoading(false);
+    }
+  }, [isAuthenticated, authLoading]);
 
   const getStockStatus = (stock: number) => {
     if (stock === 0) return <Badge variant="destructive">Sem Estoque</Badge>;
@@ -32,7 +40,7 @@ export default function InventoryPage() {
     return <Badge variant="secondary" className="bg-green-400 text-green-900">Em Estoque</Badge>;
   };
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
         <div className="space-y-6">
             <h1 className="text-3xl font-bold">Situação do Estoque</h1>

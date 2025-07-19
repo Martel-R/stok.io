@@ -37,11 +37,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (userDoc.exists()) {
             setUser(userDoc.data() as User);
         } else {
+             // This case handles users signing up via Google for the first time
              const newUser: User = {
                 id: firebaseUser.uid,
                 email: firebaseUser.email || '',
                 name: firebaseUser.displayName || 'Usuário Google',
-                role: 'admin', 
+                role: 'admin', // Default role for new sign-ups
                 avatar: firebaseUser.photoURL || `/avatars/0${Math.ceil(Math.random() * 3)}.png`,
             }
             await setDoc(userDocRef, newUser);
@@ -70,14 +71,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: firebaseUser.uid,
         name,
         email,
-        role: 'admin',
+        role: 'admin', // New users from signup form are admins
         avatar: `/avatars/0${Math.ceil(Math.random() * 3)}.png`,
       };
 
       await setDoc(doc(db, "users", firebaseUser.uid), newUser);
       
-      setUser(newUser);
-
+      // onAuthStateChanged will set the user, no need to do it here.
       return { success: true };
     } catch (error: any) {
       console.error("Firebase Signup Error:", error);
@@ -109,13 +109,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (loginCancelledRef.current) {
             return false;
         }
-        setUser(null);
         setLoading(false);
         return false;
-    } finally {
-        if (!loginCancelledRef.current) {
-             // setLoading will be set to false by onAuthStateChanged if successful
-        }
     }
   };
 
@@ -136,7 +131,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (loginCancelledRef.current) {
             return false;
         }
-        setUser(null);
         setLoading(false);
         return false;
     }
@@ -148,24 +142,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = async () => {
+    setLoading(true);
     try {
         await signOut(auth);
         setUser(null);
         router.push('/login');
     } catch (error) {
         console.error("Firebase Logout Error:", error);
+    } finally {
+        setLoading(false);
     }
   };
 
   const isAuthenticated = !!user;
   
   useEffect(() => {
+    // We don't run this effect on the server
+    if (typeof window === 'undefined') return;
+
     if (loading) return; // Don't redirect while loading
-    const isProtectedRoute = !pathname.startsWith('/login') && !pathname.startsWith('/signup');
-    if (!isAuthenticated && isProtectedRoute) {
+
+    const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/signup');
+
+    if (!isAuthenticated && !isAuthPage) {
         router.push('/login');
     }
-     if (isAuthenticated && (pathname.startsWith('/login') || pathname.startsWith('/signup'))) {
+     if (isAuthenticated && isAuthPage) {
         router.push('/dashboard');
     }
   }, [isAuthenticated, loading, pathname, router]);

@@ -20,22 +20,30 @@ function DashboardNav() {
     const { user } = useAuth();
     
     const navItems = [
-        { href: '/dashboard', label: 'Painel', icon: Home, roles: ['admin', 'manager'] },
+        { href: '/dashboard', label: 'Início', icon: Home, roles: ['admin', 'manager'] },
         { href: '/dashboard/products', label: 'Produtos', icon: Package, roles: ['admin', 'manager'] },
-        { href: '/dashboard/combos', label: 'Combos', icon: Gift, roles: ['admin', 'manager'] },
-        { href: '/dashboard/inventory', label: 'Estoque', icon: BarChart, roles: ['admin', 'manager'] },
-        { href: '/dashboard/pos', label: 'PDV', icon: ShoppingCart, roles: ['admin', 'manager', 'cashier'] },
-        { href: '/dashboard/assistant', label: 'Assistente IA', icon: Bot, roles: ['admin', 'manager'] },
+        { href: '/dashboard/combos', label: 'Kits', icon: Gift, roles: ['admin', 'manager'] },
+        { href: '/dashboard/inventory', label: 'Movimentação', icon: BarChart, roles: ['admin', 'manager'] },
+        { href: '/dashboard/pos', label: 'Frente de Caixa', icon: ShoppingCart, roles: ['admin', 'manager', 'cashier'] },
+        { href: '/dashboard/assistant', label: 'Oráculo AI', icon: Bot, roles: ['admin', 'manager'] },
         { href: '/dashboard/reports', label: 'Relatórios', icon: FileText, roles: ['admin'] },
-        { href: '/dashboard/settings', label: 'Configurações', icon: Settings, roles: ['admin'] },
+        { href: '/dashboard/settings?tab=users', label: 'Gestão de Pessoas', icon: Users, roles: ['admin'] },
+        { href: '/dashboard/settings', label: 'Ajustes', icon: Settings, roles: ['admin'] },
     ];
+
+    const isActive = (href: string) => {
+      if (href.includes('?')) {
+        return pathname === href.split('?')[0] && window.location.search === '?' + href.split('?')[1];
+      }
+      return pathname === href;
+    }
 
     return (
         <SidebarMenu>
             {navItems.filter(item => user && item.roles.includes(user.role)).map((item) => (
                 <SidebarMenuItem key={item.href}>
                     <Link href={item.href} passHref>
-                        <SidebarMenuButton isActive={pathname === item.href}>
+                        <SidebarMenuButton isActive={isActive(item.href)}>
                             <item.icon />
                             <span>{item.label}</span>
                         </SidebarMenuButton>

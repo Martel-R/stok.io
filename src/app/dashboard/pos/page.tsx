@@ -429,7 +429,7 @@ export default function POSPage() {
         for (const comboProduct of combo.products) {
             const productInStore = products.find(p => p.id === comboProduct.productId);
             if (!productInStore || productInStore.stock < comboProduct.quantity) {
-                toast({ title: 'Estoque insuficiente para o combo', description: `O produto ${comboProduct.productName} não tem estoque suficiente para montar o combo ${combo.name}.`, variant: 'destructive'});
+                toast({ title: 'Estoque insuficiente para o kit', description: `O produto ${comboProduct.productName} não tem estoque suficiente para montar o kit ${combo.name}.`, variant: 'destructive'});
                 return;
             }
         }
@@ -515,8 +515,8 @@ export default function POSPage() {
                 <CardTitle>Nenhuma Filial Selecionada</CardTitle>
             </CardHeader>
             <CardContent>
-                <p>Por favor, selecione uma filial no topo da página para usar o PDV.</p>
-                 <p className="mt-2 text-sm text-muted-foreground">Se você não tiver nenhuma filial, pode criar uma em <Link href="/dashboard/settings?tab=branches" className="underline">Configurações</Link>.</p>
+                <p>Por favor, selecione uma filial no topo da página para usar a Frente de Caixa.</p>
+                 <p className="mt-2 text-sm text-muted-foreground">Se você não tiver nenhuma filial, pode criar uma em <Link href="/dashboard/settings?tab=branches" className="underline">Ajustes</Link>.</p>
             </CardContent>
         </Card>
     )
@@ -531,7 +531,7 @@ export default function POSPage() {
              <Tabs defaultValue="products">
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="products"><Package className="mr-2 h-4 w-4"/> Produtos</TabsTrigger>
-                <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Combos</TabsTrigger>
+                <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Kits</TabsTrigger>
                 <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/> Histórico</TabsTrigger>
               </TabsList>
               <TabsContent value="products" className="mt-4">
@@ -617,7 +617,7 @@ export default function POSPage() {
                                 <div>
                                     <p className="font-medium flex items-center gap-2">
                                         {item.name}
-                                        {item.itemType === 'combo' && <Badge variant="secondary">Combo</Badge>}
+                                        {item.itemType === 'combo' && <Badge variant="secondary">Kit</Badge>}
                                     </p>
                                     <p className="text-sm text-muted-foreground">
                                         R${(item.itemType === 'product' ? item.price : item.finalPrice).toFixed(2).replace('.', ',')} x {item.quantity}

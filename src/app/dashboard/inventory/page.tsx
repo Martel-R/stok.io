@@ -117,8 +117,8 @@ export default function InventoryPage() {
                     <CardTitle>Nenhuma Filial Selecionada</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <p>Por favor, selecione uma filial no topo da página para ver o relatório de estoque.</p>
-                    <p className="mt-2 text-sm text-muted-foreground">Se você não tiver nenhuma filial, pode criar uma em <Link href="/dashboard/settings?tab=branches" className="underline">Configurações</Link>.</p>
+                    <p>Por favor, selecione uma filial no topo da página para ver o relatório de movimentação.</p>
+                    <p className="mt-2 text-sm text-muted-foreground">Se você não tiver nenhuma filial, pode criar uma em <Link href="/dashboard/settings?tab=branches" className="underline">Ajustes</Link>.</p>
                 </CardContent>
             </Card>
         )
@@ -126,7 +126,7 @@ export default function InventoryPage() {
 
     return (
         <div className="space-y-6">
-            <h1 className="text-3xl font-bold">Relatório de Estoque Diário</h1>
+            <h1 className="text-3xl font-bold">Relatório de Movimentação Diária</h1>
             <Card>
                 <CardHeader>
                     <CardTitle>Movimentação de Estoque</CardTitle>
@@ -173,7 +173,7 @@ export default function InventoryPage() {
                             ) : (
                                 <TableRow>
                                     <TableCell colSpan={7} className="h-24 text-center">
-                                        Nenhum dado de movimentação encontrado. Faça vendas no PDV para começar.
+                                        Nenhum dado de movimentação encontrado. Faça vendas na Frente de Caixa para começar.
                                     </TableCell>
                                 </TableRow>
                             )}

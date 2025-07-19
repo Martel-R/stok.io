@@ -1,3 +1,4 @@
+
 'use client';
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
@@ -71,7 +72,7 @@ export default function AssistantPage() {
     <div className="flex h-[calc(100vh-8rem)] flex-col">
       <Card className="flex-grow flex flex-col">
         <CardHeader>
-            <CardTitle>Assistente IA</CardTitle>
+            <CardTitle>Oráculo AI</CardTitle>
             <CardDescription>Faça perguntas sobre seu estoque.</CardDescription>
         </CardHeader>
         <CardContent className="flex-grow">
@@ -84,7 +85,7 @@ export default function AssistantPage() {
                 >
                   {message.sender === 'bot' && (
                     <Avatar className="h-8 w-8">
-                        <AvatarFallback>IA</AvatarFallback>
+                        <AvatarFallback>AI</AvatarFallback>
                     </Avatar>
                   )}
                   <div

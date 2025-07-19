@@ -35,7 +35,7 @@ export default function SignupPage() {
       } else {
          toast({
           title: 'Cadastro realizado com sucesso!',
-          description: 'Você será redirecionado para o painel.',
+          description: 'Você será redirecionado para o painel de início.',
         });
         router.push('/dashboard');
       }

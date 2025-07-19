@@ -118,7 +118,7 @@ function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }:
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.products || formData.products.length === 0) {
-        alert("Por favor, preencha o nome do combo e adicione pelo menos um produto.");
+        alert("Por favor, preencha o nome do kit e adicione pelo menos um produto.");
         return;
     }
     const prices = calculatePrices(formData.products, formData.discountRules || []);
@@ -134,12 +134,12 @@ function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }:
   return (
     <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-4">
       <div>
-        <Label htmlFor="name">Nome do Combo</Label>
+        <Label htmlFor="name">Nome do Kit</Label>
         <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
       </div>
 
        <div>
-        <Label>Produtos no Combo</Label>
+        <Label>Produtos no Kit</Label>
          <div className="space-y-2 rounded-md border p-2">
             {formData.products?.map(p => (
                 <div key={p.productId} className="flex items-center justify-between">
@@ -269,14 +269,14 @@ function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }:
           <div>
               <Label>Pré-visualização da Imagem</Label>
               <div className="mt-2 rounded-md border p-2 flex justify-center items-center">
-                <Image src={formData.imageUrl} alt="Pré-visualização do combo" width={128} height={128} className="rounded-md object-cover aspect-square" data-ai-hint="combo offer" />
+                <Image src={formData.imageUrl} alt="Pré-visualização do kit" width={128} height={128} className="rounded-md object-cover aspect-square" data-ai-hint="combo offer" />
               </div>
           </div>
       )}
 
       <Button type="submit" disabled={isUploading}>
         {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-        Salvar Combo
+        Salvar Kit
       </Button>
     </form>
   );
@@ -332,31 +332,31 @@ export default function CombosPage() {
 
   const handleSave = async (comboData: Omit<Combo, 'id' | 'branchId'>) => {
     if (!currentBranch) {
-        toast({ title: 'Nenhuma filial selecionada', description: 'Selecione uma filial para salvar o combo.', variant: 'destructive' });
+        toast({ title: 'Nenhuma filial selecionada', description: 'Selecione uma filial para salvar o kit.', variant: 'destructive' });
         return;
     }
     try {
       if (editingCombo?.id) {
         const comboRef = doc(db, "combos", editingCombo.id);
         await updateDoc(comboRef, comboData);
-        toast({ title: 'Combo atualizado com sucesso!' });
+        toast({ title: 'Kit atualizado com sucesso!' });
       } else {
         await addDoc(collection(db, "combos"), { ...comboData, branchId: currentBranch.id });
-        toast({ title: 'Combo adicionado com sucesso!' });
+        toast({ title: 'Kit adicionado com sucesso!' });
       }
     } catch (error) {
       console.error("Error saving combo: ", error);
-      toast({ title: 'Erro ao salvar combo', description: 'Ocorreu um erro, por favor tente novamente.', variant: 'destructive' });
+      toast({ title: 'Erro ao salvar kit', description: 'Ocorreu um erro, por favor tente novamente.', variant: 'destructive' });
     }
   };
 
   const handleDelete = async (comboId: string) => {
     try {
       await deleteDoc(doc(db, "combos", comboId));
-      toast({ title: 'Combo excluído com sucesso!', variant: 'destructive' });
+      toast({ title: 'Kit excluído com sucesso!', variant: 'destructive' });
     } catch (error) {
        console.error("Error deleting combo: ", error);
-       toast({ title: 'Erro ao excluir combo', description: 'Ocorreu um erro, por favor tente novamente.', variant: 'destructive' });
+       toast({ title: 'Erro ao excluir kit', description: 'Ocorreu um erro, por favor tente novamente.', variant: 'destructive' });
     }
   };
   
@@ -377,8 +377,8 @@ export default function CombosPage() {
                 <CardTitle>Nenhuma Filial Selecionada</CardTitle>
             </CardHeader>
             <CardContent>
-                <p>Por favor, selecione uma filial no topo da página para ver os combos.</p>
-                <p className="mt-2 text-sm text-muted-foreground">Se você não tiver nenhuma filial, pode criar uma em <Link href="/dashboard/settings?tab=branches" className="underline">Configurações</Link>.</p>
+                <p>Por favor, selecione uma filial no topo da página para ver os kits.</p>
+                <p className="mt-2 text-sm text-muted-foreground">Se você não tiver nenhuma filial, pode criar uma em <Link href="/dashboard/settings?tab=branches" className="underline">Ajustes</Link>.</p>
             </CardContent>
         </Card>
     )
@@ -387,18 +387,18 @@ export default function CombosPage() {
   return (
     <div className="space-y-6">
        <div className="flex justify-between items-center gap-4">
-        <h1 className="text-3xl font-bold">Combos Promocionais</h1>
+        <h1 className="text-3xl font-bold">Kits Promocionais</h1>
         <div className="flex gap-2">
             <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                 <DialogTrigger asChild>
                     <Button onClick={openNewDialog}>
                         <PlusCircle className="mr-2 h-4 w-4" />
-                        Adicionar Combo
+                        Adicionar Kit
                     </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-xl">
                     <DialogHeader>
-                        <DialogTitle>{editingCombo ? 'Editar Combo' : 'Adicionar Novo Combo'}</DialogTitle>
+                        <DialogTitle>{editingCombo ? 'Editar Kit' : 'Adicionar Novo Kit'}</DialogTitle>
                     </DialogHeader>
                     <ComboForm 
                         combo={editingCombo} 
@@ -468,7 +468,7 @@ export default function CombosPage() {
           ) : (
              <TableRow>
                 <TableCell colSpan={6} className="h-24 text-center">
-                    Nenhum combo encontrado. Comece a criar seus combos promocionais!
+                    Nenhum kit encontrado. Comece a criar seus kits promocionais!
                 </TableCell>
             </TableRow>
           )}

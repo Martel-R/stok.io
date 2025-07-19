@@ -593,7 +593,7 @@ function PaymentConditions() {
         <Card>
             <CardHeader>
                 <CardTitle>Condições de Pagamento</CardTitle>
-                <CardDescription>Gerencie as formas de pagamento aceitas no PDV, incluindo tipos e taxas.</CardDescription>
+                <CardDescription>Gerencie as formas de pagamento aceitas na Frente de Caixa, incluindo tipos e taxas.</CardDescription>
             </CardHeader>
             <CardContent>
                 <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg">
@@ -699,7 +699,7 @@ function SettingsPageContent() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-3xl font-bold">Configurações</h1>
+                <h1 className="text-3xl font-bold">Ajustes</h1>
                 <p className="text-muted-foreground">Gerencie as configurações gerais do sistema.</p>
             </div>
             <Tabs defaultValue={tab} className="space-y-4">

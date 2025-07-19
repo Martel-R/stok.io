@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useAuth } from '@/lib/auth';
@@ -105,7 +106,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         {/* Conteúdo do rodapé, se houver */}
                     </SidebarFooter>
                 </Sidebar>
-                <div className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden">
+                <div className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden md:pl-64">
                     <header className="sticky top-0 flex h-16 items-center justify-between gap-4 border-b bg-background px-4 md:px-6">
                         <div>
                             <SidebarTrigger />

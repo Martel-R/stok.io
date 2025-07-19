@@ -26,3 +26,11 @@ export interface Sale {
   date: Date;
   cashier: string;
 }
+
+export interface Branch {
+    id: string;
+    name: string;
+    cnpj: string;
+    location: string;
+    userIds: string[];
+}

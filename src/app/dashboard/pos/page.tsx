@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Product, Sale, PaymentCondition, PaymentDetail, Combo } from '@/lib/types';
+import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType } from '@/lib/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -253,16 +253,17 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
 
         salesHistory.forEach(sale => {
             sale.payments?.forEach(p => {
-                if (!summary[p.conditionName]) {
-                    summary[p.conditionName] = { currentMonthTotal: 0, previousMonthTotal: 0, change: 0 };
+                const paymentType = p.type;
+                if (!summary[paymentType]) {
+                    summary[paymentType] = { currentMonthTotal: 0, previousMonthTotal: 0, change: 0 };
                 }
                 const saleMonth = getMonth(sale.date);
                 const saleYear = getYear(sale.date);
 
                 if (saleMonth === currentMonth && saleYear === currentYear) {
-                    summary[p.conditionName].currentMonthTotal += p.amount;
+                    summary[paymentType].currentMonthTotal += p.amount;
                 } else if (saleMonth === previousMonth && saleYear === previousMonthYear) {
-                    summary[p.conditionName].previousMonthTotal += p.amount;
+                    summary[paymentType].previousMonthTotal += p.amount;
                 }
             });
         });
@@ -293,15 +294,20 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
         );
     };
 
+    const getPaymentTypeName = (type: PaymentConditionType) => {
+        const names = { credit: 'Crédito', debit: 'Débito', cash: 'Dinheiro', pix: 'Pix' };
+        return names[type] || 'Desconhecido';
+    };
+
     return (
         <ScrollArea className="h-[calc(100vh-18rem)]">
              <div className="mb-6">
-                <CardDescription>Resumo de vendas do mês atual por pagamento</CardDescription>
+                <CardDescription>Resumo de vendas do mês atual por tipo de pagamento</CardDescription>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
-                    {Object.entries(monthlySummary).map(([name, data]) => (
-                        <Card key={name}>
+                    {Object.entries(monthlySummary).map(([type, data]) => (
+                        <Card key={type}>
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium">{name}</CardTitle>
+                                <CardTitle className="text-sm font-medium">{getPaymentTypeName(type as PaymentConditionType)}</CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="text-2xl font-bold">R${data.currentMonthTotal.toFixed(2)}</div>

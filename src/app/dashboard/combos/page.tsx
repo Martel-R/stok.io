@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 
 
 const calculatePrices = (products: ComboProduct[], rules: ComboDiscountRule[]): { originalPrice: number, finalPrice: number } => {
@@ -475,3 +476,5 @@ export default function CombosPage() {
     </div>
   );
 }
+
+    

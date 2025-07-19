@@ -384,7 +384,7 @@ export default function POSPage() {
     const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
     const combosQuery = query(collection(db, 'combos'), where('branchId', '==', currentBranch.id));
     const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId));
-    const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id), where('cashier', '==', user.name), orderBy('date', 'desc'));
+    const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id), orderBy('date', 'desc'));
 
     const unsubscribeProducts = onSnapshot(productsQuery, (querySnapshot) => {
       const productsData: Product[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));

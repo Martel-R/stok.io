@@ -19,7 +19,7 @@ import { MOCK_PRODUCTS } from '@/lib/mock-data';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId'>) => void; onDone: () => void }) {
+function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId' | 'stock'>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Product>>(
     product || { name: '', category: '', price: 0, stock: 0, imageUrl: '' }
   );
@@ -45,10 +45,11 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const { stock, ...productData } = formData; // Exclude stock from the form data
     onSave({
-      ...formData,
+      ...productData,
       imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png'
-    } as Omit<Product, 'id' | 'branchId'>);
+    } as Omit<Product, 'id' | 'branchId' | 'stock'>);
     onDone();
   };
 
@@ -65,10 +66,6 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
       <div>
         <Label htmlFor="price">Preço</Label>
         <Input id="price" name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} required />
-      </div>
-      <div>
-        <Label htmlFor="stock">Estoque</Label>
-        <Input id="stock" name="stock" type="number" value={formData.stock} onChange={handleChange} required />
       </div>
 
        <Tabs defaultValue="upload" className="w-full">
@@ -132,7 +129,7 @@ export default function ProductsPage() {
         const batch = writeBatch(db);
         MOCK_PRODUCTS.forEach((product) => {
           const docRef = doc(productsRef); // Gera novo ID
-          batch.set(docRef, {...product, branchId: currentBranch.id });
+          batch.set(docRef, {...product, stock: 0, branchId: currentBranch.id });
         });
         await batch.commit();
         toast({ title: 'Bem-vindo à sua nova filial!', description: 'Adicionamos alguns produtos de exemplo para você começar.' });
@@ -154,7 +151,7 @@ export default function ProductsPage() {
     return () => unsubscribe();
   }, [currentBranch, authLoading, toast]);
 
-  const handleSave = async (productData: Omit<Product, 'id' | 'branchId'>) => {
+  const handleSave = async (productData: Omit<Product, 'id' | 'branchId' | 'stock'>) => {
     if (!currentBranch) {
         toast({ title: 'Nenhuma filial selecionada', description: 'Selecione uma filial para salvar o produto.', variant: 'destructive' });
         return;
@@ -165,7 +162,7 @@ export default function ProductsPage() {
         await updateDoc(productRef, productData);
         toast({ title: 'Produto atualizado com sucesso!' });
       } else {
-        await addDoc(collection(db, "products"), { ...productData, branchId: currentBranch.id });
+        await addDoc(collection(db, "products"), { ...productData, stock: 0, branchId: currentBranch.id });
         toast({ title: 'Produto adicionado com sucesso!' });
       }
     } catch (error) {

@@ -36,3 +36,16 @@ export interface Branch {
     location: string;
     userIds: string[];
 }
+
+export interface StockEntry {
+    id: string;
+    productId: string;
+    productName: string;
+    quantityAdded: number;
+    previousStock: number;
+    newStock: number;
+    date: any; // ServerTimestamp
+    userId: string;
+    userName: string;
+    branchId: string;
+}

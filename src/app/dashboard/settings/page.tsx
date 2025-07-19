@@ -418,13 +418,13 @@ function BranchesSettings() {
 function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users: User[]; onSave: (data: Omit<Branch, 'id'>) => void; onDone: () => void }) {
     const { user: currentUser } = useAuth();
     const [formData, setFormData] = useState(
-        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [] }
+        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], lowStockThreshold: 10 }
     );
     const [open, setOpen] = useState(false);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        const { name, value, type } = e.target;
+        setFormData(prev => ({ ...prev, [name]: type === 'number' ? parseFloat(value) || 0 : value }));
     };
 
     const handleUserSelect = (userId: string) => {
@@ -438,7 +438,7 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData);
+        onSave(formData as Omit<Branch, 'id'>);
         onDone();
     };
 
@@ -455,6 +455,13 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
             <div>
                 <Label htmlFor="location">Localização</Label>
                 <Input id="location" name="location" value={formData.location} onChange={handleChange} required placeholder="Ex: Rua, Nº, Bairro, Cidade - UF" />
+            </div>
+            <div>
+                <Label htmlFor="lowStockThreshold">Limite para Estoque Baixo</Label>
+                <Input id="lowStockThreshold" name="lowStockThreshold" type="number" value={formData.lowStockThreshold} onChange={handleChange} required />
+                <p className="text-sm text-muted-foreground pt-1">
+                    Produtos com quantidade igual ou inferior a este valor serão marcados como "Estoque Baixo".
+                </p>
             </div>
             <div>
                 <Label>Usuários Vinculados</Label>
@@ -507,52 +514,6 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
             </DialogFooter>
         </form>
     );
-}
-
-
-function StockSettings() {
-    const [lowStockThreshold, setLowStockThreshold] = useState(50);
-    const { toast } = useToast();
-    
-    useEffect(() => {
-        const savedThreshold = localStorage.getItem('lowStockThreshold');
-        if (savedThreshold) {
-            setLowStockThreshold(parseInt(savedThreshold, 10));
-        }
-    }, [])
-
-    const handleSave = () => {
-        localStorage.setItem('lowStockThreshold', lowStockThreshold.toString());
-        toast({
-            title: "Configurações Salvas!",
-            description: `O limite de estoque baixo foi definido para ${lowStockThreshold} unidades.`
-        });
-    }
-
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Regras de Estoque</CardTitle>
-                <CardDescription>Defina os limites para os status de estoque dos produtos.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="space-y-2">
-                    <Label htmlFor="low-stock">Limite para Estoque Baixo</Label>
-                    <Input 
-                        id="low-stock" 
-                        type="number" 
-                        value={lowStockThreshold}
-                        onChange={e => setLowStockThreshold(parseInt(e.target.value, 10))}
-                        className="w-full md:w-1/3"
-                    />
-                    <p className="text-sm text-muted-foreground">
-                        Produtos com quantidade igual ou inferior a este valor serão marcados como "Estoque Baixo".
-                    </p>
-                </div>
-                 <Button onClick={handleSave}>Salvar Alterações</Button>
-            </CardContent>
-        </Card>
-    )
 }
 
 
@@ -745,7 +706,6 @@ function SettingsPageContent() {
                 <TabsList>
                     <TabsTrigger value="users">Usuários</TabsTrigger>
                     <TabsTrigger value="branches">Filiais</TabsTrigger>
-                    <TabsTrigger value="stock">Estoque</TabsTrigger>
                     <TabsTrigger value="payments">Pagamentos</TabsTrigger>
                 </TabsList>
                 <TabsContent value="users">
@@ -753,9 +713,6 @@ function SettingsPageContent() {
                 </TabsContent>
                 <TabsContent value="branches">
                    <BranchesSettings />
-                </TabsContent>
-                <TabsContent value="stock">
-                    <StockSettings />
                 </TabsContent>
                 <TabsContent value="payments">
                     <PaymentConditions />

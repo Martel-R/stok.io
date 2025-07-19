@@ -1,3 +1,4 @@
+
 export type UserRole = 'admin' | 'manager' | 'cashier';
 
 export interface User {
@@ -55,6 +56,7 @@ export interface Branch {
     cnpj: string;
     location: string;
     userIds: string[];
+    lowStockThreshold: number;
 }
 
 export interface StockEntry {

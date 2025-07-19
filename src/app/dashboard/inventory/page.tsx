@@ -29,15 +29,7 @@ export default function InventoryPage() {
     const [dailyStock, setDailyStock] = useState<DailyStockInfo[]>([]);
     const [loading, setLoading] = useState(true);
     const { currentBranch, loading: authLoading } = useAuth();
-    const [lowStockThreshold, setLowStockThreshold] = useState(50);
     
-    useEffect(() => {
-        const storedThreshold = localStorage.getItem('lowStockThreshold');
-        if (storedThreshold) {
-            setLowStockThreshold(parseInt(storedThreshold, 10));
-        }
-    }, []);
-
     useEffect(() => {
         if (authLoading || !currentBranch) {
             setLoading(true);
@@ -112,6 +104,7 @@ export default function InventoryPage() {
     
 
     const getStockStatus = (stock: number) => {
+        const lowStockThreshold = currentBranch?.lowStockThreshold ?? 10; // Default to 10 if not set
         if (stock === 0) return <Badge variant="destructive">Sem Estoque</Badge>;
         if (stock <= lowStockThreshold) return <Badge variant="secondary" className="bg-yellow-400 text-yellow-900">Estoque Baixo</Badge>;
         return <Badge variant="secondary" className="bg-green-400 text-green-900">Em Estoque</Badge>;

@@ -22,7 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { format, fromUnixTime, startOfDay, getMonth, getYear, subMonths } from 'date-fns';
+import { format, getMonth, getYear, subMonths, startOfDay } from 'date-fns';
 
 
 type CartItem = (Product & { itemType: 'product'; quantity: number }) | (Combo & { itemType: 'combo'; quantity: number });
@@ -223,18 +223,9 @@ function CheckoutModal({
 
 const convertSaleDoc = (doc: any): Sale => {
     const data = doc.data();
-    const date = data.date;
-
-    let saleDate: Date;
-    if (date instanceof Timestamp) {
-        saleDate = date.toDate();
-    } else if (typeof date === 'object' && date.seconds) {
-        saleDate = fromUnixTime(date.seconds);
-    } else {
-        saleDate = new Date(date);
-    }
-    
-    return { ...data, id: doc.id, date: saleDate } as Sale;
+    // Firestore Timestamps have a toDate() method.
+    const date = data.date?.toDate ? data.date.toDate() : new Date();
+    return { ...data, id: doc.id, date } as Sale;
 };
 
 

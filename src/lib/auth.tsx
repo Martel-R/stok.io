@@ -1,9 +1,9 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import type { User } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
 
@@ -15,6 +15,7 @@ interface AuthContextType {
   signup: (email: string, pass: string, name: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   loading: boolean;
+  cancelLogin: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,20 +23,18 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const loginCancelledRef = useRef(false);
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseAuthUser | null) => {
       if (firebaseUser) {
-        // User is signed in. Fetch their profile from Firestore.
         const userDocRef = doc(db, "users", firebaseUser.uid);
         const userDoc = await getDoc(userDocRef);
         if (userDoc.exists()) {
             setUser(userDoc.data() as User);
         } else {
-             // This might happen if the Firestore document wasn't created on signup
-             // We can create a default one or just use basic auth info.
              const newUser: User = {
                 id: firebaseUser.uid,
                 email: firebaseUser.email || '',
@@ -43,12 +42,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 role: 'admin', 
                 avatar: firebaseUser.photoURL || `/avatars/0${Math.ceil(Math.random() * 3)}.png`,
             }
-            // Save this new profile back to Firestore to prevent future issues
             await setDoc(userDocRef, newUser);
             setUser(newUser);
         }
       } else {
-        // User is signed out
         setUser(null);
       }
       setLoading(false);
@@ -67,7 +64,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         displayName: name,
       });
 
-      // Create user profile in Firestore
       const newUser: User = {
         id: firebaseUser.uid,
         name,
@@ -97,19 +93,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, pass: string): Promise<boolean> => {
     setLoading(true);
+    loginCancelledRef.current = false;
     try {
         await signInWithEmailAndPassword(auth, email, pass);
-        // onAuthStateChanged will handle setting the user.
+        if (loginCancelledRef.current) {
+            await signOut(auth); // Sign out if cancelled
+            return false;
+        }
         router.push('/dashboard');
         return true;
     } catch (error) {
         console.error("Firebase Login Error:", error);
+        if (loginCancelledRef.current) {
+            return false;
+        }
         setUser(null);
-        setLoading(false); // Make sure loading stops on error
+        setLoading(false);
         return false;
-    } 
-    // setLoading will be set to false by onAuthStateChanged
+    } finally {
+        if (!loginCancelledRef.current) {
+             // setLoading will be set to false by onAuthStateChanged if successful
+        }
+    }
   };
+
+  const cancelLogin = () => {
+      loginCancelledRef.current = true;
+      setLoading(false);
+  }
 
   const logout = async () => {
     try {
@@ -123,16 +134,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAuthenticated = !!user;
   
-  // This effect handles redirection for protected routes
   useEffect(() => {
+    if (loading) return; // Don't redirect while loading
     const isProtectedRoute = !pathname.startsWith('/login') && !pathname.startsWith('/signup');
-    if (!loading && !isAuthenticated && isProtectedRoute) {
+    if (!isAuthenticated && isProtectedRoute) {
         router.push('/login');
+    }
+     if (isAuthenticated && (pathname.startsWith('/login') || pathname.startsWith('/signup'))) {
+        router.push('/dashboard');
     }
   }, [isAuthenticated, loading, pathname, router]);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, loading, signup }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, loading, signup, cancelLogin }}>
       {children}
     </AuthContext.Provider>
   );

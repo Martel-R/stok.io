@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
-  const { login, loading } = useAuth();
+  const { login, loading, cancelLogin } = useAuth();
   const { toast } = useToast();
   const [email, setEmail] = useState('admin@instock.ai');
   const [password, setPassword] = useState('password');
@@ -22,6 +22,7 @@ export default function LoginPage() {
     e.preventDefault();
     const success = await login(email, password);
     if (!success) {
+      // The toast is only shown if the login wasn't cancelled
       toast({
         title: 'Falha no Login',
         description: 'E-mail ou senha inválidos. Por favor, tente novamente.',
@@ -29,6 +30,10 @@ export default function LoginPage() {
       });
     }
   };
+
+  const handleCancel = () => {
+    cancelLogin();
+  }
 
   const quickLogin = async (userEmail: string) => {
     const success = await login(userEmail, 'password');
@@ -104,10 +109,15 @@ export default function LoginPage() {
                 </Button>
               </div>
             </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Entrar
-            </Button>
+            {loading ? (
+                 <Button type="button" variant="outline" onClick={handleCancel}>
+                    Cancelar
+                 </Button>
+            ) : (
+                <Button type="submit" className="w-full">
+                    Entrar
+                </Button>
+            )}
           </form>
             <div className="mt-4 text-center text-sm">
                 Não tem uma conta?{' '}

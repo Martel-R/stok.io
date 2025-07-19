@@ -360,7 +360,7 @@ export default function POSPage() {
   const { user, currentBranch, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    if (authLoading || !currentBranch || !user) {
+    if (authLoading || !currentBranch || !user?.organizationId) {
         setProducts([]);
         setCombos([]);
         setSalesHistory([]);
@@ -370,7 +370,7 @@ export default function POSPage() {
 
     const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
     const combosQuery = query(collection(db, 'combos'), where('branchId', '==', currentBranch.id));
-    const conditionsQuery = query(collection(db, 'paymentConditions'));
+    const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId));
     const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id), where('cashier', '==', user.name), orderBy('date', 'desc'));
 
     const unsubscribeProducts = onSnapshot(productsQuery, (querySnapshot) => {
@@ -459,7 +459,7 @@ export default function POSPage() {
           toast({ title: 'Carrinho Vazio', description: 'Adicione itens ao carrinho antes de finalizar.', variant: 'destructive'});
           return;
       }
-      if (!currentBranch || !user) {
+      if (!currentBranch || !user || !user.organizationId) {
           toast({ title: 'Erro de sessão', description: 'Usuário ou filial não encontrados. Faça login novamente.', variant: 'destructive'});
           return;
       }
@@ -475,6 +475,7 @@ export default function POSPage() {
                 date: new Date(),
                 cashier: user.name,
                 branchId: currentBranch.id,
+                organizationId: user.organizationId,
                 payments: payments
             };
             const saleRef = doc(collection(db, "sales"));
@@ -661,3 +662,5 @@ export default function POSPage() {
     </>
   );
 }
+
+    

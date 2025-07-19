@@ -23,7 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 
-function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId'>) => void; onDone: () => void }) {
+function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Product>>(
     product || { name: '', category: '', price: 0, stock: 0, imageUrl: '' }
   );
@@ -52,7 +52,7 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
     onSave({
       ...formData,
       imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png'
-    } as Omit<Product, 'id' | 'branchId'>);
+    } as Omit<Product, 'id' | 'branchId' | 'organizationId'>);
     onDone();
   };
 
@@ -152,6 +152,7 @@ function AddStockForm({ products, onDone }: { products: Product[]; onDone: () =>
                     userId: user.id,
                     userName: user.name,
                     branchId: currentBranch.id,
+                    organizationId: user.organizationId,
                 }
                 transaction.set(doc(stockEntryRef), newStockEntry);
             });
@@ -243,10 +244,10 @@ export default function ProductsPage() {
   const [isStockFormOpen, setIsStockFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
   const { toast } = useToast();
-  const { currentBranch, loading: authLoading } = useAuth();
+  const { user, currentBranch, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    if (authLoading || !currentBranch) {
+    if (authLoading || !currentBranch || !user?.organizationId) {
         setLoading(true);
         return;
     }
@@ -260,8 +261,12 @@ export default function ProductsPage() {
         console.log("Nenhum produto encontrado para esta filial. Semeando com dados de exemplo...");
         const batch = writeBatch(db);
         MOCK_PRODUCTS.forEach((product) => {
-          const docRef = doc(productsRef);
-          batch.set(docRef, {...product, branchId: currentBranch.id });
+          const docRef = doc(collection(db, 'products'));
+          batch.set(docRef, {
+              ...product, 
+              branchId: currentBranch.id,
+              organizationId: user.organizationId
+          });
         });
         await batch.commit();
         toast({ title: 'Bem-vindo à sua nova filial!', description: 'Adicionamos alguns produtos de exemplo para você começar.' });
@@ -281,10 +286,10 @@ export default function ProductsPage() {
     });
 
     return () => unsubscribe();
-  }, [currentBranch, authLoading, toast]);
+  }, [currentBranch, authLoading, toast, user]);
 
-  const handleSave = async (productData: Omit<Product, 'id' | 'branchId'>) => {
-    if (!currentBranch) {
+  const handleSave = async (productData: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => {
+    if (!currentBranch || !user?.organizationId) {
         toast({ title: 'Nenhuma filial selecionada', description: 'Selecione uma filial para salvar o produto.', variant: 'destructive' });
         return;
     }
@@ -294,7 +299,11 @@ export default function ProductsPage() {
         await updateDoc(productRef, productData);
         toast({ title: 'Produto atualizado com sucesso!' });
       } else {
-        await addDoc(collection(db, "products"), { ...productData, branchId: currentBranch.id });
+        await addDoc(collection(db, "products"), { 
+            ...productData, 
+            branchId: currentBranch.id, 
+            organizationId: user.organizationId
+        });
         toast({ title: 'Produto adicionado com sucesso!' });
       }
     } catch (error) {
@@ -429,3 +438,5 @@ export default function ProductsPage() {
     </div>
   );
 }
+
+    

@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Lock } from 'lucide-react';
-import { collection, getDocs, query, where, Timestamp, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Sale, Product, Branch } from '@/lib/types';
 
@@ -200,13 +200,24 @@ export default function ReportsPage() {
     const [branches, setBranches] = useState<Branch[]>([]);
 
     useEffect(() => {
+        if (!user?.organizationId || user.role !== 'admin') {
+            setLoading(false);
+            return;
+        }
+
         const fetchData = async () => {
             setLoading(true);
             try {
-                // Fetch all data once for the reports
-                const salesSnapshot = await getDocs(collection(db, 'sales'));
-                const productsSnapshot = await getDocs(collection(db, 'products'));
-                const branchesSnapshot = await getDocs(collection(db, 'branches'));
+                // Fetch all data scoped to the organization
+                const salesQuery = query(collection(db, 'sales'), where('organizationId', '==', user.organizationId));
+                const productsQuery = query(collection(db, 'products'), where('organizationId', '==', user.organizationId));
+                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', user.organizationId));
+
+                const [salesSnapshot, productsSnapshot, branchesSnapshot] = await Promise.all([
+                    getDocs(salesQuery),
+                    getDocs(productsQuery),
+                    getDocs(branchesQuery),
+                ]);
                 
                 const salesData = salesSnapshot.docs.map(doc => {
                     const data = doc.data();
@@ -225,9 +236,7 @@ export default function ReportsPage() {
             }
         };
 
-        if (user?.role === 'admin') {
-            fetchData();
-        }
+        fetchData();
     }, [user]);
 
     if (!user || user.role !== 'admin') {
@@ -276,3 +285,5 @@ export default function ReportsPage() {
         </div>
     );
 }
+
+    

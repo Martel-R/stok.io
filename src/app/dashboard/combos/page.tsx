@@ -44,7 +44,7 @@ const calculatePrices = (products: ComboProduct[], rules: ComboDiscountRule[]): 
     return { originalPrice, finalPrice: Math.max(0, finalPrice) };
 };
 
-function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }: { combo?: Combo; branchProducts: Product[]; paymentConditions: PaymentCondition[]; onSave: (combo: Omit<Combo, 'id' | 'branchId'>) => void; onDone: () => void }) {
+function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }: { combo?: Combo; branchProducts: Product[]; paymentConditions: PaymentCondition[]; onSave: (combo: Omit<Combo, 'id' | 'branchId' | 'organizationId'>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Combo>>(
     combo || { name: '', products: [], discountRules: [], imageUrl: '' }
   );
@@ -127,7 +127,7 @@ function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }:
       originalPrice: prices.originalPrice,
       finalPrice: prices.finalPrice,
       imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png'
-    } as Omit<Combo, 'id' | 'branchId'>);
+    } as Omit<Combo, 'id' | 'branchId' | 'organizationId'>);
     onDone();
   };
 
@@ -290,10 +290,10 @@ export default function CombosPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingCombo, setEditingCombo] = useState<Combo | undefined>(undefined);
   const { toast } = useToast();
-  const { currentBranch, loading: authLoading } = useAuth();
+  const { user, currentBranch, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    if (authLoading || !currentBranch) {
+    if (authLoading || !currentBranch || !user?.organizationId) {
         setLoading(true);
         return;
     }
@@ -304,7 +304,7 @@ export default function CombosPage() {
     const productsRef = collection(db, 'products');
     const qProducts = query(productsRef, where("branchId", "==", currentBranch.id));
     
-    const conditionsQuery = query(collection(db, 'paymentConditions'));
+    const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId));
 
     const unsubscribeCombos = onSnapshot(qCombos, (snapshot) => {
       const combosData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Combo[];
@@ -328,11 +328,11 @@ export default function CombosPage() {
         unsubscribeProducts();
         unsubscribeConditions();
     };
-  }, [currentBranch, authLoading]);
+  }, [currentBranch, authLoading, user]);
 
-  const handleSave = async (comboData: Omit<Combo, 'id' | 'branchId'>) => {
-    if (!currentBranch) {
-        toast({ title: 'Nenhuma filial selecionada', description: 'Selecione uma filial para salvar o kit.', variant: 'destructive' });
+  const handleSave = async (comboData: Omit<Combo, 'id' | 'branchId' | 'organizationId'>) => {
+    if (!currentBranch || !user?.organizationId) {
+        toast({ title: 'Nenhuma filial ou organização selecionada', description: 'Selecione uma filial para salvar o kit.', variant: 'destructive' });
         return;
     }
     try {
@@ -341,7 +341,11 @@ export default function CombosPage() {
         await updateDoc(comboRef, comboData);
         toast({ title: 'Kit atualizado com sucesso!' });
       } else {
-        await addDoc(collection(db, "combos"), { ...comboData, branchId: currentBranch.id });
+        await addDoc(collection(db, "combos"), { 
+            ...comboData, 
+            branchId: currentBranch.id,
+            organizationId: user.organizationId,
+        });
         toast({ title: 'Kit adicionado com sucesso!' });
       }
     } catch (error) {
@@ -477,3 +481,5 @@ export default function CombosPage() {
     </div>
   );
 }
+
+    

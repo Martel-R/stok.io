@@ -10,8 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs } from 'firebase/firestore';
-import type { User, UserRole, Branch } from '@/lib/types';
+import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, query, where } from 'firebase/firestore';
+import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -113,16 +113,21 @@ function UsersTable() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
     const { toast } = useToast();
-    const { createUser } = useAuth();
+    const { createUser, user: adminUser } = useAuth();
 
     useEffect(() => {
-        const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
+        if (!adminUser?.organizationId) {
+            setLoading(false);
+            return;
+        }
+        const q = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
             const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as User[];
             setUsers(usersData);
             setLoading(false);
         });
         return () => unsubscribe();
-    }, []);
+    }, [adminUser]);
 
     const getRoleBadge = (role: string) => {
         switch (role) {
@@ -158,12 +163,18 @@ function UsersTable() {
                 toast({ title: 'Erro ao atualizar usuário', variant: 'destructive' });
             }
         } else {
-            if (!userToSave.email || !userToSave.password || !userToSave.name) {
+            if (!userToSave.email || !userToSave.password || !userToSave.name || !adminUser?.organizationId) {
                 toast({title: "Campos obrigatórios faltando", variant: "destructive"});
                 return;
             }
             try {
-                 const { success, error } = await createUser(userToSave.email, userToSave.password, userToSave.name, userToSave.role);
+                 const { success, error } = await createUser(
+                     userToSave.email, 
+                     userToSave.password, 
+                     userToSave.name, 
+                     userToSave.role || 'cashier', 
+                     adminUser.organizationId
+                 );
                  if (success) {
                      toast({title: "Usuário criado com sucesso!"});
                  } else {
@@ -185,7 +196,7 @@ function UsersTable() {
                 <div className="flex justify-between items-center">
                     <div>
                         <CardTitle>Usuários</CardTitle>
-                        <CardDescription>Gerencie as permissões dos usuários.</CardDescription>
+                        <CardDescription>Gerencie as permissões dos usuários da sua organização.</CardDescription>
                     </div>
                      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                         <DialogTrigger asChild>
@@ -267,7 +278,7 @@ function UsersTable() {
 }
 
 function BranchesSettings() {
-    const { branches, setCurrentBranch } = useAuth();
+    const { user: currentUser, branches, setCurrentBranch } = useAuth();
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -275,13 +286,14 @@ function BranchesSettings() {
     const { toast } = useToast();
 
     useEffect(() => {
-        const fetchUsers = async () => {
-            const usersSnapshot = await getDocs(collection(db, 'users'));
-            setAllUsers(usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as User));
+        if (!currentUser?.organizationId) return;
+        const q = query(collection(db, 'users'), where('organizationId', '==', currentUser.organizationId));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setAllUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as User));
             setLoading(false);
-        };
-        fetchUsers();
-    }, []);
+        });
+        return () => unsubscribe();
+    }, [currentUser]);
 
     const openEditDialog = (branch: Branch) => {
         setEditingBranch(branch);
@@ -293,17 +305,22 @@ function BranchesSettings() {
         setIsFormOpen(true);
     }
 
-    const handleSave = async (branchData: Omit<Branch, 'id'>) => {
+    const handleSave = async (branchData: Omit<Branch, 'id' | 'organizationId'>) => {
+        if (!currentUser?.organizationId) {
+             toast({ title: 'Erro de permissão', description: 'Organização do usuário não encontrada.', variant: 'destructive' });
+             return;
+        }
         try {
             if (editingBranch?.id) {
                 await updateDoc(doc(db, "branches", editingBranch.id), branchData);
                 toast({ title: 'Filial atualizada com sucesso!' });
             } else {
-                const docRef = await addDoc(collection(db, "branches"), branchData);
+                const docData = { ...branchData, organizationId: currentUser.organizationId };
+                const docRef = await addDoc(collection(db, "branches"), docData);
                 toast({ title: 'Filial adicionada com sucesso!' });
                  // If this is the first branch, set it as active
                 if(branches.length === 0) {
-                    setCurrentBranch({id: docRef.id, ...branchData});
+                    setCurrentBranch({id: docRef.id, ...docData});
                 }
             }
         } catch (error) {
@@ -415,7 +432,7 @@ function BranchesSettings() {
     );
 }
 
-function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users: User[]; onSave: (data: Omit<Branch, 'id'>) => void; onDone: () => void }) {
+function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users: User[]; onSave: (data: Omit<Branch, 'id' | 'organizationId'>) => void; onDone: () => void }) {
     const { user: currentUser } = useAuth();
     const [formData, setFormData] = useState(
         branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], lowStockThreshold: 10 }
@@ -438,7 +455,7 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData as Omit<Branch, 'id'>);
+        onSave(formData as Omit<Branch, 'id' | 'organizationId'>);
         onDone();
     };
 
@@ -518,19 +535,11 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
 
 
 function PaymentConditions() {
-    type PaymentConditionType = 'credit' | 'debit' | 'cash' | 'pix';
     type FeeType = 'percentage' | 'fixed';
-
-    interface PaymentCondition {
-        id: string;
-        name: string;
-        type: PaymentConditionType;
-        fee: number;
-        feeType: FeeType;
-    }
     
     const [conditions, setConditions] = useState<PaymentCondition[]>([]);
     const [loading, setLoading] = useState(true);
+    const { user } = useAuth();
     const [newCondition, setNewCondition] = useState({
         name: '',
         type: 'credit' as PaymentConditionType,
@@ -540,13 +549,15 @@ function PaymentConditions() {
     const { toast } = useToast();
 
     useEffect(() => {
-        const unsubscribe = onSnapshot(collection(db, 'paymentConditions'), (snapshot) => {
+        if (!user?.organizationId) return;
+        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition));
             setConditions(data);
             setLoading(false);
         });
         return () => unsubscribe();
-    }, []);
+    }, [user]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value, type } = e.target;
@@ -562,12 +573,15 @@ function PaymentConditions() {
 
     const handleAdd = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newCondition.name.trim()) {
-            toast({ title: 'O nome é obrigatório.', variant: 'destructive' });
+        if (!newCondition.name.trim() || !user?.organizationId) {
+            toast({ title: 'O nome é obrigatório ou organização não encontrada.', variant: 'destructive' });
             return;
         }
         try {
-            await addDoc(collection(db, 'paymentConditions'), newCondition);
+            await addDoc(collection(db, 'paymentConditions'), {
+                ...newCondition,
+                organizationId: user.organizationId
+            });
             setNewCondition({ name: '', type: 'credit', fee: 0, feeType: 'percentage' });
             toast({ title: 'Condição de pagamento adicionada!' });
         } catch (error) {
@@ -729,3 +743,5 @@ export default function SettingsPage() {
         </React.Suspense>
     )
 }
+
+    

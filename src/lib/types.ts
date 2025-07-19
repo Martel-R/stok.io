@@ -8,6 +8,7 @@ export interface User {
   role: UserRole;
   avatar: string;
   password?: string;
+  organizationId: string;
 }
 
 export interface Product {
@@ -18,6 +19,7 @@ export interface Product {
   stock: number;
   imageUrl: string;
   branchId: string;
+  organizationId: string;
 }
 
 export type PaymentConditionType = 'credit' | 'debit' | 'cash' | 'pix';
@@ -28,6 +30,7 @@ export interface PaymentCondition {
     type: PaymentConditionType;
     fee: number;
     feeType: 'percentage' | 'fixed';
+    organizationId: string;
 }
 
 export interface PaymentDetail {
@@ -47,6 +50,7 @@ export interface Sale {
   date: Date;
   cashier: string;
   branchId: string;
+  organizationId: string;
   payments: PaymentDetail[];
 }
 
@@ -57,6 +61,7 @@ export interface Branch {
     location: string;
     userIds: string[];
     lowStockThreshold: number;
+    organizationId: string;
 }
 
 export interface StockEntry {
@@ -70,6 +75,7 @@ export interface StockEntry {
     userId: string;
     userName: string;
     branchId: string;
+    organizationId: string;
 }
 
 export interface ComboProduct {
@@ -97,4 +103,13 @@ export interface Combo {
   discountRules: ComboDiscountRule[];
   imageUrl: string;
   branchId: string;
+  organizationId: string;
 }
+
+export interface Organization {
+    id: string;
+    name: string;
+    ownerId: string;
+}
+
+    

@@ -28,7 +28,7 @@ interface DailyStockInfo {
 export default function InventoryPage() {
     const [dailyStock, setDailyStock] = useState<DailyStockInfo[]>([]);
     const [loading, setLoading] = useState(true);
-    const { currentBranch, loading: authLoading } = useAuth();
+    const { user, currentBranch, loading: authLoading } = useAuth();
     
     useEffect(() => {
         if (authLoading || !currentBranch) {
@@ -184,3 +184,5 @@ export default function InventoryPage() {
         </div>
     );
 }
+
+    

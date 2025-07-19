@@ -1,8 +1,9 @@
+
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import type { User } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
@@ -12,6 +13,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   user: User | null;
   login: (email: string, pass: string) => Promise<boolean>;
+  loginWithGoogle: () => Promise<boolean>;
   signup: (email: string, pass: string, name: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   loading: boolean;
@@ -38,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
              const newUser: User = {
                 id: firebaseUser.uid,
                 email: firebaseUser.email || '',
-                name: firebaseUser.displayName || 'Usuário',
+                name: firebaseUser.displayName || 'Usuário Google',
                 role: 'admin', 
                 avatar: firebaseUser.photoURL || `/avatars/0${Math.ceil(Math.random() * 3)}.png`,
             }
@@ -117,6 +119,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const loginWithGoogle = async (): Promise<boolean> => {
+    setLoading(true);
+    loginCancelledRef.current = false;
+    try {
+        const provider = new GoogleAuthProvider();
+        await signInWithPopup(auth, provider);
+        if (loginCancelledRef.current) {
+            await signOut(auth);
+            return false;
+        }
+        router.push('/dashboard');
+        return true;
+    } catch (error) {
+        console.error("Google Login Error:", error);
+        if (loginCancelledRef.current) {
+            return false;
+        }
+        setUser(null);
+        setLoading(false);
+        return false;
+    }
+  }
+
   const cancelLogin = () => {
       loginCancelledRef.current = true;
       setLoading(false);
@@ -146,7 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [isAuthenticated, loading, pathname, router]);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, loading, signup, cancelLogin }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, cancelLogin }}>
       {children}
     </AuthContext.Provider>
   );

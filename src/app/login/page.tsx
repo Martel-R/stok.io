@@ -11,9 +11,11 @@ import { Label } from '@/components/ui/label';
 import { Icons } from '@/components/icons';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
+
 
 export default function LoginPage() {
-  const { login, loading, cancelLogin } = useAuth();
+  const { login, loginWithGoogle, loading, cancelLogin } = useAuth();
   const { toast } = useToast();
   const [email, setEmail] = useState('admin@instock.ai');
   const [password, setPassword] = useState('password');
@@ -22,8 +24,7 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const success = await login(email, password);
-    if (!success && !loading) {
-      // The toast is only shown if the login wasn't cancelled
+    if (!success && !loginCancelledRef.current) {
       toast({
         title: 'Falha no Login',
         description: 'E-mail ou senha inválidos. Por favor, tente novamente.',
@@ -31,6 +32,17 @@ export default function LoginPage() {
       });
     }
   };
+
+  const handleGoogleLogin = async () => {
+    const success = await loginWithGoogle();
+    if (!success) {
+      toast({
+        title: 'Falha no Login com Google',
+        description: 'Não foi possível fazer login com o Google. Por favor, tente novamente.',
+        variant: 'destructive',
+      });
+    }
+  }
 
   const handleCancel = () => {
     cancelLogin();
@@ -69,7 +81,7 @@ export default function LoginPage() {
           <div className="grid gap-2 text-center">
             <h1 className="text-3xl font-bold">Login</h1>
             <p className="text-balance text-muted-foreground">
-              Digite seu e-mail abaixo para entrar na sua conta
+              Acesse sua conta para gerenciar seu estoque
             </p>
           </div>
           <form onSubmit={handleLogin} className="grid gap-4">
@@ -120,19 +132,26 @@ export default function LoginPage() {
                 </Button>
             )}
           </form>
-            <div className="mt-4 text-center text-sm">
-                Não tem uma conta?{' '}
-                <Link href="/signup" className="underline">
-                    Cadastre-se
-                </Link>
+          
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
             </div>
+            <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">Ou continue com</span>
+            </div>
+          </div>
+
+          <Button variant="outline" onClick={handleGoogleLogin} disabled={loading}>
+            <Icons.google className="mr-2 h-4 w-4" />
+            Google
+          </Button>
+
           <div className="mt-4 text-center text-sm">
-            <p className="text-muted-foreground mb-2">Ou login rápido como:</p>
-            <div className="grid grid-cols-3 gap-2">
-                <Button variant="outline" onClick={() => quickLogin('admin@instock.ai')} disabled={loading}>Admin</Button>
-                <Button variant="outline" onClick={() => quickLogin('manager@instock.ai')} disabled={loading}>Gerente</Button>
-                <Button variant="outline" onClick={() => quickLogin('cashier@instock.ai')} disabled={loading}>Caixa</Button>
-            </div>
+              Não tem uma conta?{' '}
+              <Link href="/signup" className="underline">
+                  Cadastre-se
+              </Link>
           </div>
         </div>
       </div>

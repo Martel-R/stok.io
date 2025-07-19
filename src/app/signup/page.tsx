@@ -4,69 +4,62 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Icons } from '@/components/icons';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
-export default function LoginPage() {
-  const { login, loading } = useAuth();
+export default function SignupPage() {
+  const { signup, loading } = useAuth();
   const { toast } = useToast();
-  const [email, setEmail] = useState('admin@instock.ai');
-  const [password, setPassword] = useState('password');
+  const router = useRouter();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = await login(email, password);
-    if (!success) {
+    const { success, error } = await signup(email, password, name);
+    if (success) {
       toast({
-        title: 'Falha no Login',
-        description: 'E-mail ou senha inválidos. Por favor, tente novamente.',
+        title: 'Cadastro realizado com sucesso!',
+        description: 'Você será redirecionado para o painel.',
+      });
+      router.push('/dashboard');
+    } else {
+      toast({
+        title: 'Falha no Cadastro',
+        description: error || 'Ocorreu um erro. Por favor, tente novamente.',
         variant: 'destructive',
       });
     }
   };
 
-  const quickLogin = async (userEmail: string) => {
-    const success = await login(userEmail, 'password');
-     if (!success) {
-      toast({
-        title: 'Falha no Login',
-        description: 'Não foi possível fazer login com o perfil selecionado.',
-        variant: 'destructive',
-      });
-    }
-  }
-
   return (
     <div className="w-full h-screen lg:grid lg:grid-cols-2">
-      <div className="relative hidden h-full flex-col bg-muted p-10 text-white dark:border-r lg:flex">
-        <div className="absolute inset-0 bg-primary" />
-        <div className="relative z-20 flex items-center text-lg font-medium">
-          <Icons.logo className="mr-2 h-8 w-8" />
-          InStockAI
-        </div>
-        <div className="relative z-20 mt-auto">
-          <blockquote className="space-y-2">
-            <p className="text-lg">
-              &ldquo;Este sistema de estoque transformou nosso negócio, nos dando insights que nunca pensamos ser possíveis.&rdquo;
-            </p>
-            <footer className="text-sm">Sofia Davis, CEO</footer>
-          </blockquote>
-        </div>
-      </div>
       <div className="flex items-center justify-center py-12">
         <div className="mx-auto grid w-[350px] gap-6">
           <div className="grid gap-2 text-center">
-            <h1 className="text-3xl font-bold">Login</h1>
+            <h1 className="text-3xl font-bold">Criar Conta</h1>
             <p className="text-balance text-muted-foreground">
-              Digite seu e-mail abaixo para entrar na sua conta
+              Digite seus dados para criar sua conta
             </p>
           </div>
-          <form onSubmit={handleLogin} className="grid gap-4">
+          <form onSubmit={handleSignup} className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="name">Nome</Label>
+              <Input
+                id="name"
+                placeholder="Seu nome completo"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={loading}
+              />
+            </div>
             <div className="grid gap-2">
               <Label htmlFor="email">E-mail</Label>
               <Input
@@ -106,23 +99,30 @@ export default function LoginPage() {
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Entrar
+              Criar Conta
             </Button>
           </form>
-            <div className="mt-4 text-center text-sm">
-                Não tem uma conta?{' '}
-                <Link href="/signup" className="underline">
-                    Cadastre-se
-                </Link>
-            </div>
           <div className="mt-4 text-center text-sm">
-            <p className="text-muted-foreground mb-2">Ou login rápido como:</p>
-            <div className="grid grid-cols-3 gap-2">
-                <Button variant="outline" onClick={() => quickLogin('admin@instock.ai')} disabled={loading}>Admin</Button>
-                <Button variant="outline" onClick={() => quickLogin('manager@instock.ai')} disabled={loading}>Gerente</Button>
-                <Button variant="outline" onClick={() => quickLogin('cashier@instock.ai')} disabled={loading}>Caixa</Button>
-            </div>
+            Já tem uma conta?{' '}
+            <Link href="/login" className="underline">
+              Fazer Login
+            </Link>
           </div>
+        </div>
+      </div>
+      <div className="relative hidden h-full flex-col bg-muted p-10 text-white dark:border-r lg:flex">
+        <div className="absolute inset-0 bg-primary" />
+        <div className="relative z-20 flex items-center text-lg font-medium">
+          <Icons.logo className="mr-2 h-8 w-8" />
+          InStockAI
+        </div>
+        <div className="relative z-20 mt-auto">
+          <blockquote className="space-y-2">
+            <p className="text-lg">
+              &ldquo;Este sistema de estoque transformou nosso negócio, nos dando insights que nunca pensamos ser possíveis.&rdquo;
+            </p>
+            <footer className="text-sm">Sofia Davis, CEO</footer>
+          </blockquote>
         </div>
       </div>
     </div>

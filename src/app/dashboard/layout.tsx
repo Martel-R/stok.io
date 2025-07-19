@@ -7,7 +7,7 @@ import { Icons } from '@/components/icons';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Home, Package, BarChart, ShoppingCart, Bot, Wrench, LogOut, Loader2, Users } from 'lucide-react';
+import { Home, Package, BarChart, ShoppingCart, Bot, Wrench, LogOut, Loader2, Users, Settings } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -22,6 +22,7 @@ function DashboardNav() {
         { href: '/dashboard/pos', label: 'PDV', icon: ShoppingCart, roles: ['admin', 'manager', 'cashier'] },
         { href: '/dashboard/assistant', label: 'Assistente IA', icon: Bot, roles: ['admin', 'manager'] },
         { href: '/dashboard/data-tools', label: 'Ferramentas de Dados', icon: Wrench, roles: ['admin'] },
+        { href: '/dashboard/settings', label: 'Configurações', icon: Settings, roles: ['admin'] },
     ];
 
     return (

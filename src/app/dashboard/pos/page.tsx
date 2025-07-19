@@ -1,7 +1,7 @@
 
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, query, where, writeBatch, doc, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Product, Sale, PaymentCondition, PaymentDetail, Combo } from '@/lib/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package } from 'lucide-react';
+import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History } from 'lucide-react';
 import Image from 'next/image';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -20,6 +20,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { format } from 'date-fns';
 
 
 type CartItem = (Product & { itemType: 'product'; quantity: number }) | (Combo & { itemType: 'combo'; quantity: number });
@@ -197,6 +199,7 @@ export default function POSPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [combos, setCombos] = useState<Combo[]>([]);
   const [paymentConditions, setPaymentConditions] = useState<PaymentCondition[]>([]);
+  const [salesHistory, setSalesHistory] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
@@ -204,9 +207,10 @@ export default function POSPage() {
   const { user, currentBranch, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    if (authLoading || !currentBranch) {
+    if (authLoading || !currentBranch || !user) {
         setProducts([]);
         setCombos([]);
+        setSalesHistory([]);
         setLoading(true);
         return;
     }
@@ -214,6 +218,7 @@ export default function POSPage() {
     const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
     const combosQuery = query(collection(db, 'combos'), where('branchId', '==', currentBranch.id));
     const conditionsQuery = query(collection(db, 'paymentConditions'));
+    const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id), where('cashier', '==', user.name), orderBy('date', 'desc'));
 
     const unsubscribeProducts = onSnapshot(productsQuery, (querySnapshot) => {
       const productsData: Product[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
@@ -231,12 +236,24 @@ export default function POSPage() {
         setPaymentConditions(conditionsData);
     });
 
+    const unsubscribeSalesHistory = onSnapshot(salesQuery, (snapshot) => {
+        const salesData = snapshot.docs.map(doc => {
+            const data = doc.data();
+            // Handle Firebase Timestamp
+            const date = data.date.toDate ? data.date.toDate() : new Date(data.date);
+            return { ...data, id: doc.id, date } as Sale;
+        });
+        setSalesHistory(salesData);
+    });
+
+
     return () => {
         unsubscribeProducts();
         unsubscribeCombos();
         unsubscribeConditions();
+        unsubscribeSalesHistory();
     }
-  }, [currentBranch, authLoading]);
+  }, [currentBranch, authLoading, user]);
 
   const addToCart = (item: Product | Combo, type: 'product' | 'combo') => {
     if (type === 'product') {
@@ -364,9 +381,10 @@ export default function POSPage() {
         <Card className="h-full flex flex-col">
           <CardHeader>
              <Tabs defaultValue="products">
-              <TabsList>
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="products"><Package className="mr-2 h-4 w-4"/> Produtos</TabsTrigger>
                 <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Combos</TabsTrigger>
+                <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/> Histórico</TabsTrigger>
               </TabsList>
               <TabsContent value="products" className="mt-4">
                  <ScrollArea className="h-[calc(100vh-18rem)]">
@@ -425,6 +443,36 @@ export default function POSPage() {
                         ))}
                         </div>
                     )}
+                 </ScrollArea>
+              </TabsContent>
+               <TabsContent value="history" className="mt-4">
+                 <ScrollArea className="h-[calc(100vh-18rem)]">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Data</TableHead>
+                                <TableHead>Produto</TableHead>
+                                <TableHead className="text-right">Qtd.</TableHead>
+                                <TableHead className="text-right">Total</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {salesHistory.length > 0 ? (
+                                salesHistory.map(sale => (
+                                    <TableRow key={sale.id}>
+                                        <TableCell>{format(sale.date, 'dd/MM/yy HH:mm')}</TableCell>
+                                        <TableCell className="font-medium">{sale.productName}</TableCell>
+                                        <TableCell className="text-right">{sale.quantity}</TableCell>
+                                        <TableCell className="text-right">R${sale.total.toFixed(2)}</TableCell>
+                                    </TableRow>
+                                ))
+                            ) : (
+                                <TableRow>
+                                    <TableCell colSpan={4} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
                  </ScrollArea>
               </TabsContent>
             </Tabs>

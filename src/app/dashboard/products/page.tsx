@@ -15,7 +15,6 @@ import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MOCK_PRODUCTS } from '@/lib/mock-data';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
@@ -255,26 +254,6 @@ export default function ProductsPage() {
     const productsRef = collection(db, 'products');
     const q = query(productsRef, where("branchId", "==", currentBranch.id));
 
-    const seedDatabase = async () => {
-      const querySnapshot = await getDocs(q);
-      if (querySnapshot.empty) {
-        console.log("Nenhum produto encontrado para esta filial. Semeando com dados de exemplo...");
-        const batch = writeBatch(db);
-        MOCK_PRODUCTS.forEach((product) => {
-          const docRef = doc(collection(db, 'products'));
-          batch.set(docRef, {
-              ...product, 
-              branchId: currentBranch.id,
-              organizationId: user.organizationId
-          });
-        });
-        await batch.commit();
-        toast({ title: 'Bem-vindo à sua nova filial!', description: 'Adicionamos alguns produtos de exemplo para você começar.' });
-      }
-    };
-
-    seedDatabase();
-
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
       setProducts(productsData.sort((a,b) => a.name.localeCompare(b.name)));
@@ -438,5 +417,7 @@ export default function ProductsPage() {
     </div>
   );
 }
+
+    
 
     

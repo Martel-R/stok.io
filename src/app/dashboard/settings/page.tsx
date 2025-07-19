@@ -10,8 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, query, where } from 'firebase/firestore';
-import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType } from '@/lib/types';
+import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
+import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType, Product } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -28,6 +28,7 @@ import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSearchParams } from 'next/navigation';
 import { Separator } from '@/components/ui/separator';
+import { MOCK_PRODUCTS } from '@/lib/mock-data';
 
 
 function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partial<User>) => void; onDone: () => void }) {
@@ -316,12 +317,28 @@ function BranchesSettings() {
                 await updateDoc(doc(db, "branches", editingBranch.id), branchData);
                 toast({ title: 'Filial atualizada com sucesso!' });
             } else {
-                const docData = { ...branchData, organizationId: currentUser.organizationId };
-                const docRef = await addDoc(collection(db, "branches"), docData);
-                toast({ title: 'Filial adicionada com sucesso!' });
-                 // If this is the first branch, set it as active
+                const batch = writeBatch(db);
+                const branchDocRef = doc(collection(db, "branches"));
+                const newBranchData = { ...branchData, organizationId: currentUser.organizationId };
+                batch.set(branchDocRef, newBranchData);
+
+                // Seed products for the new branch
+                MOCK_PRODUCTS.forEach(product => {
+                    const productDocRef = doc(collection(db, 'products'));
+                    const productWithBranchInfo: Omit<Product, 'id'> = {
+                        ...product,
+                        branchId: branchDocRef.id,
+                        organizationId: currentUser.organizationId,
+                    };
+                    batch.set(productDocRef, productWithBranchInfo);
+                });
+
+                await batch.commit();
+
+                toast({ title: 'Filial adicionada com sucesso!', description: 'Adicionamos alguns produtos de exemplo para você começar.' });
+                // If this is the first branch, set it as active
                 if(branches.length === 0) {
-                    setCurrentBranch({id: docRef.id, ...docData});
+                    setCurrentBranch({id: branchDocRef.id, ...newBranchData});
                 }
             }
         } catch (error) {
@@ -816,3 +833,5 @@ export default function SettingsPage() {
         </React.Suspense>
     )
 }
+
+    

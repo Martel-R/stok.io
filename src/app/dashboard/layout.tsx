@@ -154,6 +154,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                         <Icons.logo className="h-8 w-8 text-primary" />
                         <span className="text-xl font-semibold">InStockAI</span>
                     </div>
+                     <SidebarTrigger className="ml-auto" />
                 </SidebarHeader>
                 <SidebarContent className="p-2">
                     <DashboardNav />
@@ -168,7 +169,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
             )}>
                 <header className="sticky top-0 flex h-16 items-center justify-between gap-4 border-b bg-background px-4 md:px-6">
                     <div className="flex items-center gap-4">
-                        <SidebarTrigger />
+                        {!isOpen && <SidebarTrigger />}
                         <BranchSwitcher />
                     </div>
                     <div className="flex w-full items-center justify-end gap-4">

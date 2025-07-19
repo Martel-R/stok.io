@@ -48,10 +48,13 @@ export const Sidebar = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTM
           className={cn(
             'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-background transition-transform duration-300 ease-in-out',
             isOpen ? 'translate-x-0' : '-translate-x-full',
+            'md:relative md:translate-x-0', // Make it static on md screens
+            !isOpen && 'md:w-0 md:p-0 md:border-none', // Hide it on md screens when closed
             className
           )}
           {...props}
         />
+        {/* Mobile overlay */}
         {isOpen && (
           <div
             className="fixed inset-0 z-40 bg-black/50 md:hidden"
@@ -66,15 +69,18 @@ Sidebar.displayName = 'Sidebar';
 
 export const SidebarHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('flex h-16 items-center border-b px-4', className)} {...props} />
+    <div ref={ref} className={cn('flex h-16 items-center border-b px-4 justify-between', className)} {...props} />
   )
 );
 SidebarHeader.displayName = 'SidebarHeader';
 
 export const SidebarContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('flex flex-1 flex-col overflow-y-auto', className)} {...props} />
-  )
+  ({ className, ...props }, ref) => {
+      const { isOpen } = useSidebar();
+      return (
+        <div ref={ref} className={cn('flex flex-1 flex-col overflow-y-auto', !isOpen && 'md:hidden', className)} {...props} />
+      )
+  }
 );
 SidebarContent.displayName = 'SidebarContent';
 
@@ -111,9 +117,12 @@ SidebarMenuButton.displayName = 'SidebarMenuButton';
 
 
 export const SidebarFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('mt-auto border-t p-4', className)} {...props} />
-  )
+  ({ className, ...props }, ref) => {
+     const { isOpen } = useSidebar();
+     return (
+        <div ref={ref} className={cn('mt-auto border-t p-4', !isOpen && 'md:hidden', className)} {...props} />
+     )
+  }
 );
 SidebarFooter.displayName = 'SidebarFooter';
 
@@ -124,10 +133,11 @@ export function SidebarTrigger({ className, ...props }: ButtonProps) {
       variant="ghost"
       size="icon"
       onClick={() => setIsOpen(!isOpen)}
-      className={cn(className)}
+      className={cn("shrink-0", className)}
       {...props}
     >
-      {isOpen ? <X /> : <Menu />}
+      {isOpen ? <X className="md:hidden" /> : <Menu />}
+      <X className={cn("hidden", isOpen && "md:block")} />
       <span className="sr-only">Alternar Menu</span>
     </Button>
   );

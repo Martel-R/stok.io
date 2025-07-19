@@ -22,7 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { format, getMonth, getYear, subMonths, startOfDay } from 'date-fns';
+import { format, getMonth, getYear, subMonths, startOfDay, fromUnixTime } from 'date-fns';
 
 
 type CartItem = (Product & { itemType: 'product'; quantity: number }) | (Combo & { itemType: 'combo'; quantity: number });
@@ -223,8 +223,14 @@ function CheckoutModal({
 
 const convertSaleDoc = (doc: any): Sale => {
     const data = doc.data();
-    // Firestore Timestamps have a toDate() method.
-    const date = data.date?.toDate ? data.date.toDate() : new Date();
+    let date;
+    if (data.date instanceof Timestamp) {
+        date = data.date.toDate();
+    } else if (data.date && typeof data.date.seconds === 'number') {
+        date = fromUnixTime(data.date.seconds);
+    } else {
+        date = new Date(); // Fallback
+    }
     return { ...data, id: doc.id, date } as Sale;
 };
 
@@ -233,6 +239,7 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
     const aggregatedSales = useMemo<AggregatedDailySale[]>(() => {
         const dailySales: { [key: string]: { totalQuantity: number; totalAmount: number } } = {};
         salesHistory.forEach(sale => {
+            if (!(sale.date instanceof Date) || isNaN(sale.date.getTime())) return;
             const dateKey = format(startOfDay(sale.date), 'yyyy-MM-dd');
             if (!dailySales[dateKey]) {
                 dailySales[dateKey] = { totalQuantity: 0, totalAmount: 0 };
@@ -256,6 +263,7 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
         const previousMonthYear = getYear(prevMonthDate);
 
         salesHistory.forEach(sale => {
+            if (!(sale.date instanceof Date) || isNaN(sale.date.getTime())) return;
             sale.payments?.forEach(p => {
                 const paymentType = p.type;
                 if (!summary[paymentType]) {
@@ -666,5 +674,3 @@ export default function POSPage() {
     </>
   );
 }
-
-    

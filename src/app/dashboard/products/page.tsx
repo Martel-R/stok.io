@@ -1,3 +1,4 @@
+
 'use client';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -8,18 +9,34 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
 import type { Product } from '@/lib/types';
-import { MoreHorizontal, PlusCircle } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Upload, Link, Loader2 } from 'lucide-react';
 import Image from 'next/image';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Product) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Product>(
     product || { id: `prod${Date.now()}`, name: '', category: '', price: 0, stock: 0, imageUrl: '' }
   );
+  const [isUploading, setIsUploading] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
     setFormData((prev) => ({ ...prev, [name]: type === 'number' ? parseFloat(value) || 0 : value }));
   };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsUploading(true);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData((prev) => ({ ...prev, imageUrl: reader.result as string }));
+        setIsUploading(false);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,17 +59,46 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
       </div>
       <div>
         <Label htmlFor="price">Preço</Label>
-        <Input id="price" name="price" type="number" value={formData.price} onChange={handleChange} required />
+        <Input id="price" name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} required />
       </div>
       <div>
         <Label htmlFor="stock">Estoque</Label>
         <Input id="stock" name="stock" type="number" value={formData.stock} onChange={handleChange} required />
       </div>
-      <div>
-        <Label htmlFor="imageUrl">URL da Imagem</Label>
-        <Input id="imageUrl" name="imageUrl" value={formData.imageUrl} onChange={handleChange} placeholder="https://exemplo.com/imagem.png" />
-      </div>
-      <Button type="submit">Salvar Produto</Button>
+
+       <Tabs defaultValue="upload" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="upload"><Upload className="mr-2 h-4 w-4" /> Upload</TabsTrigger>
+            <TabsTrigger value="url"><Link className="mr-2 h-4 w-4" /> URL</TabsTrigger>
+          </TabsList>
+          <TabsContent value="upload">
+             <div className="space-y-2 mt-4">
+                <Label htmlFor="imageFile">Arquivo da Imagem</Label>
+                <Input id="imageFile" type="file" accept="image/*" onChange={handleImageUpload} disabled={isUploading}/>
+                {isUploading && <div className="flex items-center text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processando imagem...</div>}
+             </div>
+          </TabsContent>
+          <TabsContent value="url">
+            <div className="space-y-2 mt-4">
+              <Label htmlFor="imageUrl">URL da Imagem</Label>
+              <Input id="imageUrl" name="imageUrl" value={formData.imageUrl} onChange={handleChange} placeholder="https://exemplo.com/imagem.png" />
+            </div>
+          </TabsContent>
+        </Tabs>
+      
+      {formData.imageUrl && (
+          <div>
+              <Label>Pré-visualização da Imagem</Label>
+              <div className="mt-2 rounded-md border p-2 flex justify-center items-center">
+                <Image src={formData.imageUrl} alt="Pré-visualização do produto" width={128} height={128} className="rounded-md" data-ai-hint="product image" />
+              </div>
+          </div>
+      )}
+
+      <Button type="submit" disabled={isUploading}>
+        {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+        Salvar Produto
+      </Button>
     </form>
   );
 }
@@ -97,7 +143,7 @@ export default function ProductsPage() {
                     Adicionar Produto
                 </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="sm:max-w-[480px]">
                 <DialogHeader>
                     <DialogTitle>{editingProduct ? 'Editar Produto' : 'Adicionar Novo Produto'}</DialogTitle>
                 </DialogHeader>
@@ -112,9 +158,9 @@ export default function ProductsPage() {
             <TableHead className="w-[80px]">Imagem</TableHead>
             <TableHead>Nome</TableHead>
             <TableHead>Categoria</TableHead>
-            <TableHead>Preço</TableHead>
-            <TableHead>Estoque</TableHead>
-            <TableHead>Ações</TableHead>
+            <TableHead className="text-right">Preço</TableHead>
+            <TableHead className="text-right">Estoque</TableHead>
+            <TableHead className="text-center">Ações</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -123,11 +169,11 @@ export default function ProductsPage() {
               <TableCell>
                  <Image src={product.imageUrl} alt={product.name} width={40} height={40} className="rounded-md" data-ai-hint="product image" />
               </TableCell>
-              <TableCell>{product.name}</TableCell>
+              <TableCell className="font-medium">{product.name}</TableCell>
               <TableCell>{product.category}</TableCell>
-              <TableCell>R${product.price.toFixed(2).replace('.', ',')}</TableCell>
-              <TableCell>{product.stock}</TableCell>
-              <TableCell>
+              <TableCell className="text-right">R${product.price.toFixed(2).replace('.', ',')}</TableCell>
+              <TableCell className="text-right">{product.stock}</TableCell>
+              <TableCell className="text-center">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="h-8 w-8 p-0">
@@ -137,7 +183,7 @@ export default function ProductsPage() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={() => openEditDialog(product)}>Editar</DropdownMenuItem>
-                    <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(product.id)}>Excluir</DropdownMenuItem>
+                    <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(product.id)}>Excluir</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </TableCell>

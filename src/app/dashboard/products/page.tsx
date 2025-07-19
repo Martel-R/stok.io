@@ -1,21 +1,24 @@
 
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { MOCK_PRODUCTS } from '@/lib/mock-data';
+import { db } from '@/lib/firebase';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import type { Product } from '@/lib/types';
 import { MoreHorizontal, PlusCircle, Upload, Link, Loader2 } from 'lucide-react';
 import Image from 'next/image';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from '@/hooks/use-toast';
+import { Skeleton } from '@/components/ui/skeleton';
 
-function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Product) => void; onDone: () => void }) {
-  const [formData, setFormData] = useState<Product>(
-    product || { id: `prod${Date.now()}`, name: '', category: '', price: 0, stock: 0, imageUrl: '' }
+function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Partial<Product>) => void; onDone: () => void }) {
+  const [formData, setFormData] = useState<Partial<Product>>(
+    product || { name: '', category: '', price: 0, stock: 0, imageUrl: '' }
   );
   const [isUploading, setIsUploading] = useState(false);
 
@@ -36,7 +39,6 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
       reader.readAsDataURL(file);
     }
   };
-
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,7 +92,7 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
           <div>
               <Label>Pré-visualização da Imagem</Label>
               <div className="mt-2 rounded-md border p-2 flex justify-center items-center">
-                <Image src={formData.imageUrl} alt="Pré-visualização do produto" width={128} height={128} className="rounded-md" data-ai-hint="product image" />
+                <Image src={formData.imageUrl} alt="Pré-visualização do produto" width={128} height={128} className="rounded-md object-cover aspect-square" data-ai-hint="product image" />
               </div>
           </div>
       )}
@@ -104,22 +106,47 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
 }
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
+  const { toast } = useToast();
 
-  const handleSave = (product: Product) => {
-    setProducts((prev) => {
-      const exists = prev.find((p) => p.id === product.id);
-      if (exists) {
-        return prev.map((p) => (p.id === product.id ? product : p));
-      }
-      return [...prev, product];
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'products'), (snapshot) => {
+      const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
+      setProducts(productsData);
+      setLoading(false);
     });
+    return () => unsubscribe();
+  }, []);
+
+  const handleSave = async (productData: Partial<Product>) => {
+    try {
+      if (editingProduct?.id) {
+        // Update existing product
+        const productRef = doc(db, "products", editingProduct.id);
+        await updateDoc(productRef, productData);
+        toast({ title: 'Produto atualizado com sucesso!' });
+      } else {
+        // Add new product
+        await addDoc(collection(db, "products"), productData);
+        toast({ title: 'Produto adicionado com sucesso!' });
+      }
+    } catch (error) {
+      console.error("Error saving product: ", error);
+      toast({ title: 'Erro ao salvar produto', description: 'Ocorreu um erro, por favor tente novamente.', variant: 'destructive' });
+    }
   };
 
-  const handleDelete = (productId: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== productId));
+  const handleDelete = async (productId: string) => {
+    try {
+      await deleteDoc(doc(db, "products", productId));
+      toast({ title: 'Produto excluído com sucesso!', variant: 'destructive' });
+    } catch (error) {
+       console.error("Error deleting product: ", error);
+       toast({ title: 'Erro ao excluir produto', description: 'Ocorreu um erro, por favor tente novamente.', variant: 'destructive' });
+    }
   };
   
   const openEditDialog = (product: Product) => {
@@ -164,31 +191,44 @@ export default function ProductsPage() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {products.map((product) => (
-            <TableRow key={product.id}>
-              <TableCell>
-                 <Image src={product.imageUrl} alt={product.name} width={40} height={40} className="rounded-md" data-ai-hint="product image" />
-              </TableCell>
-              <TableCell className="font-medium">{product.name}</TableCell>
-              <TableCell>{product.category}</TableCell>
-              <TableCell className="text-right">R${product.price.toFixed(2).replace('.', ',')}</TableCell>
-              <TableCell className="text-right">{product.stock}</TableCell>
-              <TableCell className="text-center">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="h-8 w-8 p-0">
-                      <span className="sr-only">Abrir menu</span>
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => openEditDialog(product)}>Editar</DropdownMenuItem>
-                    <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(product.id)}>Excluir</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </TableCell>
-            </TableRow>
-          ))}
+          {loading ? (
+             Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={i}>
+                    <TableCell><Skeleton className="h-10 w-10 rounded-md" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-48" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
+                    <TableCell className="text-center"><Skeleton className="h-8 w-8 mx-auto rounded-full" /></TableCell>
+                </TableRow>
+            ))
+          ) : (
+            products.map((product) => (
+              <TableRow key={product.id}>
+                <TableCell>
+                   <Image src={product.imageUrl} alt={product.name} width={40} height={40} className="rounded-md object-cover aspect-square" data-ai-hint="product image" />
+                </TableCell>
+                <TableCell className="font-medium">{product.name}</TableCell>
+                <TableCell>{product.category}</TableCell>
+                <TableCell className="text-right">R${product.price.toFixed(2).replace('.', ',')}</TableCell>
+                <TableCell className="text-right">{product.stock}</TableCell>
+                <TableCell className="text-center">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" className="h-8 w-8 p-0">
+                        <span className="sr-only">Abrir menu</span>
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => openEditDialog(product)}>Editar</DropdownMenuItem>
+                      <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(product.id)}>Excluir</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            ))
+          )}
         </TableBody>
       </Table>
     </div>

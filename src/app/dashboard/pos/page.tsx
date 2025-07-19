@@ -1,6 +1,8 @@
+
 'use client';
-import { useState } from 'react';
-import { MOCK_PRODUCTS } from '@/lib/mock-data';
+import { useState, useEffect } from 'react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import type { Product } from '@/lib/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,16 +10,33 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { CreditCard, X } from 'lucide-react';
+import { CreditCard, X, Loader2 } from 'lucide-react';
 import Image from 'next/image';
+import { Skeleton } from '@/components/ui/skeleton';
+
 
 interface CartItem extends Product {
   quantity: number;
 }
 
 export default function POSPage() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const { toast } = useToast();
+
+  useEffect(() => {
+    const q = collection(db, 'products');
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const productsData: Product[] = [];
+      querySnapshot.forEach((doc) => {
+        productsData.push({ id: doc.id, ...doc.data() } as Product);
+      });
+      setProducts(productsData);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const addToCart = (product: Product) => {
     setCart((prev) => {
@@ -57,17 +76,31 @@ export default function POSPage() {
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[calc(100vh-16rem)]">
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                {MOCK_PRODUCTS.map((product) => (
-                  <Card key={product.id} onClick={() => addToCart(product)} className="cursor-pointer hover:shadow-lg transition-shadow">
-                    <CardContent className="p-2 flex flex-col items-center justify-center">
-                       <Image src={product.imageUrl} alt={product.name} width={150} height={150} className="rounded-md" data-ai-hint="product image"/>
-                      <p className="font-semibold text-sm mt-2 text-center">{product.name}</p>
-                      <p className="text-xs text-muted-foreground">R${product.price.toFixed(2).replace('.', ',')}</p>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+              {loading ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                  {Array.from({ length: 10 }).map((_, i) => (
+                    <Card key={i}>
+                       <CardContent className="p-2 flex flex-col items-center justify-center">
+                          <Skeleton className="h-[100px] w-[100px] rounded-md" />
+                          <Skeleton className="h-4 w-24 mt-2"/>
+                          <Skeleton className="h-3 w-16 mt-1"/>
+                       </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                  {products.map((product) => (
+                    <Card key={product.id} onClick={() => addToCart(product)} className="cursor-pointer hover:shadow-lg transition-shadow">
+                      <CardContent className="p-2 flex flex-col items-center justify-center">
+                         <Image src={product.imageUrl} alt={product.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="product image"/>
+                        <p className="font-semibold text-sm mt-2 text-center">{product.name}</p>
+                        <p className="text-xs text-muted-foreground">R${product.price.toFixed(2).replace('.', ',')}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </ScrollArea>
           </CardContent>
         </Card>
@@ -102,7 +135,7 @@ export default function POSPage() {
                 )}
             </ScrollArea>
           </CardContent>
-          <CardFooter className="flex-col !p-6">
+          <CardFooter className="flex-col !p-6 border-t">
              <div className="w-full space-y-2">
                  <div className="flex justify-between"><p>Subtotal</p><p>R${total.toFixed(2).replace('.', ',')}</p></div>
                  <div className="flex justify-between"><p>Imposto (8%)</p><p>R${tax.toFixed(2).replace('.', ',')}</p></div>

@@ -1,14 +1,15 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { MOCK_USERS } from '@/lib/mock-data';
+import { db } from '@/lib/firebase';
+import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import type { User, UserRole } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
@@ -17,11 +18,13 @@ import { MoreHorizontal, PlusCircle, Eye, EyeOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useAuth } from '@/lib/auth';
 
 
-function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: User) => void; onDone: () => void }) {
+function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partial<User>) => void; onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<User>>(
-        user || { id: `user${Date.now()}`, name: '', email: '', role: 'cashier', avatar: '/avatars/01.png', password: '' }
+        user || { name: '', email: '', role: 'cashier', avatar: '/avatars/01.png' }
     );
     const [showPassword, setShowPassword] = useState(false);
 
@@ -50,22 +53,7 @@ function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: User) 
             </div>
             <div>
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required />
-            </div>
-            <div>
-                <Label htmlFor="password">Senha</Label>
-                 <div className="relative">
-                    <Input id="password" name="password" type={showPassword ? 'text' : 'password'} value={formData.password} onChange={handleChange} required={!isEditing} placeholder={isEditing ? "Deixe em branco para não alterar" : ""}/>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
-                        onClick={() => setShowPassword((prev) => !prev)}
-                    >
-                        {showPassword ? <EyeOff /> : <Eye />}
-                    </Button>
-                </div>
+                <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required disabled={isEditing}/>
             </div>
             <div>
                 <Label htmlFor="role">Função</Label>
@@ -90,10 +78,21 @@ function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: User) 
 
 
 function UsersTable() {
-    const [users, setUsers] = useState<User[]>(MOCK_USERS);
+    const [users, setUsers] = useState<User[]>([]);
+    const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
     const { toast } = useToast();
+    const { signup } = useAuth();
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
+            const usersData = snapshot.docs.map(doc => ({ ...doc.data() })) as User[];
+            setUsers(usersData);
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
 
     const getRoleBadge = (role: string) => {
         switch (role) {
@@ -109,7 +108,7 @@ function UsersTable() {
     }
     
     const openEditDialog = (user: User) => {
-        setEditingUser({...user, password: ''}); // Clear password for editing form
+        setEditingUser(user);
         setIsFormOpen(true);
     }
 
@@ -118,28 +117,29 @@ function UsersTable() {
         setIsFormOpen(true);
     }
     
-    const handleSave = (userToSave: Partial<User>) => {
-        setUsers((prev) => {
-            const exists = prev.find((u) => u.id === userToSave.id);
-            if (exists) {
-                // If editing and password is empty, keep the old one
-                if (!userToSave.password) {
-                  userToSave.password = exists.password;
-                }
-                return prev.map((u) => (u.id === userToSave.id ? {...u, ...userToSave} as User : u));
+    const handleSave = async (userToSave: Partial<User>) => {
+        // We only support editing user roles for now.
+        if (editingUser?.id) {
+            try {
+                const userRef = doc(db, "users", editingUser.id);
+                await updateDoc(userRef, { role: userToSave.role });
+                toast({ title: 'Função do usuário atualizada com sucesso!' });
+            } catch (error) {
+                console.error("Error updating user role: ", error);
+                toast({ title: 'Erro ao atualizar usuário', variant: 'destructive' });
             }
-            // Ensure new user has a password, defaulting if necessary (though form requires it)
-            if (!userToSave.password) {
-              userToSave.password = 'password';
-            }
-            return [...prev, userToSave as User];
-        });
-        toast({ title: 'Usuário salvo com sucesso!'});
+        } else {
+            // Logic for creating new users is complex due to Firebase Auth security rules
+            // and is better handled via a dedicated signup flow or backend function.
+            // For this app, new users are created via the signup page.
+             toast({ title: 'Funcionalidade não implementada', description: 'Por favor, use a página de cadastro para criar novos usuários.', variant: 'destructive'});
+        }
     };
 
     const handleDelete = (userId: string) => {
-        setUsers((prev) => prev.filter((u) => u.id !== userId));
-        toast({ title: 'Usuário excluído com sucesso!', variant: 'destructive'});
+        // Deleting users from Firebase Auth is a protected action and should be done from a secure backend environment.
+        // We are not implementing this on the client-side for security reasons.
+        toast({ title: 'Funcionalidade não implementada', description: 'A exclusão de usuários deve ser feita a partir de um ambiente seguro.', variant: 'destructive'});
     };
 
 
@@ -149,18 +149,15 @@ function UsersTable() {
                 <div className="flex justify-between items-center">
                     <div>
                         <CardTitle>Usuários</CardTitle>
-                        <CardDescription>Gerencie os usuários e suas permissões.</CardDescription>
+                        <CardDescription>Gerencie as permissões dos usuários.</CardDescription>
                     </div>
                      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                         <DialogTrigger asChild>
-                            <Button onClick={openNewDialog}>
-                                <PlusCircle className="mr-2 h-4 w-4" />
-                                Adicionar Usuário
-                            </Button>
+                           {/* The button to add a user is removed as this should be done from signup page */}
                         </DialogTrigger>
                         <DialogContent className="sm:max-w-[480px]">
                             <DialogHeader>
-                                <DialogTitle>{editingUser ? 'Editar Usuário' : 'Adicionar Novo Usuário'}</DialogTitle>
+                                <DialogTitle>{editingUser ? 'Editar Função do Usuário' : 'Adicionar Novo Usuário'}</DialogTitle>
                             </DialogHeader>
                             <UserForm user={editingUser} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
                         </DialogContent>
@@ -178,43 +175,54 @@ function UsersTable() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {users.map((user) => (
-                            <TableRow key={user.id}>
-                                <TableCell className="font-medium">{user.name}</TableCell>
-                                <TableCell>{user.email}</TableCell>
-                                <TableCell>{getRoleBadge(user.role)}</TableCell>
-                                <TableCell className="text-right">
-                                     <AlertDialog>
-                                        <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" className="h-8 w-8 p-0">
-                                            <span className="sr-only">Abrir menu</span>
-                                            <MoreHorizontal className="h-4 w-4" />
-                                            </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end">
-                                            <DropdownMenuItem onClick={() => openEditDialog(user)}>Editar</DropdownMenuItem>
-                                            <AlertDialogTrigger asChild>
-                                                <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive">Excluir</DropdownMenuItem>
-                                            </AlertDialogTrigger>
-                                        </DropdownMenuContent>
-                                        </DropdownMenu>
-                                        <AlertDialogContent>
-                                            <AlertDialogHeader>
-                                                <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
-                                                <AlertDialogDescription>
-                                                    Essa ação não pode ser desfeita. Isso excluirá permanentemente o usuário.
-                                                </AlertDialogDescription>
-                                            </AlertDialogHeader>
-                                            <AlertDialogFooter>
-                                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                <AlertDialogAction onClick={() => handleDelete(user.id)} className={buttonVariants({ variant: "destructive" })}>Excluir</AlertDialogAction>
-                                            </AlertDialogFooter>
-                                        </AlertDialogContent>
-                                     </AlertDialog>
-                                </TableCell>
-                            </TableRow>
-                        ))}
+                        {loading ? (
+                             Array.from({ length: 3 }).map((_, i) => (
+                                <TableRow key={i}>
+                                    <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                                    <TableCell><Skeleton className="h-5 w-48" /></TableCell>
+                                    <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                                    <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto rounded-full" /></TableCell>
+                                </TableRow>
+                            ))
+                        ) : (
+                            users.map((user) => (
+                                <TableRow key={user.id}>
+                                    <TableCell className="font-medium">{user.name}</TableCell>
+                                    <TableCell>{user.email}</TableCell>
+                                    <TableCell>{getRoleBadge(user.role)}</TableCell>
+                                    <TableCell className="text-right">
+                                         <AlertDialog>
+                                            <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" className="h-8 w-8 p-0">
+                                                <span className="sr-only">Abrir menu</span>
+                                                <MoreHorizontal className="h-4 w-4" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                                <DropdownMenuItem onClick={() => openEditDialog(user)}>Editar Função</DropdownMenuItem>
+                                                <AlertDialogTrigger asChild>
+                                                    <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive">Excluir</DropdownMenuItem>
+                                                </AlertDialogTrigger>
+                                            </DropdownMenuContent>
+                                            </DropdownMenu>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        Essa ação não pode ser desfeita. A exclusão de usuários é uma funcionalidade restrita.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={() => handleDelete(user.id)} className={buttonVariants({ variant: "destructive" })}>Confirmar</AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                         </AlertDialog>
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        )}
                     </TableBody>
                 </Table>
             </CardContent>

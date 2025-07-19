@@ -1,3 +1,4 @@
+
 'use client';
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
@@ -9,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Loader2, Lock } from 'lucide-react';
 
-export default function DataToolsPage() {
+export default function ReportsPage() {
   const { user } = useAuth();
   const [dataDescription, setDataDescription] = useState('Valores de vendas semanais para todas as categorias de produtos.');
   const [dataToSummarize, setDataToSummarize] = useState('Eletrônicos: R$15.200, Móveis: R$8.500, Mercearia: R$12.100, Esportes: R$5.400');
@@ -49,11 +50,11 @@ export default function DataToolsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Ferramenta de Preparação de Dados com IA</h1>
+      <h1 className="text-3xl font-bold">Relatórios Gerenciais</h1>
       <Card>
         <CardHeader>
-          <CardTitle>Resumidor de Dados</CardTitle>
-          <CardDescription>Forneça os dados e uma descrição, e a IA gerará um resumo.</CardDescription>
+          <CardTitle>Resumidor de Dados com IA</CardTitle>
+          <CardDescription>Cole os dados de qualquer fonte, descreva o que eles representam e a IA gerará um resumo analítico. Futuramente, esta tela terá relatórios pré-definidos.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-2">
@@ -77,7 +78,7 @@ export default function DataToolsPage() {
           </div>
           <Button onClick={handleSummarize} disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Resumir Dados
+            Gerar Resumo
           </Button>
         </CardContent>
       </Card>

@@ -15,7 +15,7 @@ import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType } f
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -27,6 +27,7 @@ import { useAuth } from '@/lib/auth';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSearchParams } from 'next/navigation';
+import { Separator } from '@/components/ui/separator';
 
 
 function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partial<User>) => void; onDone: () => void }) {
@@ -706,6 +707,76 @@ function PaymentConditions() {
     );
 }
 
+function TestDataSettings() {
+    const { deleteTestData, user } = useAuth();
+    const { toast } = useToast();
+    const [isDeleted, setIsDeleted] = useState(() => {
+        if (typeof window === "undefined") return true;
+        return localStorage.getItem('testDataDeleted') === 'true';
+    });
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    if (isDeleted) {
+        return null;
+    }
+
+    const handleDelete = async () => {
+        setIsDeleting(true);
+        try {
+            if (!user?.organizationId) {
+                toast({ title: "Erro", description: "Organização não encontrada.", variant: "destructive" });
+                return;
+            }
+            await deleteTestData(user.organizationId);
+            toast({ title: "Sucesso!", description: "Todos os dados de teste foram excluídos." });
+            localStorage.setItem('testDataDeleted', 'true');
+            setIsDeleted(true);
+        } catch (error) {
+            console.error("Failed to delete test data", error);
+            toast({ title: "Erro", description: "Não foi possível excluir os dados de teste.", variant: "destructive" });
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
+    return (
+        <Card className="border-destructive">
+            <CardHeader>
+                <CardTitle>Dados de Teste</CardTitle>
+                <CardDescription>
+                    Esta ação excluirá permanentemente todos os produtos, kits, vendas e entradas de estoque da sua organização.
+                    Use para limpar o ambiente de teste. Esta ação é irreversível e só pode ser executada uma vez.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                         <Button variant="destructive" disabled={isDeleting}>
+                            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Excluir Dados de Teste
+                         </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Você tem certeza absoluta?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                Esta ação não pode ser desfeita. Todos os dados transacionais (produtos, vendas, kits) serão removidos permanentemente.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDelete} className={buttonVariants({ variant: "destructive" })}>
+                                Sim, excluir tudo
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            </CardContent>
+        </Card>
+    );
+}
+
+
 function SettingsPageContent() {
     const searchParams = useSearchParams();
     const tab = searchParams.get('tab') || 'users';
@@ -732,6 +803,8 @@ function SettingsPageContent() {
                     <PaymentConditions />
                 </TabsContent>
             </Tabs>
+             <Separator />
+            <TestDataSettings />
         </div>
     )
 }
@@ -743,5 +816,3 @@ export default function SettingsPage() {
         </React.Suspense>
     )
 }
-
-    

@@ -4,7 +4,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc } from "firebase/firestore";
 import type { User, UserRole, Branch } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
@@ -22,6 +22,7 @@ interface AuthContextType {
   createUser: (email: string, pass: string, name: string, role: UserRole, organizationId: string) => Promise<{ success: boolean; error?: string }>;
   updateUserProfile: (data: Partial<User>) => Promise<{ success: boolean; error?: string }>;
   changeUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean, error?: string }>;
+  deleteTestData: (organizationId: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
   cancelLogin: () => void;
@@ -83,18 +84,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Listen for branches associated with the user's organization
         if (currentUser.organizationId) {
-            const q = query(collection(db, "branches"), where("organizationId", "==", currentUser.organizationId), where("userIds", "array-contains", currentUser.id));
+            const q = query(collection(db, "branches"), where("organizationId", "==", currentUser.organizationId));
             branchesUnsubscribe = onSnapshot(q, (snapshot) => {
                 const userBranches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
-                setBranches(userBranches);
+                const userFilteredBranches = userBranches.filter(b => b.userIds.includes(currentUser.id));
+                setBranches(userFilteredBranches);
 
                 // Set current branch logic
                 const storedBranchId = localStorage.getItem('currentBranchId');
-                const storedBranch = userBranches.find(b => b.id === storedBranchId);
+                const storedBranch = userFilteredBranches.find(b => b.id === storedBranchId);
                 if (storedBranch) {
                     setCurrentBranchState(storedBranch);
-                } else if (userBranches.length > 0) {
-                    setCurrentBranchState(userBranches[0]);
+                } else if (userFilteredBranches.length > 0) {
+                    setCurrentBranchState(userFilteredBranches[0]);
                 } else {
                     setCurrentBranchState(null);
                 }
@@ -320,6 +322,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const deleteTestData = async (organizationId: string) => {
+    const collectionsToDelete = ['products', 'combos', 'sales', 'stockEntries'];
+    const batch = writeBatch(db);
+
+    for (const collectionName of collectionsToDelete) {
+        const q = query(collection(db, collectionName), where("organizationId", "==", organizationId));
+        const snapshot = await getDocs(q);
+        snapshot.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+    }
+
+    await batch.commit();
+  };
 
   const isAuthenticated = !!user;
   
@@ -351,7 +367,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [isAuthenticated, loading, pathname, router, user]);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, deleteTestData }}>
       {children}
     </AuthContext.Provider>
   );

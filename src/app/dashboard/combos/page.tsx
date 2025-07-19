@@ -29,14 +29,15 @@ import { Separator } from '@/components/ui/separator';
 
 const calculatePrices = (products: ComboProduct[], rules: ComboDiscountRule[]): { originalPrice: number, finalPrice: number } => {
     const originalPrice = products.reduce((acc, p) => acc + (p.productPrice * p.quantity), 0);
-    const defaultRule = rules.find(r => r.paymentConditionIds.length === 0);
+    // Find the default rule (no specific payment conditions) to display a representative final price.
+    const defaultRule = rules.find(r => !r.paymentConditionIds || r.paymentConditionIds.length === 0);
     let finalPrice = originalPrice;
 
     if (defaultRule) {
         if (defaultRule.discountType === 'percentage') {
-            finalPrice = originalPrice * (1 - defaultRule.discountValue / 100);
+            finalPrice = originalPrice * (1 - (defaultRule.discountValue || 0) / 100);
         } else {
-            finalPrice = originalPrice - defaultRule.discountValue;
+            finalPrice = originalPrice - (defaultRule.discountValue || 0);
         }
     }
     
@@ -204,7 +205,7 @@ function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }:
                         <div className="space-y-2">
                           <Label>Condição de Pagamento</Label>
                            <Select 
-                              value={rule.paymentConditionIds[0] || 'default'} 
+                              value={(rule.paymentConditionIds && rule.paymentConditionIds[0]) || 'default'} 
                               onValueChange={(val) => updateDiscountRule(index, 'paymentConditionIds', val === 'default' ? [] : [val])}
                             >
                                <SelectTrigger>
@@ -446,8 +447,8 @@ export default function CombosPage() {
                         {combo.products.map(p => <Badge key={p.productId} variant="secondary">{p.productName}</Badge>)}
                     </div>
                 </TableCell>
-                <TableCell className="text-right line-through text-muted-foreground">R${combo.originalPrice.toFixed(2).replace('.', ',')}</TableCell>
-                <TableCell className="text-right font-semibold">R${combo.finalPrice.toFixed(2).replace('.', ',')}</TableCell>
+                <TableCell className="text-right line-through text-muted-foreground">R$ {combo.originalPrice.toFixed(2).replace('.', ',')}</TableCell>
+                <TableCell className="text-right font-semibold">R$ {combo.finalPrice.toFixed(2).replace('.', ',')}</TableCell>
                 <TableCell className="text-center">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -476,5 +477,3 @@ export default function CombosPage() {
     </div>
   );
 }
-
-    

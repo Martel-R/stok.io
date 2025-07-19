@@ -215,11 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loginCancelledRef.current = false;
     try {
         await signInWithEmailAndPassword(auth, email, pass);
-        if (loginCancelledRef.current) {
-            await signOut(auth);
-            return false;
-        }
-        router.push('/dashboard');
+        // The onAuthStateChanged listener will handle the redirect.
         return true;
     } catch (error) {
         console.error("Firebase Login Error:", error);
@@ -237,11 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
         const provider = new GoogleAuthProvider();
         await signInWithPopup(auth, provider);
-        if (loginCancelledRef.current) {
-            await signOut(auth);
-            return false;
-        }
-        router.push('/dashboard');
+        // The onAuthStateChanged listener will handle the redirect.
         return true;
     } catch (error) {
         console.error("Google Login Error:", error);
@@ -285,14 +277,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (loading) return; 
 
     const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/signup');
+    const isDashboardPage = pathname.startsWith('/dashboard');
 
-    if (!isAuthenticated && !isAuthPage) {
+    if (!isAuthenticated && isDashboardPage) {
         router.push('/login');
+        return;
     }
-     if (isAuthenticated && isAuthPage) {
-        router.push('/dashboard');
+
+     if (isAuthenticated) {
+        if(isAuthPage) {
+            if (user.role === 'cashier') {
+                router.push('/dashboard/pos');
+            } else {
+                router.push('/dashboard');
+            }
+        } else if (user.role === 'cashier' && pathname !== '/dashboard/pos') {
+            // If a cashier tries to access any other dashboard page, redirect them to POS
+            router.push('/dashboard/pos');
+        }
     }
-  }, [isAuthenticated, loading, pathname, router]);
+  }, [isAuthenticated, loading, pathname, router, user]);
 
   return (
     <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch }}>

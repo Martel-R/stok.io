@@ -49,13 +49,17 @@ function CheckoutModal({
   useEffect(() => {
     if (isOpen) {
       // Reset payments when modal opens
-      setPayments([{
-        conditionId: paymentConditions[0]?.id || '',
-        conditionName: paymentConditions[0]?.name || '',
-        amount: grandTotal,
-        installments: 1,
-        type: paymentConditions[0]?.type || 'cash',
-      }]);
+      if (grandTotal > 0 && paymentConditions.length > 0) {
+        setPayments([{
+          conditionId: paymentConditions[0]?.id || '',
+          conditionName: paymentConditions[0]?.name || '',
+          amount: grandTotal,
+          installments: 1,
+          type: paymentConditions[0]?.type || 'cash',
+        }]);
+      } else {
+        setPayments([]);
+      }
     } else {
       // Clear on close
       setPayments([]);
@@ -271,6 +275,8 @@ export default function POSPage() {
       try {
         const batch = writeBatch(db);
         
+        // This process could be done in a single document for the sale,
+        // but for reporting simplicity, we're creating a doc per item sold.
         for (const item of cart) {
             const saleData: Omit<Sale, 'id'> = {
                 productName: item.name,
@@ -379,7 +385,7 @@ export default function POSPage() {
                                 <div className="flex items-center gap-2">
                                     <p className="font-semibold">R${(item.price * item.quantity).toFixed(2).replace('.', ',')}</p>
                                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFromCart(item.id)}>
-                                        <X className="h-4 w-4"/>
+                                        <X className="h-4 w-4 text-destructive"/>
                                     </Button>
                                 </div>
                             </div>
@@ -414,3 +420,5 @@ export default function POSPage() {
     </>
   );
 }
+
+    

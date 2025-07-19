@@ -9,14 +9,72 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { MOCK_USERS } from '@/lib/mock-data';
-import type { User } from '@/lib/types';
+import type { User, UserRole } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal, PlusCircle } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+
+
+function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: User) => void; onDone: () => void }) {
+    const [formData, setFormData] = useState<User>(
+        user || { id: `user${Date.now()}`, name: '', email: '', role: 'cashier', avatar: '/avatars/01.png' }
+    );
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setFormData((prev) => ({ ...prev, [name]: value }));
+    };
+
+    const handleRoleChange = (role: UserRole) => {
+        setFormData(prev => ({...prev, role}));
+    }
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData);
+        onDone();
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+                <Label htmlFor="name">Nome do Usuário</Label>
+                <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
+            </div>
+            <div>
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required />
+            </div>
+            <div>
+                <Label htmlFor="role">Função</Label>
+                 <Select value={formData.role} onValueChange={handleRoleChange}>
+                    <SelectTrigger id="role">
+                        <SelectValue placeholder="Selecione uma função" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="manager">Gerente</SelectItem>
+                        <SelectItem value="cashier">Caixa</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+            <DialogFooter>
+                 <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
+                 <Button type="submit">Salvar Usuário</Button>
+            </DialogFooter>
+        </form>
+    );
+}
+
 
 function UsersTable() {
     const [users, setUsers] = useState<User[]>(MOCK_USERS);
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
     const { toast } = useToast();
 
     const getRoleBadge = (role: string) => {
@@ -31,12 +89,57 @@ function UsersTable() {
                 return <Badge variant="outline">{role}</Badge>;
         }
     }
+    
+    const openEditDialog = (user: User) => {
+        setEditingUser(user);
+        setIsFormOpen(true);
+    }
+
+    const openNewDialog = () => {
+        setEditingUser(undefined);
+        setIsFormOpen(true);
+    }
+    
+    const handleSave = (user: User) => {
+        setUsers((prev) => {
+            const exists = prev.find((u) => u.id === user.id);
+            if (exists) {
+                return prev.map((u) => (u.id === user.id ? user : u));
+            }
+            return [...prev, user];
+        });
+        toast({ title: 'Usuário salvo com sucesso!'});
+    };
+
+    const handleDelete = (userId: string) => {
+        setUsers((prev) => prev.filter((u) => u.id !== userId));
+        toast({ title: 'Usuário excluído com sucesso!', variant: 'destructive'});
+    };
+
 
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Usuários</CardTitle>
-                <CardDescription>Gerencie os usuários e suas permissões.</CardDescription>
+                <div className="flex justify-between items-center">
+                    <div>
+                        <CardTitle>Usuários</CardTitle>
+                        <CardDescription>Gerencie os usuários e suas permissões.</CardDescription>
+                    </div>
+                     <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                        <DialogTrigger asChild>
+                            <Button onClick={openNewDialog}>
+                                <PlusCircle className="mr-2 h-4 w-4" />
+                                Adicionar Usuário
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[480px]">
+                            <DialogHeader>
+                                <DialogTitle>{editingUser ? 'Editar Usuário' : 'Adicionar Novo Usuário'}</DialogTitle>
+                            </DialogHeader>
+                            <UserForm user={editingUser} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
+                        </DialogContent>
+                    </Dialog>
+                </div>
             </CardHeader>
             <CardContent>
                 <Table>
@@ -55,18 +158,34 @@ function UsersTable() {
                                 <TableCell>{user.email}</TableCell>
                                 <TableCell>{getRoleBadge(user.role)}</TableCell>
                                 <TableCell className="text-right">
-                                     <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" className="h-8 w-8 p-0">
-                                          <span className="sr-only">Abrir menu</span>
-                                          <MoreHorizontal className="h-4 w-4" />
-                                        </Button>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end">
-                                        <DropdownMenuItem onClick={() => toast({title: 'Funcionalidade em desenvolvimento'})}>Editar</DropdownMenuItem>
-                                        <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => toast({title: 'Funcionalidade em desenvolvimento'})}>Excluir</DropdownMenuItem>
-                                      </DropdownMenuContent>
-                                    </DropdownMenu>
+                                     <AlertDialog>
+                                        <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" className="h-8 w-8 p-0">
+                                            <span className="sr-only">Abrir menu</span>
+                                            <MoreHorizontal className="h-4 w-4" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                            <DropdownMenuItem onClick={() => openEditDialog(user)}>Editar</DropdownMenuItem>
+                                            <AlertDialogTrigger asChild>
+                                                <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive">Excluir</DropdownMenuItem>
+                                            </AlertDialogTrigger>
+                                        </DropdownMenuContent>
+                                        </DropdownMenu>
+                                        <AlertDialogContent>
+                                            <AlertDialogHeader>
+                                                <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
+                                                <AlertDialogDescription>
+                                                    Essa ação não pode ser desfeita. Isso excluirá permanentemente o usuário.
+                                                </AlertDialogDescription>
+                                            </AlertDialogHeader>
+                                            <AlertDialogFooter>
+                                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                <AlertDialogAction onClick={() => handleDelete(user.id)} className={buttonVariants({ variant: "destructive" })}>Excluir</AlertDialogAction>
+                                            </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                     </AlertDialog>
                                 </TableCell>
                             </TableRow>
                         ))}
@@ -139,3 +258,5 @@ export default function SettingsPage() {
         </div>
     )
 }
+
+    

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -21,7 +22,7 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const success = await login(email, password);
-    if (!success) {
+    if (!success && !loading) {
       // The toast is only shown if the login wasn't cancelled
       toast({
         title: 'Falha no Login',

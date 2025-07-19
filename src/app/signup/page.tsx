@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -22,13 +23,22 @@ export default function SignupPage() {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { success, error } = await signup(email, password, name);
+    const { success, error, isFirstUser } = await signup(email, password, name);
     if (success) {
-      toast({
-        title: 'Cadastro realizado com sucesso!',
-        description: 'Você será redirecionado para o painel.',
-      });
-      router.push('/dashboard');
+      if (isFirstUser) {
+        toast({
+          title: 'Cadastro realizado com sucesso!',
+          description: 'Vamos configurar sua primeira filial.',
+        });
+        // Redirect to settings to create the first branch
+        router.push('/dashboard/settings?tab=branches');
+      } else {
+         toast({
+          title: 'Cadastro realizado com sucesso!',
+          description: 'Você será redirecionado para o painel.',
+        });
+        router.push('/dashboard');
+      }
     } else {
       toast({
         title: 'Falha no Cadastro',

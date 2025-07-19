@@ -25,6 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useSearchParams } from 'next/navigation';
 
 
 function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partial<User>) => void; onDone: () => void }) {
@@ -218,7 +219,7 @@ function UsersTable() {
 }
 
 function BranchesSettings() {
-    const [branches, setBranches] = useState<Branch[]>([]);
+    const { branches, setCurrentBranch } = useAuth();
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -226,18 +227,12 @@ function BranchesSettings() {
     const { toast } = useToast();
 
     useEffect(() => {
-        const fetchBranchesAndUsers = async () => {
+        const fetchUsers = async () => {
             const usersSnapshot = await getDocs(collection(db, 'users'));
             setAllUsers(usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as User));
-
-            const unsubscribeBranches = onSnapshot(collection(db, 'branches'), (snapshot) => {
-                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
-                setBranches(data);
-                setLoading(false);
-            });
-            return () => unsubscribeBranches();
+            setLoading(false);
         };
-        fetchBranchesAndUsers();
+        fetchUsers();
     }, []);
 
     const openEditDialog = (branch: Branch) => {
@@ -256,8 +251,12 @@ function BranchesSettings() {
                 await updateDoc(doc(db, "branches", editingBranch.id), branchData);
                 toast({ title: 'Filial atualizada com sucesso!' });
             } else {
-                await addDoc(collection(db, "branches"), branchData);
+                const docRef = await addDoc(collection(db, "branches"), branchData);
                 toast({ title: 'Filial adicionada com sucesso!' });
+                 // If this is the first branch, set it as active
+                if(branches.length === 0) {
+                    setCurrentBranch({id: docRef.id, ...branchData});
+                }
             }
         } catch (error) {
             console.error("Error saving branch: ", error);
@@ -369,8 +368,9 @@ function BranchesSettings() {
 }
 
 function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users: User[]; onSave: (data: Omit<Branch, 'id'>) => void; onDone: () => void }) {
+    const { user: currentUser } = useAuth();
     const [formData, setFormData] = useState(
-        branch || { name: '', cnpj: '', location: '', userIds: [] }
+        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [] }
     );
     const [open, setOpen] = useState(false);
 
@@ -675,14 +675,17 @@ function PaymentConditions() {
     );
 }
 
-export default function SettingsPage() {
+function SettingsPageContent() {
+    const searchParams = useSearchParams();
+    const tab = searchParams.get('tab') || 'users';
+
     return (
         <div className="space-y-6">
             <div>
                 <h1 className="text-3xl font-bold">Configurações</h1>
                 <p className="text-muted-foreground">Gerencie as configurações gerais do sistema.</p>
             </div>
-            <Tabs defaultValue="users" className="space-y-4">
+            <Tabs defaultValue={tab} className="space-y-4">
                 <TabsList>
                     <TabsTrigger value="users">Usuários</TabsTrigger>
                     <TabsTrigger value="branches">Filiais</TabsTrigger>
@@ -703,5 +706,13 @@ export default function SettingsPage() {
                 </TabsContent>
             </Tabs>
         </div>
+    )
+}
+
+export default function SettingsPage() {
+    return (
+        <React.Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
+            <SettingsPageContent />
+        </React.Suspense>
     )
 }

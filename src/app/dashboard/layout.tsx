@@ -7,9 +7,13 @@ import { Icons } from '@/components/icons';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Home, Package, BarChart, ShoppingCart, Bot, Wrench, LogOut, Loader2, Users, Settings } from 'lucide-react';
+import { Home, Package, BarChart, ShoppingCart, Bot, Wrench, LogOut, Loader2, Users, Settings, ChevronsUpDown, Check, Building } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { cn } from '@/lib/utils';
+import { useState } from 'react';
 
 function DashboardNav() {
     const pathname = usePathname();
@@ -40,6 +44,66 @@ function DashboardNav() {
         </SidebarMenu>
     );
 }
+
+function BranchSwitcher() {
+    const { branches, currentBranch, setCurrentBranch } = useAuth();
+    const [open, setOpen] = useState(false);
+
+    if (branches.length <= 1) {
+        return (
+            <div className="flex items-center gap-2 text-sm font-medium">
+                <Building className="h-4 w-4" />
+                <span>{currentBranch?.name || "Filial Principal"}</span>
+            </div>
+        );
+    }
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button
+                    variant="ghost"
+                    role="combobox"
+                    aria-expanded={open}
+                    className="w-[200px] justify-between"
+                >
+                     <Building className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate">{currentBranch?.name || "Selecione a filial"}</span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[200px] p-0">
+                <Command>
+                    <CommandInput placeholder="Buscar filial..." />
+                    <CommandList>
+                        <CommandEmpty>Nenhuma filial encontrada.</CommandEmpty>
+                        <CommandGroup>
+                            {branches.map((branch) => (
+                                <CommandItem
+                                    key={branch.id}
+                                    value={branch.name}
+                                    onSelect={() => {
+                                        setCurrentBranch(branch);
+                                        setOpen(false);
+                                    }}
+                                >
+                                    <Check
+                                        className={cn(
+                                            "mr-2 h-4 w-4",
+                                            currentBranch?.id === branch.id ? "opacity-100" : "opacity-0"
+                                        )}
+                                    />
+                                    {branch.name}
+                                </CommandItem>
+                            ))}
+                        </CommandGroup>
+                    </CommandList>
+                </Command>
+            </PopoverContent>
+        </Popover>
+    );
+}
+
 
 function UserNav() {
     const { user, logout } = useAuth();
@@ -109,8 +173,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </Sidebar>
                 <div className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden md:pl-64">
                     <header className="sticky top-0 flex h-16 items-center justify-between gap-4 border-b bg-background px-4 md:px-6">
-                        <div>
+                        <div className="flex items-center gap-4">
                             <SidebarTrigger />
+                             <BranchSwitcher />
                         </div>
                         <div className="flex w-full items-center justify-end gap-4">
                            <UserNav />

@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 id: firebaseUser.uid,
                 email: firebaseUser.email || '',
                 name: firebaseUser.displayName || 'Usuário',
-                role: 'cashier', // default role for new signups
+                role: 'admin', // default role for new signups
                 avatar: firebaseUser.photoURL || `/avatars/0${Math.ceil(Math.random() * 3)}.png`,
             })
         }
@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: userCredential.user.uid,
         email: userCredential.user.email || '',
         name: name,
-        role: 'cashier',
+        role: 'admin',
         avatar: `/avatars/0${Math.ceil(Math.random() * 3)}.png`,
       });
       return { success: true };

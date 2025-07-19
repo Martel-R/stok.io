@@ -13,7 +13,7 @@ import type { User, UserRole } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Eye, EyeOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -23,6 +23,7 @@ function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: User) 
     const [formData, setFormData] = useState<Partial<User>>(
         user || { id: `user${Date.now()}`, name: '', email: '', role: 'cashier', avatar: '/avatars/01.png', password: '' }
     );
+    const [showPassword, setShowPassword] = useState(false);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -53,7 +54,18 @@ function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: User) 
             </div>
             <div>
                 <Label htmlFor="password">Senha</Label>
-                <Input id="password" name="password" type="password" value={formData.password} onChange={handleChange} required={!isEditing} placeholder={isEditing ? "Deixe em branco para não alterar" : ""}/>
+                 <div className="relative">
+                    <Input id="password" name="password" type={showPassword ? 'text' : 'password'} value={formData.password} onChange={handleChange} required={!isEditing} placeholder={isEditing ? "Deixe em branco para não alterar" : ""}/>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                    >
+                        {showPassword ? <EyeOff /> : <Eye />}
+                    </Button>
+                </div>
             </div>
             <div>
                 <Label htmlFor="role">Função</Label>

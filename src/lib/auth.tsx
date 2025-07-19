@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (userDoc.exists()) {
             setUser(userDoc.data() as User);
         } else {
-             // If no profile, maybe it's a very old user or something is wrong.
+             // This might happen if the Firestore document wasn't created on signup
              // We can create a default one or just use basic auth info.
              const newUser: User = {
                 id: firebaseUser.uid,
@@ -43,9 +43,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 role: 'admin', 
                 avatar: firebaseUser.photoURL || `/avatars/0${Math.ceil(Math.random() * 3)}.png`,
             }
-            setUser(newUser);
-            // Optionally save this new profile back to Firestore
+            // Save this new profile back to Firestore to prevent future issues
             await setDoc(userDocRef, newUser);
+            setUser(newUser);
         }
       } else {
         // User is signed out
@@ -99,16 +99,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
         await signInWithEmailAndPassword(auth, email, pass);
-        // onAuthStateChanged will handle setting the user and redirecting
+        // onAuthStateChanged will handle setting the user.
         router.push('/dashboard');
         return true;
     } catch (error) {
         console.error("Firebase Login Error:", error);
         setUser(null);
+        setLoading(false); // Make sure loading stops on error
         return false;
-    } finally {
-        setLoading(false);
-    }
+    } 
+    // setLoading will be set to false by onAuthStateChanged
   };
 
   const logout = async () => {
@@ -125,7 +125,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   // This effect handles redirection for protected routes
   useEffect(() => {
-    if (!loading && !isAuthenticated && !pathname.startsWith('/login') && !pathname.startsWith('/signup')) {
+    const isProtectedRoute = !pathname.startsWith('/login') && !pathname.startsWith('/signup');
+    if (!loading && !isAuthenticated && isProtectedRoute) {
         router.push('/login');
     }
   }, [isAuthenticated, loading, pathname, router]);

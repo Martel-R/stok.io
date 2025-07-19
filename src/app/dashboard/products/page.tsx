@@ -8,13 +8,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query } from 'firebase/firestore';
 import type { Product } from '@/lib/types';
 import { MoreHorizontal, PlusCircle, Upload, Link, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { MOCK_PRODUCTS } from '@/lib/mock-data';
 
 function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Partial<Product>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Product>>(
@@ -113,13 +114,36 @@ export default function ProductsPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'products'), (snapshot) => {
+    const productsRef = collection(db, 'products');
+    
+    // Função para semear o banco de dados se estiver vazio
+    const seedDatabase = async () => {
+      const q = query(productsRef);
+      const querySnapshot = await getDocs(q);
+      if (querySnapshot.empty) {
+        console.log("Coleção 'products' vazia. Semeando com dados de exemplo...");
+        const batch = writeBatch(db);
+        MOCK_PRODUCTS.forEach((product) => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { id, ...data } = product; // não precisamos do id do mock
+          const docRef = doc(productsRef); // Gera novo ID
+          batch.set(docRef, data);
+        });
+        await batch.commit();
+        toast({ title: 'Bem-vindo!', description: 'Adicionamos alguns produtos de exemplo para você começar.' });
+      }
+    };
+
+    seedDatabase();
+
+    const unsubscribe = onSnapshot(productsRef, (snapshot) => {
       const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
       setProducts(productsData);
       setLoading(false);
     });
+
     return () => unsubscribe();
-  }, []);
+  }, [toast]);
 
   const handleSave = async (productData: Partial<Product>) => {
     try {

@@ -15,7 +15,7 @@ import type { User, UserRole, Branch } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2 } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -31,8 +31,9 @@ import { useSearchParams } from 'next/navigation';
 
 function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partial<User>) => void; onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<User>>(
-        user || { name: '', email: '', role: 'cashier', avatar: '/avatars/01.png' }
+        user || { name: '', email: '', role: 'cashier', avatar: '/avatars/01.png', password: '' }
     );
+    const [showPassword, setShowPassword] = useState(false);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -61,6 +62,30 @@ function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partia
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required disabled={isEditing}/>
             </div>
+            {!isEditing && (
+                 <div className="grid gap-2">
+                    <Label htmlFor="password">Senha</Label>
+                    <div className="relative">
+                        <Input
+                        id="password"
+                        name="password"
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        value={formData.password}
+                        onChange={handleChange}
+                        />
+                        <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        >
+                        {showPassword ? <EyeOff /> : <Eye />}
+                        </Button>
+                    </div>
+                </div>
+            )}
             <div>
                 <Label htmlFor="role">Função</Label>                 <Select value={formData.role} onValueChange={handleRoleChange}>
                     <SelectTrigger id="role">
@@ -88,6 +113,7 @@ function UsersTable() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
     const { toast } = useToast();
+    const { createUser } = useAuth();
 
     useEffect(() => {
         const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -125,14 +151,27 @@ function UsersTable() {
         if (editingUser?.id) {
             try {
                 const userRef = doc(db, "users", editingUser.id);
-                await updateDoc(userRef, { role: userToSave.role });
-                toast({ title: 'Função do usuário atualizada com sucesso!' });
+                await updateDoc(userRef, { role: userToSave.role, name: userToSave.name });
+                toast({ title: 'Usuário atualizado com sucesso!' });
             } catch (error) {
-                console.error("Error updating user role: ", error);
+                console.error("Error updating user: ", error);
                 toast({ title: 'Erro ao atualizar usuário', variant: 'destructive' });
             }
         } else {
-             toast({ title: 'Funcionalidade não implementada', description: 'Por favor, use a página de cadastro para criar novos usuários.', variant: 'destructive'});
+            if (!userToSave.email || !userToSave.password || !userToSave.name) {
+                toast({title: "Campos obrigatórios faltando", variant: "destructive"});
+                return;
+            }
+            try {
+                 const { success, error } = await createUser(userToSave.email, userToSave.password, userToSave.name, userToSave.role);
+                 if (success) {
+                     toast({title: "Usuário criado com sucesso!"});
+                 } else {
+                     toast({title: "Erro ao criar usuário", description: error, variant: "destructive"});
+                 }
+            } catch (error) {
+                 toast({title: "Erro ao criar usuário", variant: "destructive"});
+            }
         }
     };
 
@@ -154,7 +193,7 @@ function UsersTable() {
                         </DialogTrigger>
                         <DialogContent className="sm:max-w-[480px]">
                             <DialogHeader>
-                                <DialogTitle>{editingUser ? 'Editar Função do Usuário' : 'Adicionar Novo Usuário'}</DialogTitle>
+                                <DialogTitle>{editingUser ? 'Editar Usuário' : 'Adicionar Novo Usuário'}</DialogTitle>
                             </DialogHeader>
                             <UserForm user={editingUser} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
                         </DialogContent>
@@ -197,7 +236,7 @@ function UsersTable() {
                                                 </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
-                                                <DropdownMenuItem onClick={() => openEditDialog(user)}>Editar Função</DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => openEditDialog(user)}>Editar</DropdownMenuItem>
                                                 <AlertDialogTrigger asChild>
                                                     <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive">Excluir</DropdownMenuItem>
                                                 </AlertDialogTrigger>
@@ -733,4 +772,3 @@ export default function SettingsPage() {
         </React.Suspense>
     )
 }
-

@@ -1,3 +1,4 @@
+
 'use client';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -99,8 +100,8 @@ export default function DashboardPage() {
                     </CardHeader>
                     <CardContent>
                          <div className="space-y-4">
-                            {MOCK_SALES.slice(0, 5).map(sale => (
-                                <div key={sale.id} className="flex items-center">
+                            {MOCK_SALES.slice(0, 5).map((sale, index) => (
+                                <div key={index} className="flex items-center">
                                     <div className="flex-1 space-y-1">
                                         <p className="text-sm font-medium leading-none">{sale.productName}</p>
                                         <p className="text-sm text-muted-foreground">por {sale.cashier}</p>

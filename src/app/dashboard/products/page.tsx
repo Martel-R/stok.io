@@ -30,22 +30,22 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <Label htmlFor="name">Product Name</Label>
+        <Label htmlFor="name">Nome do Produto</Label>
         <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
       </div>
       <div>
-        <Label htmlFor="category">Category</Label>
+        <Label htmlFor="category">Categoria</Label>
         <Input id="category" name="category" value={formData.category} onChange={handleChange} required />
       </div>
       <div>
-        <Label htmlFor="price">Price</Label>
+        <Label htmlFor="price">Preço</Label>
         <Input id="price" name="price" type="number" value={formData.price} onChange={handleChange} required />
       </div>
       <div>
-        <Label htmlFor="stock">Stock</Label>
+        <Label htmlFor="stock">Estoque</Label>
         <Input id="stock" name="stock" type="number" value={formData.stock} onChange={handleChange} required />
       </div>
-      <Button type="submit">Save Product</Button>
+      <Button type="submit">Salvar Produto</Button>
     </form>
   );
 }
@@ -82,17 +82,17 @@ export default function ProductsPage() {
   return (
     <div className="space-y-6">
        <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Products</h1>
+        <h1 className="text-3xl font-bold">Produtos</h1>
          <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
             <DialogTrigger asChild>
                 <Button onClick={openNewDialog}>
                     <PlusCircle className="mr-2 h-4 w-4" />
-                    Add Product
+                    Adicionar Produto
                 </Button>
             </DialogTrigger>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>{editingProduct ? 'Edit Product' : 'Add New Product'}</DialogTitle>
+                    <DialogTitle>{editingProduct ? 'Editar Produto' : 'Adicionar Novo Produto'}</DialogTitle>
                 </DialogHeader>
                 <ProductForm product={editingProduct} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
             </DialogContent>
@@ -102,12 +102,12 @@ export default function ProductsPage() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[80px]">Image</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead>Category</TableHead>
-            <TableHead>Price</TableHead>
-            <TableHead>Stock</TableHead>
-            <TableHead>Actions</TableHead>
+            <TableHead className="w-[80px]">Imagem</TableHead>
+            <TableHead>Nome</TableHead>
+            <TableHead>Categoria</TableHead>
+            <TableHead>Preço</TableHead>
+            <TableHead>Estoque</TableHead>
+            <TableHead>Ações</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -118,19 +118,19 @@ export default function ProductsPage() {
               </TableCell>
               <TableCell>{product.name}</TableCell>
               <TableCell>{product.category}</TableCell>
-              <TableCell>${product.price.toFixed(2)}</TableCell>
+              <TableCell>R${product.price.toFixed(2).replace('.', ',')}</TableCell>
               <TableCell>{product.stock}</TableCell>
               <TableCell>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="h-8 w-8 p-0">
-                      <span className="sr-only">Open menu</span>
+                      <span className="sr-only">Abrir menu</span>
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => openEditDialog(product)}>Edit</DropdownMenuItem>
-                    <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(product.id)}>Delete</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openEditDialog(product)}>Editar</DropdownMenuItem>
+                    <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(product.id)}>Excluir</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </TableCell>

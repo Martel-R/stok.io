@@ -21,8 +21,8 @@ export default function LoginPage() {
     const success = await login(email, password);
     if (!success) {
       toast({
-        title: 'Login Failed',
-        description: 'Invalid email or password. Please try again.',
+        title: 'Falha no Login',
+        description: 'E-mail ou senha inválidos. Por favor, tente novamente.',
         variant: 'destructive',
       });
     }
@@ -32,8 +32,8 @@ export default function LoginPage() {
     const success = await login(userEmail, 'password');
      if (!success) {
       toast({
-        title: 'Login Failed',
-        description: 'Could not log in with the selected role.',
+        title: 'Falha no Login',
+        description: 'Não foi possível fazer login com o perfil selecionado.',
         variant: 'destructive',
       });
     }
@@ -50,7 +50,7 @@ export default function LoginPage() {
         <div className="relative z-20 mt-auto">
           <blockquote className="space-y-2">
             <p className="text-lg">
-              &ldquo;This inventory system has transformed our business, giving us insights we never thought possible.&rdquo;
+              &ldquo;Este sistema de estoque transformou nosso negócio, nos dando insights que nunca pensamos ser possíveis.&rdquo;
             </p>
             <footer className="text-sm">Sofia Davis, CEO</footer>
           </blockquote>
@@ -61,16 +61,16 @@ export default function LoginPage() {
           <div className="grid gap-2 text-center">
             <h1 className="text-3xl font-bold">Login</h1>
             <p className="text-balance text-muted-foreground">
-              Enter your email below to login to your account
+              Digite seu e-mail abaixo para entrar na sua conta
             </p>
           </div>
           <form onSubmit={handleLogin} className="grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">E-mail</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="m@example.com"
+                placeholder="m@exemplo.com"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -79,7 +79,7 @@ export default function LoginPage() {
             </div>
             <div className="grid gap-2">
               <div className="flex items-center">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">Senha</Label>
               </div>
               <Input 
                 id="password" 
@@ -92,15 +92,15 @@ export default function LoginPage() {
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Login
+              Entrar
             </Button>
           </form>
           <div className="mt-4 text-center text-sm">
-            <p className="text-muted-foreground mb-2">Or quick login as:</p>
+            <p className="text-muted-foreground mb-2">Ou login rápido como:</p>
             <div className="grid grid-cols-3 gap-2">
                 <Button variant="outline" onClick={() => quickLogin('admin@instock.ai')} disabled={loading}>Admin</Button>
-                <Button variant="outline" onClick={() => quickLogin('manager@instock.ai')} disabled={loading}>Manager</Button>
-                <Button variant="outline" onClick={() => quickLogin('cashier@instock.ai')} disabled={loading}>Cashier</Button>
+                <Button variant="outline" onClick={() => quickLogin('manager@instock.ai')} disabled={loading}>Gerente</Button>
+                <Button variant="outline" onClick={() => quickLogin('cashier@instock.ai')} disabled={loading}>Caixa</Button>
             </div>
           </div>
         </div>

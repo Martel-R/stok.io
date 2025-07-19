@@ -11,8 +11,8 @@ import { Loader2, Lock } from 'lucide-react';
 
 export default function DataToolsPage() {
   const { user } = useAuth();
-  const [dataDescription, setDataDescription] = useState('Weekly sales figures for all product categories.');
-  const [dataToSummarize, setDataToSummarize] = useState('Electronics: $15,200, Furniture: $8,500, Groceries: $12,100, Sports: $5,400');
+  const [dataDescription, setDataDescription] = useState('Valores de vendas semanais para todas as categorias de produtos.');
+  const [dataToSummarize, setDataToSummarize] = useState('Eletrônicos: R$15.200, Móveis: R$8.500, Mercearia: R$12.100, Esportes: R$5.400');
   const [summary, setSummary] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -26,7 +26,7 @@ export default function DataToolsPage() {
       const result = await summarizeDataRequest({ dataDescription, data: dataToSummarize });
       setSummary(result.summary);
     } catch (error) {
-      setSummary('Failed to generate summary. Please try again.');
+      setSummary('Falha ao gerar o resumo. Por favor, tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -37,10 +37,10 @@ export default function DataToolsPage() {
         <div className="flex h-full items-center justify-center">
             <Card className="w-full max-w-md text-center">
                 <CardHeader>
-                    <CardTitle className="flex items-center justify-center gap-2"><Lock /> Access Denied</CardTitle>
+                    <CardTitle className="flex items-center justify-center gap-2"><Lock /> Acesso Negado</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <p>This feature is only available to Admin roles.</p>
+                    <p>Este recurso está disponível apenas para a função de Administrador.</p>
                 </CardContent>
             </Card>
         </div>
@@ -49,35 +49,35 @@ export default function DataToolsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">AI Data Preparation Tool</h1>
+      <h1 className="text-3xl font-bold">Ferramenta de Preparação de Dados com IA</h1>
       <Card>
         <CardHeader>
-          <CardTitle>Data Summarizer</CardTitle>
-          <CardDescription>Provide data and a description, and the AI will generate a summary.</CardDescription>
+          <CardTitle>Resumidor de Dados</CardTitle>
+          <CardDescription>Forneça os dados e uma descrição, e a IA gerará um resumo.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-2">
-            <Label htmlFor="data-description">Data Description</Label>
+            <Label htmlFor="data-description">Descrição dos Dados</Label>
             <Input 
               id="data-description" 
               value={dataDescription} 
               onChange={(e) => setDataDescription(e.target.value)}
-              placeholder="e.g., Monthly user sign-up data"
+              placeholder="Ex: Dados de inscrição de usuários mensais"
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="data-to-summarize">Data</Label>
+            <Label htmlFor="data-to-summarize">Dados</Label>
             <Textarea 
               id="data-to-summarize" 
               value={dataToSummarize} 
               onChange={(e) => setDataToSummarize(e.target.value)}
-              placeholder="Paste your data here..."
+              placeholder="Cole seus dados aqui..."
               rows={10}
             />
           </div>
           <Button onClick={handleSummarize} disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Summarize Data
+            Resumir Dados
           </Button>
         </CardContent>
       </Card>
@@ -85,7 +85,7 @@ export default function DataToolsPage() {
       {summary && (
         <Card>
           <CardHeader>
-            <CardTitle>AI Generated Summary</CardTitle>
+            <CardTitle>Resumo Gerado por IA</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="whitespace-pre-wrap">{summary}</p>

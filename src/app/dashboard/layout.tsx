@@ -15,12 +15,12 @@ function DashboardNav() {
     const { user } = useAuth();
     
     const navItems = [
-        { href: '/dashboard', label: 'Dashboard', icon: Home, roles: ['admin', 'manager'] },
-        { href: '/dashboard/products', label: 'Products', icon: Package, roles: ['admin', 'manager'] },
-        { href: '/dashboard/inventory', label: 'Inventory', icon: BarChart, roles: ['admin', 'manager'] },
-        { href: '/dashboard/pos', label: 'POS', icon: ShoppingCart, roles: ['admin', 'manager', 'cashier'] },
-        { href: '/dashboard/assistant', label: 'AI Assistant', icon: Bot, roles: ['admin', 'manager'] },
-        { href: '/dashboard/data-tools', label: 'Data Tools', icon: Wrench, roles: ['admin'] },
+        { href: '/dashboard', label: 'Painel', icon: Home, roles: ['admin', 'manager'] },
+        { href: '/dashboard/products', label: 'Produtos', icon: Package, roles: ['admin', 'manager'] },
+        { href: '/dashboard/inventory', label: 'Estoque', icon: BarChart, roles: ['admin', 'manager'] },
+        { href: '/dashboard/pos', label: 'PDV', icon: ShoppingCart, roles: ['admin', 'manager', 'cashier'] },
+        { href: '/dashboard/assistant', label: 'Assistente IA', icon: Bot, roles: ['admin', 'manager'] },
+        { href: '/dashboard/data-tools', label: 'Ferramentas de Dados', icon: Wrench, roles: ['admin'] },
     ];
 
     return (
@@ -64,13 +64,13 @@ function UserNav() {
                 <DropdownMenuGroup>
                     <DropdownMenuItem>
                         <Users className="mr-2 h-4 w-4" />
-                        <span>Profile</span>
+                        <span>Perfil</span>
                     </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout}>
                     <LogOut className="mr-2 h-4 w-4" />
-                    <span>Log out</span>
+                    <span>Sair</span>
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>
@@ -91,8 +91,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return (
         <SidebarProvider>
             <div className="flex h-screen overflow-hidden">
-                <Sidebar className="border-r">
-                    <SidebarHeader className="p-4">
+                <Sidebar>
+                    <SidebarHeader>
                         <div className="flex items-center gap-2">
                           <Icons.logo className="h-8 w-8 text-primary" />
                           <span className="text-xl font-semibold">InStockAI</span>
@@ -101,13 +101,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <SidebarContent className="p-2">
                        <DashboardNav />
                     </SidebarContent>
-                    <SidebarFooter className="p-4">
-                        {/* Footer content if any */}
+                    <SidebarFooter>
+                        {/* Conteúdo do rodapé, se houver */}
                     </SidebarFooter>
                 </Sidebar>
                 <div className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden">
                     <header className="sticky top-0 flex h-16 items-center justify-between gap-4 border-b bg-background px-4 md:px-6">
-                        <div className="md:hidden">
+                        <div>
                             <SidebarTrigger />
                         </div>
                         <div className="flex w-full items-center justify-end gap-4">

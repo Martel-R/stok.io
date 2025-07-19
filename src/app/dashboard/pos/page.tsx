@@ -41,10 +41,10 @@ export default function POSPage() {
   
   const handleCheckout = () => {
       if (cart.length === 0) {
-          toast({ title: 'Empty Cart', description: 'Please add items to the cart before checkout.', variant: 'destructive'});
+          toast({ title: 'Carrinho Vazio', description: 'Adicione itens ao carrinho antes de finalizar.', variant: 'destructive'});
           return;
       }
-      toast({ title: 'Checkout Successful!', description: `Total: $${grandTotal.toFixed(2)}`});
+      toast({ title: 'Compra finalizada com sucesso!', description: `Total: R$${grandTotal.toFixed(2).replace('.', ',')}`});
       setCart([]);
   }
 
@@ -53,7 +53,7 @@ export default function POSPage() {
       <div className="md:col-span-2">
         <Card className="h-full">
           <CardHeader>
-            <CardTitle>Products</CardTitle>
+            <CardTitle>Produtos</CardTitle>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[calc(100vh-16rem)]">
@@ -63,7 +63,7 @@ export default function POSPage() {
                     <CardContent className="p-2 flex flex-col items-center justify-center">
                        <Image src={product.imageUrl} alt={product.name} width={150} height={150} className="rounded-md" data-ai-hint="product image"/>
                       <p className="font-semibold text-sm mt-2 text-center">{product.name}</p>
-                      <p className="text-xs text-muted-foreground">${product.price.toFixed(2)}</p>
+                      <p className="text-xs text-muted-foreground">R${product.price.toFixed(2).replace('.', ',')}</p>
                     </CardContent>
                   </Card>
                 ))}
@@ -76,22 +76,22 @@ export default function POSPage() {
       <div className="md:col-span-1">
         <Card className="h-full flex flex-col">
           <CardHeader>
-            <CardTitle>Cart</CardTitle>
+            <CardTitle>Carrinho</CardTitle>
           </CardHeader>
           <CardContent className="flex-grow">
             <ScrollArea className="h-[calc(100vh-25rem)]">
                 {cart.length === 0 ? (
-                    <p className="text-muted-foreground text-center">Cart is empty</p>
+                    <p className="text-muted-foreground text-center">O carrinho está vazio</p>
                 ) : (
                     <div className="space-y-4">
                         {cart.map(item => (
                             <div key={item.id} className="flex justify-between items-center">
                                 <div>
                                     <p className="font-medium">{item.name}</p>
-                                    <p className="text-sm text-muted-foreground">${item.price.toFixed(2)} x {item.quantity}</p>
+                                    <p className="text-sm text-muted-foreground">R${item.price.toFixed(2).replace('.', ',')} x {item.quantity}</p>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <p className="font-semibold">${(item.price * item.quantity).toFixed(2)}</p>
+                                    <p className="font-semibold">R${(item.price * item.quantity).toFixed(2).replace('.', ',')}</p>
                                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFromCart(item.id)}>
                                         <X className="h-4 w-4"/>
                                     </Button>
@@ -104,13 +104,13 @@ export default function POSPage() {
           </CardContent>
           <CardFooter className="flex-col !p-6">
              <div className="w-full space-y-2">
-                 <div className="flex justify-between"><p>Subtotal</p><p>${total.toFixed(2)}</p></div>
-                 <div className="flex justify-between"><p>Tax (8%)</p><p>${tax.toFixed(2)}</p></div>
+                 <div className="flex justify-between"><p>Subtotal</p><p>R${total.toFixed(2).replace('.', ',')}</p></div>
+                 <div className="flex justify-between"><p>Imposto (8%)</p><p>R${tax.toFixed(2).replace('.', ',')}</p></div>
                  <Separator />
-                 <div className="flex justify-between font-bold text-lg"><p>Total</p><p>${grandTotal.toFixed(2)}</p></div>
+                 <div className="flex justify-between font-bold text-lg"><p>Total</p><p>R${grandTotal.toFixed(2).replace('.', ',')}</p></div>
              </div>
              <Button className="w-full mt-4" size="lg" onClick={handleCheckout}>
-                 <CreditCard className="mr-2 h-4 w-4" /> Checkout
+                 <CreditCard className="mr-2 h-4 w-4" /> Finalizar Compra
              </Button>
           </CardFooter>
         </Card>

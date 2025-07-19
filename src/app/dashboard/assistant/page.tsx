@@ -35,8 +35,8 @@ export default function AssistantPage() {
     try {
       // In a real app, you would dynamically provide context based on the question.
       // Here, we provide a summary of all products as context.
-      const inventoryContext = MOCK_PRODUCTS.map(p => `${p.name}: ${p.stock} units`).join(', ');
-      const fullQuestion = `Given the inventory context: [${inventoryContext}], answer the following question: ${input}`;
+      const inventoryContext = MOCK_PRODUCTS.map(p => `${p.name}: ${p.stock} unidades`).join(', ');
+      const fullQuestion = `Dado o contexto do estoque: [${inventoryContext}], responda à seguinte pergunta: ${input}`;
 
       const response = await answerInventoryQuestion({ question: fullQuestion });
       const botMessage: Message = { sender: 'bot', text: response.answer };
@@ -44,7 +44,7 @@ export default function AssistantPage() {
     } catch (error) {
       const errorMessage: Message = {
         sender: 'bot',
-        text: 'Sorry, I encountered an error. Please try again.',
+        text: 'Desculpe, encontrei um erro. Por favor, tente novamente.',
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
@@ -57,10 +57,10 @@ export default function AssistantPage() {
         <div className="flex h-full items-center justify-center">
             <Card className="w-full max-w-md text-center">
                 <CardHeader>
-                    <CardTitle className="flex items-center justify-center gap-2"><Lock /> Access Denied</CardTitle>
+                    <CardTitle className="flex items-center justify-center gap-2"><Lock /> Acesso Negado</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <p>This feature is only available to Admin and Manager roles.</p>
+                    <p>Este recurso está disponível apenas para as funções de Administrador e Gerente.</p>
                 </CardContent>
             </Card>
         </div>
@@ -71,8 +71,8 @@ export default function AssistantPage() {
     <div className="flex h-[calc(100vh-8rem)] flex-col">
       <Card className="flex-grow flex flex-col">
         <CardHeader>
-            <CardTitle>AI Assistant</CardTitle>
-            <CardDescription>Ask questions about your inventory.</CardDescription>
+            <CardTitle>Assistente IA</CardTitle>
+            <CardDescription>Faça perguntas sobre seu estoque.</CardDescription>
         </CardHeader>
         <CardContent className="flex-grow">
           <ScrollArea className="h-[calc(100vh-20rem)] pr-4">
@@ -84,7 +84,7 @@ export default function AssistantPage() {
                 >
                   {message.sender === 'bot' && (
                     <Avatar className="h-8 w-8">
-                        <AvatarFallback>AI</AvatarFallback>
+                        <AvatarFallback>IA</AvatarFallback>
                     </Avatar>
                   )}
                   <div
@@ -107,7 +107,7 @@ export default function AssistantPage() {
               {loading && (
                 <div className="flex items-start gap-3">
                     <Avatar className="h-8 w-8">
-                        <AvatarFallback>AI</AvatarFallback>
+                        <AvatarFallback>IA</AvatarFallback>
                     </Avatar>
                     <div className="bg-muted rounded-lg p-3 flex items-center">
                         <Loader2 className="h-4 w-4 animate-spin"/>
@@ -121,7 +121,7 @@ export default function AssistantPage() {
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="e.g., How many Quantum Laptops are in stock?"
+            placeholder="Ex: Quantos Laptops Quânticos há em estoque?"
             disabled={loading}
           />
           <Button type="submit" disabled={loading || !input.trim()}>

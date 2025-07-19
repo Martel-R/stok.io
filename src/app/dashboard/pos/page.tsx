@@ -1,31 +1,201 @@
 
 'use client';
-import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, where, writeBatch, doc } from 'firebase/firestore';
+import { useState, useEffect, useMemo } from 'react';
+import { collection, onSnapshot, query, where, writeBatch, doc, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Product, Sale } from '@/lib/types';
+import type { Product, Sale, PaymentCondition, PaymentDetail } from '@/lib/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { CreditCard, X, Loader2 } from 'lucide-react';
+import { CreditCard, X, Loader2, PlusCircle, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
 import Link from 'next/link';
-
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 interface CartItem extends Product {
   quantity: number;
 }
 
+function CheckoutModal({
+  isOpen,
+  onOpenChange,
+  cart,
+  grandTotal,
+  onCheckout,
+  paymentConditions
+}: {
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
+  cart: CartItem[];
+  grandTotal: number;
+  onCheckout: (payments: PaymentDetail[]) => Promise<void>;
+  paymentConditions: PaymentCondition[];
+}) {
+  const [payments, setPayments] = useState<PaymentDetail[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const { toast } = useToast();
+
+  const paidAmount = useMemo(() => payments.reduce((acc, p) => acc + p.amount, 0), [payments]);
+  const remainingAmount = useMemo(() => grandTotal - paidAmount, [grandTotal, paidAmount]);
+
+  useEffect(() => {
+    if (isOpen) {
+      // Reset payments when modal opens
+      setPayments([{
+        conditionId: paymentConditions[0]?.id || '',
+        conditionName: paymentConditions[0]?.name || '',
+        amount: grandTotal,
+        installments: 1,
+        type: paymentConditions[0]?.type || 'cash',
+      }]);
+    } else {
+      // Clear on close
+      setPayments([]);
+    }
+  }, [isOpen, grandTotal, paymentConditions]);
+
+
+  const handleAddPayment = () => {
+    if (remainingAmount <= 0) return;
+    setPayments(prev => [...prev, {
+      conditionId: paymentConditions[0]?.id || '',
+      conditionName: paymentConditions[0]?.name || '',
+      amount: remainingAmount,
+      installments: 1,
+      type: paymentConditions[0]?.type || 'cash',
+    }]);
+  };
+
+  const handleRemovePayment = (index: number) => {
+    setPayments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handlePaymentChange = (index: number, field: keyof PaymentDetail, value: any) => {
+    setPayments(prev => {
+      const newPayments = [...prev];
+      const payment = { ...newPayments[index] };
+      (payment[field] as any) = value;
+
+      if (field === 'conditionId') {
+        const condition = paymentConditions.find(c => c.id === value);
+        payment.conditionName = condition?.name || '';
+        payment.type = condition?.type || 'cash';
+        if (payment.type !== 'credit') {
+            payment.installments = 1;
+        }
+      }
+      
+      newPayments[index] = payment;
+      return newPayments;
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (Math.abs(remainingAmount) > 0.01) {
+      toast({ title: 'Valor não bate', description: `A soma dos pagamentos deve ser igual ao total. Faltam R$${remainingAmount.toFixed(2)}`, variant: 'destructive' });
+      return;
+    }
+    setIsProcessing(true);
+    await onCheckout(payments);
+    setIsProcessing(false);
+    onOpenChange(false);
+  };
+  
+  if (!isOpen) return null;
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Finalizar Compra</DialogTitle>
+          <DialogDescription>Selecione as formas de pagamento para o total de <span className="font-bold">R${grandTotal.toFixed(2).replace('.', ',')}</span></DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
+          {payments.map((payment, index) => (
+            <div key={index} className="p-4 border rounded-lg space-y-3 relative">
+              {payments.length > 1 && (
+                  <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7" onClick={() => handleRemovePayment(index)}>
+                      <Trash2 className="h-4 w-4 text-destructive"/>
+                  </Button>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                 <div>
+                    <Label>Forma de Pagamento</Label>
+                    <Select
+                      value={payment.conditionId}
+                      onValueChange={(val) => handlePaymentChange(index, 'conditionId', val)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {paymentConditions.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                 </div>
+                 <div>
+                    <Label htmlFor={`amount-${index}`}>Valor</Label>
+                    <Input
+                      id={`amount-${index}`}
+                      type="number"
+                      value={payment.amount}
+                      onChange={(e) => handlePaymentChange(index, 'amount', parseFloat(e.target.value) || 0)}
+                      className="text-right"
+                    />
+                 </div>
+              </div>
+              {payment.type === 'credit' && (
+                <div>
+                  <Label htmlFor={`installments-${index}`}>Parcelas</Label>
+                  <Input
+                    id={`installments-${index}`}
+                    type="number"
+                    min={1}
+                    value={payment.installments}
+                    onChange={(e) => handlePaymentChange(index, 'installments', parseInt(e.target.value) || 1)}
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+          {remainingAmount > 0.01 && (
+             <Button variant="outline" onClick={handleAddPayment} className="w-full">
+                <PlusCircle className="mr-2 h-4 w-4"/> Adicionar Outra Forma de Pagamento
+             </Button>
+          )}
+        </div>
+        <DialogFooter className="grid grid-cols-2 gap-4">
+            <div className="text-left">
+                <p>Total Pago: <span className="font-bold">R${paidAmount.toFixed(2).replace('.',',')}</span></p>
+                <p className={remainingAmount !== 0 ? 'text-destructive' : ''}>
+                    Restante: <span className="font-bold">R${remainingAmount.toFixed(2).replace('.',',')}</span>
+                </p>
+            </div>
+            <Button onClick={handleSubmit} disabled={isProcessing}>
+                {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4"/>}
+                Confirmar Pagamento
+            </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
 export default function POSPage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [paymentConditions, setPaymentConditions] = useState<PaymentCondition[]>([]);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
   const { toast } = useToast();
   const { user, currentBranch, loading: authLoading } = useAuth();
 
@@ -36,12 +206,11 @@ export default function POSPage() {
         return;
     }
 
-    const q = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const productsData: Product[] = [];
-      querySnapshot.forEach((doc) => {
-        productsData.push({ id: doc.id, ...doc.data() } as Product);
-      });
+    const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
+    const conditionsQuery = query(collection(db, 'paymentConditions'));
+
+    const unsubscribeProducts = onSnapshot(productsQuery, (querySnapshot) => {
+      const productsData: Product[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
       setProducts(productsData);
       setLoading(false);
     }, (error) => {
@@ -50,7 +219,15 @@ export default function POSPage() {
         setLoading(false);
     });
 
-    return () => unsubscribe();
+    const unsubscribeConditions = onSnapshot(conditionsQuery, (snapshot) => {
+        const conditionsData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition);
+        setPaymentConditions(conditionsData);
+    });
+
+    return () => {
+        unsubscribeProducts();
+        unsubscribeConditions();
+    }
   }, [currentBranch, authLoading, toast]);
 
   const addToCart = (product: Product) => {
@@ -81,7 +258,7 @@ export default function POSPage() {
   const tax = total * 0.08;
   const grandTotal = total + tax;
   
-  const handleCheckout = async () => {
+  const handleCheckout = async (payments: PaymentDetail[]) => {
       if (cart.length === 0) {
           toast({ title: 'Carrinho Vazio', description: 'Adicione itens ao carrinho antes de finalizar.', variant: 'destructive'});
           return;
@@ -91,12 +268,9 @@ export default function POSPage() {
           return;
       }
 
-      setIsCheckingOut(true);
-
       try {
         const batch = writeBatch(db);
         
-        // Prepare sales and update stock
         for (const item of cart) {
             const saleData: Omit<Sale, 'id'> = {
                 productName: item.name,
@@ -105,6 +279,7 @@ export default function POSPage() {
                 date: new Date(),
                 cashier: user.name,
                 branchId: currentBranch.id,
+                payments: payments
             };
             const saleRef = doc(collection(db, "sales"));
             batch.set(saleRef, saleData);
@@ -122,8 +297,6 @@ export default function POSPage() {
       } catch (error) {
           console.error("Checkout error: ", error);
           toast({ title: 'Erro ao finalizar a compra', description: 'Ocorreu um erro ao atualizar o estoque ou salvar a venda.', variant: 'destructive'});
-      } finally {
-          setIsCheckingOut(false);
       }
   }
 
@@ -142,6 +315,7 @@ export default function POSPage() {
   }
 
   return (
+    <>
     <div className="grid h-[calc(100vh-8rem)] md:grid-cols-3 gap-8">
       <div className="md:col-span-2">
         <Card className="h-full">
@@ -221,13 +395,22 @@ export default function POSPage() {
                  <Separator />
                  <div className="flex justify-between font-bold text-lg"><p>Total</p><p>R${grandTotal.toFixed(2).replace('.', ',')}</p></div>
              </div>
-             <Button className="w-full mt-4" size="lg" onClick={handleCheckout} disabled={isCheckingOut}>
-                 {isCheckingOut ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
+             <Button className="w-full mt-4" size="lg" onClick={() => setIsCheckoutModalOpen(true)} disabled={cart.length === 0}>
+                 <CreditCard className="mr-2 h-4 w-4" />
                  Finalizar Compra
              </Button>
           </CardFooter>
         </Card>
       </div>
     </div>
+    <CheckoutModal
+      isOpen={isCheckoutModalOpen}
+      onOpenChange={setIsCheckoutModalOpen}
+      cart={cart}
+      grandTotal={grandTotal}
+      onCheckout={handleCheckout}
+      paymentConditions={paymentConditions}
+    />
+    </>
   );
 }

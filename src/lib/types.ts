@@ -19,6 +19,25 @@ export interface Product {
   branchId: string;
 }
 
+export type PaymentConditionType = 'credit' | 'debit' | 'cash' | 'pix';
+
+export interface PaymentCondition {
+    id: string;
+    name: string;
+    type: PaymentConditionType;
+    fee: number;
+    feeType: 'percentage' | 'fixed';
+}
+
+export interface PaymentDetail {
+    conditionId: string;
+    conditionName: string;
+    type: PaymentConditionType;
+    amount: number;
+    installments: number;
+}
+
+
 export interface Sale {
   id:string;
   productName: string;
@@ -27,6 +46,7 @@ export interface Sale {
   date: Date;
   cashier: string;
   branchId: string;
+  payments: PaymentDetail[];
 }
 
 export interface Branch {

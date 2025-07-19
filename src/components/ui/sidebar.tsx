@@ -22,7 +22,14 @@ export function useSidebar() {
 }
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
-  const [isOpen, setIsOpen] = React.useState(false);
+  const [isOpen, setIsOpen] = React.useState(true);
+
+  // Close sidebar on mobile by default
+  React.useEffect(() => {
+    if (window.innerWidth < 768) {
+      setIsOpen(false);
+    }
+  }, []);
 
   return (
     <SidebarContext.Provider value={{ isOpen, setIsOpen }}>
@@ -39,8 +46,8 @@ export const Sidebar = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTM
         <aside
           ref={ref}
           className={cn(
-            'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-background transition-transform duration-300 ease-in-out md:translate-x-0',
-            !isOpen && '-translate-x-full',
+            'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-background transition-transform duration-300 ease-in-out',
+            isOpen ? 'translate-x-0' : '-translate-x-full',
             className
           )}
           {...props}
@@ -117,7 +124,7 @@ export function SidebarTrigger({ className, ...props }: ButtonProps) {
       variant="ghost"
       size="icon"
       onClick={() => setIsOpen(!isOpen)}
-      className={cn('md:hidden', className)}
+      className={cn(className)}
       {...props}
     >
       {isOpen ? <X /> : <Menu />}

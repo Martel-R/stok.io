@@ -2,7 +2,7 @@
 'use client';
 
 import { useAuth } from '@/lib/auth';
-import { SidebarProvider, Sidebar, SidebarTrigger, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter } from '@/components/ui/sidebar';
+import { SidebarProvider, Sidebar, SidebarTrigger, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, useSidebar } from '@/components/ui/sidebar';
 import { Icons } from '@/components/icons';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -144,6 +144,45 @@ function UserNav() {
     );
 }
 
+function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
+    const { isOpen } = useSidebar();
+    return (
+        <div className="flex h-screen overflow-hidden">
+            <Sidebar>
+                <SidebarHeader>
+                    <div className="flex items-center gap-2">
+                        <Icons.logo className="h-8 w-8 text-primary" />
+                        <span className="text-xl font-semibold">InStockAI</span>
+                    </div>
+                </SidebarHeader>
+                <SidebarContent className="p-2">
+                    <DashboardNav />
+                </SidebarContent>
+                <SidebarFooter>
+                    {/* Conteúdo do rodapé, se houver */}
+                </SidebarFooter>
+            </Sidebar>
+            <div className={cn(
+                "flex flex-1 flex-col overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out",
+                isOpen ? "md:ml-64" : "md:ml-0"
+            )}>
+                <header className="sticky top-0 flex h-16 items-center justify-between gap-4 border-b bg-background px-4 md:px-6">
+                    <div className="flex items-center gap-4">
+                        <SidebarTrigger />
+                        <BranchSwitcher />
+                    </div>
+                    <div className="flex w-full items-center justify-end gap-4">
+                        <UserNav />
+                    </div>
+                </header>
+                <main className="flex-1 p-4 md:p-6 lg:p-8">
+                    {children}
+                </main>
+            </div>
+        </div>
+    )
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
     const { loading } = useAuth();
 
@@ -157,36 +196,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     return (
         <SidebarProvider>
-            <div className="flex h-screen overflow-hidden">
-                <Sidebar>
-                    <SidebarHeader>
-                        <div className="flex items-center gap-2">
-                          <Icons.logo className="h-8 w-8 text-primary" />
-                          <span className="text-xl font-semibold">InStockAI</span>
-                        </div>
-                    </SidebarHeader>
-                    <SidebarContent className="p-2">
-                       <DashboardNav />
-                    </SidebarContent>
-                    <SidebarFooter>
-                        {/* Conteúdo do rodapé, se houver */}
-                    </SidebarFooter>
-                </Sidebar>
-                <div className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden md:pl-64">
-                    <header className="sticky top-0 flex h-16 items-center justify-between gap-4 border-b bg-background px-4 md:px-6">
-                        <div className="flex items-center gap-4">
-                            <SidebarTrigger />
-                             <BranchSwitcher />
-                        </div>
-                        <div className="flex w-full items-center justify-end gap-4">
-                           <UserNav />
-                        </div>
-                    </header>
-                    <main className="flex-1 p-4 md:p-6 lg:p-8">
-                      {children}
-                    </main>
-                </div>
-            </div>
+            <DashboardLayoutContent>{children}</DashboardLayoutContent>
         </SidebarProvider>
     );
 }

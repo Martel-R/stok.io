@@ -13,10 +13,6 @@ export const MOCK_PRODUCTS: Omit<Product, 'id' | 'branchId' | 'organizationId'>[
   { name: 'Smart-Watch Pro', category: 'Eletrônicos', price: 350, stock: 120, imageUrl: 'https://placehold.co/400x400.png' },
   { name: 'Cadeira Ergonômica 5000', category: 'Móveis', price: 500, stock: 25, imageUrl: 'https://placehold.co/400x400.png' },
   { name: 'Grãos de Café Orgânico', category: 'Mercearia', price: 25, stock: 200, imageUrl: 'https://placehold.co/400x400.png' },
-  { name: 'Luminária de Mesa Design', category: 'Móveis', price: 150, stock: 60, imageUrl: 'https://placehold.co/400x400.png' },
-  { name: 'Fones de Ouvido Sem Fio', category: 'Eletrônicos', price: 180, stock: 300, imageUrl: 'https://placehold.co/400x400.png' },
-  { name: 'Tapete de Yoga', category: 'Esportes', price: 40, stock: 150, imageUrl: 'https://placehold.co/400x400.png' },
-  { name: 'Garrafa de Água', category: 'Esportes', price: 20, stock: 400, imageUrl: 'https://placehold.co/400x400.png' },
 ];
 
 // This data is for dashboard visualization and also needs to be scoped

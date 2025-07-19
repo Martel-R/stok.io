@@ -27,7 +27,6 @@ function DashboardNav() {
         { href: '/dashboard/pos', label: 'Frente de Caixa', icon: ShoppingCart, roles: ['admin', 'manager', 'cashier'] },
         { href: '/dashboard/assistant', label: 'Oráculo AI', icon: Bot, roles: ['admin', 'manager'] },
         { href: '/dashboard/reports', label: 'Relatórios', icon: FileText, roles: ['admin'] },
-        { href: '/dashboard/settings?tab=users', label: 'Gestão de Pessoas', icon: Users, roles: ['admin'] },
         { href: '/dashboard/settings', label: 'Ajustes', icon: Settings, roles: ['admin'] },
     ];
 

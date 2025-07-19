@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart, DollarSign, Package, Users } from 'lucide-react';
+import { BarChart, DollarSign, Package, Users, Trophy } from 'lucide-react';
 import { Bar, BarChart as RechartsBarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { addDays, format, fromUnixTime } from 'date-fns';
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Product, Sale } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 // Helper para converter Timestamps do Firebase
 const convertSaleDates = (sale: any): Sale => ({
@@ -65,7 +66,19 @@ export default function DashboardPage() {
         }
     }).reverse();
 
-    const recentSales = sales.sort((a,b) => b.date.getTime() - a.date.getTime()).slice(0, 5);
+    const salesByCashier = sales.reduce((acc, sale) => {
+        const cashierName = sale.cashier || 'Desconhecido';
+        if (!acc[cashierName]) {
+            acc[cashierName] = 0;
+        }
+        acc[cashierName] += sale.total;
+        return acc;
+    }, {} as Record<string, number>);
+
+    const cashierRanking = Object.entries(salesByCashier)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 5);
+
 
     if (loadingData) {
         return (
@@ -179,20 +192,27 @@ export default function DashboardPage() {
                 </Card>
                 <Card className="col-span-4 lg:col-span-3">
                     <CardHeader>
-                        <CardTitle>Vendas Recentes</CardTitle>
+                        <CardTitle>Ranking de Vendedores</CardTitle>
                     </CardHeader>
                     <CardContent>
                          <div className="space-y-4">
-                            {recentSales.length > 0 ? recentSales.map((sale) => (
-                                <div key={sale.id} className="flex items-center">
-                                    <div className="flex-1 space-y-1">
-                                        <p className="text-sm font-medium leading-none">{sale.productName}</p>
-                                        <p className="text-sm text-muted-foreground">por {sale.cashier}</p>
+                            {cashierRanking.length > 0 ? cashierRanking.map(([name, total], index) => (
+                                <div key={name} className="flex items-center">
+                                    <Trophy className={`w-5 h-5 mr-3 ${
+                                        index === 0 ? 'text-yellow-500' : 
+                                        index === 1 ? 'text-gray-400' :
+                                        index === 2 ? 'text-yellow-700' : 'text-muted-foreground'
+                                    }`} />
+                                    <Avatar className="h-9 w-9">
+                                        <AvatarFallback>{name.charAt(0).toUpperCase()}</AvatarFallback>
+                                    </Avatar>
+                                    <div className="ml-4 flex-1 space-y-1">
+                                        <p className="text-sm font-medium leading-none">{name}</p>
                                     </div>
-                                    <div className="font-medium">+R${sale.total.toFixed(2).replace('.',',')}</div>
+                                    <div className="font-medium">R${total.toFixed(2).replace('.',',')}</div>
                                 </div>
                             )) : (
-                                <p className="text-sm text-muted-foreground text-center">Nenhuma venda registrada nesta filial ainda.</p>
+                                <p className="text-sm text-muted-foreground text-center">Nenhuma venda registrada para ranking.</p>
                             )}
                         </div>
                     </CardContent>

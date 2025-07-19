@@ -4,13 +4,13 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query, where } from 'firebase/firestore';
-import type { Product } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Upload, Link, Loader2 } from 'lucide-react';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query, where, runTransaction, serverTimestamp } from 'firebase/firestore';
+import type { Product, StockEntry } from '@/lib/types';
+import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check } from 'lucide-react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
@@ -18,8 +18,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import Link from 'next/link';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { cn } from '@/lib/utils';
 
-function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId' | 'stock'>) => void; onDone: () => void }) {
+function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId'>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Product>>(
     product || { name: '', category: '', price: 0, stock: 0, imageUrl: '' }
   );
@@ -45,11 +49,10 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const { stock, ...productData } = formData; // Exclude stock from the form data
     onSave({
-      ...productData,
+      ...formData,
       imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png'
-    } as Omit<Product, 'id' | 'branchId' | 'stock'>);
+    } as Omit<Product, 'id' | 'branchId'>);
     onDone();
   };
 
@@ -67,11 +70,15 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
         <Label htmlFor="price">Preço</Label>
         <Input id="price" name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} required />
       </div>
+       <div>
+        <Label htmlFor="stock">Estoque Inicial</Label>
+        <Input id="stock" name="stock" type="number" value={formData.stock} onChange={handleChange} required />
+      </div>
 
        <Tabs defaultValue="upload" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="upload"><Upload className="mr-2 h-4 w-4" /> Upload</TabsTrigger>
-            <TabsTrigger value="url"><Link className="mr-2 h-4 w-4" /> URL</TabsTrigger>
+            <TabsTrigger value="url"><LinkIcon className="mr-2 h-4 w-4" /> URL</TabsTrigger>
           </TabsList>
           <TabsContent value="upload">
              <div className="space-y-2 mt-4">
@@ -105,17 +112,142 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
   );
 }
 
+
+function AddStockForm({ products, onDone }: { products: Product[]; onDone: () => void }) {
+    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+    const [quantity, setQuantity] = useState(1);
+    const [open, setOpen] = useState(false);
+    const { user, currentBranch } = useAuth();
+    const { toast } = useToast();
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedProduct || quantity <= 0 || !user || !currentBranch) {
+            toast({ title: "Dados inválidos", description: "Selecione um produto e informe uma quantidade maior que zero.", variant: "destructive" });
+            return;
+        }
+
+        const productRef = doc(db, 'products', selectedProduct.id);
+        const stockEntryRef = collection(db, 'stockEntries');
+
+        try {
+            await runTransaction(db, async (transaction) => {
+                const productDoc = await transaction.get(productRef);
+                if (!productDoc.exists()) {
+                    throw "Produto não encontrado!";
+                }
+
+                const currentStock = productDoc.data().stock;
+                const newStock = currentStock + quantity;
+
+                transaction.update(productRef, { stock: newStock });
+
+                const newStockEntry: Omit<StockEntry, 'id'> = {
+                    productId: selectedProduct.id,
+                    productName: selectedProduct.name,
+                    quantityAdded: quantity,
+                    previousStock: currentStock,
+                    newStock: newStock,
+                    date: serverTimestamp(),
+                    userId: user.id,
+                    userName: user.name,
+                    branchId: currentBranch.id,
+                }
+                transaction.set(doc(stockEntryRef), newStockEntry);
+            });
+
+            toast({ title: "Estoque atualizado!", description: `${quantity} unidades de ${selectedProduct.name} adicionadas.` });
+            onDone();
+        } catch (error) {
+            console.error("Erro ao adicionar estoque:", error);
+            toast({ title: "Erro na transação", description: "Não foi possível atualizar o estoque.", variant: "destructive" });
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+             <div>
+                <Label>Produto</Label>
+                 <Popover open={open} onOpenChange={setOpen}>
+                    <PopoverTrigger asChild>
+                        <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={open}
+                            className="w-full justify-between"
+                        >
+                            <span className="truncate">{selectedProduct?.name || "Selecione o produto..."}</span>
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0">
+                        <Command>
+                            <CommandInput placeholder="Buscar produto..." />
+                            <CommandList>
+                                <CommandEmpty>Nenhum produto encontrado.</CommandEmpty>
+                                <CommandGroup>
+                                    {products.map((product) => (
+                                        <CommandItem
+                                            key={product.id}
+                                            value={product.name}
+                                            onSelect={() => {
+                                                setSelectedProduct(product);
+                                                setOpen(false);
+                                            }}
+                                        >
+                                            <Check
+                                                className={cn(
+                                                    "mr-2 h-4 w-4",
+                                                    selectedProduct?.id === product.id ? "opacity-100" : "opacity-0"
+                                                )}
+                                            />
+                                            {product.name}
+                                        </CommandItem>
+                                    ))}
+                                </CommandGroup>
+                            </CommandList>
+                        </Command>
+                    </PopoverContent>
+                </Popover>
+            </div>
+
+            {selectedProduct && (
+                <p className="text-sm text-muted-foreground">Estoque atual: {selectedProduct.stock}</p>
+            )}
+
+            <div>
+                <Label htmlFor="quantity">Quantidade a Adicionar</Label>
+                <Input
+                    id="quantity"
+                    type="number"
+                    min="1"
+                    value={quantity}
+                    onChange={(e) => setQuantity(parseInt(e.target.value, 10))}
+                    required
+                />
+            </div>
+            
+            <DialogFooter className="pt-4">
+                <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
+                <Button type="submit">Salvar Entrada</Button>
+            </DialogFooter>
+        </form>
+    );
+}
+
+
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isStockFormOpen, setIsStockFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
   const { toast } = useToast();
   const { currentBranch, loading: authLoading } = useAuth();
 
   useEffect(() => {
     if (authLoading || !currentBranch) {
-        setLoading(true); // Keep loading if auth is not ready or no branch is selected
+        setLoading(true);
         return;
     }
     
@@ -128,8 +260,8 @@ export default function ProductsPage() {
         console.log("Nenhum produto encontrado para esta filial. Semeando com dados de exemplo...");
         const batch = writeBatch(db);
         MOCK_PRODUCTS.forEach((product) => {
-          const docRef = doc(productsRef); // Gera novo ID
-          batch.set(docRef, {...product, stock: 0, branchId: currentBranch.id });
+          const docRef = doc(productsRef);
+          batch.set(docRef, {...product, branchId: currentBranch.id });
         });
         await batch.commit();
         toast({ title: 'Bem-vindo à sua nova filial!', description: 'Adicionamos alguns produtos de exemplo para você começar.' });
@@ -140,7 +272,7 @@ export default function ProductsPage() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
-      setProducts(productsData);
+      setProducts(productsData.sort((a,b) => a.name.localeCompare(b.name)));
       setLoading(false);
     }, (error) => {
         console.error("Error fetching products:", error);
@@ -151,7 +283,7 @@ export default function ProductsPage() {
     return () => unsubscribe();
   }, [currentBranch, authLoading, toast]);
 
-  const handleSave = async (productData: Omit<Product, 'id' | 'branchId' | 'stock'>) => {
+  const handleSave = async (productData: Omit<Product, 'id' | 'branchId'>) => {
     if (!currentBranch) {
         toast({ title: 'Nenhuma filial selecionada', description: 'Selecione uma filial para salvar o produto.', variant: 'destructive' });
         return;
@@ -162,7 +294,7 @@ export default function ProductsPage() {
         await updateDoc(productRef, productData);
         toast({ title: 'Produto atualizado com sucesso!' });
       } else {
-        await addDoc(collection(db, "products"), { ...productData, stock: 0, branchId: currentBranch.id });
+        await addDoc(collection(db, "products"), { ...productData, branchId: currentBranch.id });
         toast({ title: 'Produto adicionado com sucesso!' });
       }
     } catch (error) {
@@ -207,22 +339,39 @@ export default function ProductsPage() {
 
   return (
     <div className="space-y-6">
-       <div className="flex justify-between items-center">
+       <div className="flex justify-between items-center gap-4">
         <h1 className="text-3xl font-bold">Produtos</h1>
-         <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-            <DialogTrigger asChild>
-                <Button onClick={openNewDialog}>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Adicionar Produto
-                </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[480px]">
-                <DialogHeader>
-                    <DialogTitle>{editingProduct ? 'Editar Produto' : 'Adicionar Novo Produto'}</DialogTitle>
-                </DialogHeader>
-                <ProductForm product={editingProduct} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
-            </DialogContent>
-        </Dialog>
+        <div className="flex gap-2">
+            <Dialog open={isStockFormOpen} onOpenChange={setIsStockFormOpen}>
+                <DialogTrigger asChild>
+                    <Button variant="outline">
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Adicionar Estoque
+                    </Button>
+                </DialogTrigger>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Adicionar Estoque</DialogTitle>
+                    </DialogHeader>
+                    <AddStockForm products={products} onDone={() => setIsStockFormOpen(false)} />
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                <DialogTrigger asChild>
+                    <Button onClick={openNewDialog}>
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Adicionar Produto
+                    </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[480px]">
+                    <DialogHeader>
+                        <DialogTitle>{editingProduct ? 'Editar Produto' : 'Adicionar Novo Produto'}</DialogTitle>
+                    </DialogHeader>
+                    <ProductForm product={editingProduct} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
+                </DialogContent>
+            </Dialog>
+        </div>
       </div>
 
       <Table>

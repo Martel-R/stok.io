@@ -1,7 +1,7 @@
 
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Product, Sale, PaymentCondition, PaymentDetail, Combo } from '@/lib/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,7 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { format } from 'date-fns';
+import { format, fromUnixTime } from 'date-fns';
 
 
 type CartItem = (Product & { itemType: 'product'; quantity: number }) | (Combo & { itemType: 'combo'; quantity: number });
@@ -194,6 +194,22 @@ function CheckoutModal({
   );
 }
 
+const convertSaleDoc = (doc: any): Sale => {
+    const data = doc.data();
+    const date = data.date;
+
+    let saleDate: Date;
+    if (date instanceof Timestamp) {
+        saleDate = date.toDate();
+    } else if (typeof date === 'object' && date.seconds) {
+        saleDate = fromUnixTime(date.seconds);
+    } else {
+        saleDate = new Date(date);
+    }
+    
+    return { ...data, id: doc.id, date: saleDate } as Sale;
+};
+
 
 export default function POSPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -237,12 +253,7 @@ export default function POSPage() {
     });
 
     const unsubscribeSalesHistory = onSnapshot(salesQuery, (snapshot) => {
-        const salesData = snapshot.docs.map(doc => {
-            const data = doc.data();
-            // Handle Firebase Timestamp
-            const date = data.date.toDate ? data.date.toDate() : new Date(data.date);
-            return { ...data, id: doc.id, date } as Sale;
-        });
+        const salesData = snapshot.docs.map(convertSaleDoc);
         setSalesHistory(salesData);
     });
 

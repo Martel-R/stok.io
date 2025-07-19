@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp } from 'firebase/firestore';
@@ -463,7 +464,7 @@ export default function POSPage() {
       const price = item.itemType === 'product' ? item.price : item.finalPrice;
       return acc + price * item.quantity
   }, 0);
-  const tax = total * 0.08;
+  const tax = total * ((currentBranch?.taxRate || 0) / 100);
   const grandTotal = total + tax;
   
   const handleCheckout = async (payments: PaymentDetail[]) => {
@@ -651,7 +652,7 @@ export default function POSPage() {
           <CardFooter className="flex-col !p-6 border-t">
              <div className="w-full space-y-2">
                  <div className="flex justify-between"><p>Subtotal</p><p>R${total.toFixed(2).replace('.', ',')}</p></div>
-                 <div className="flex justify-between"><p>Imposto (8%)</p><p>R${tax.toFixed(2).replace('.', ',')}</p></div>
+                 <div className="flex justify-between"><p>Imposto ({currentBranch?.taxRate || 0}%)</p><p>R${tax.toFixed(2).replace('.', ',')}</p></div>
                  <Separator />
                  <div className="flex justify-between font-bold text-lg"><p>Total</p><p>R${grandTotal.toFixed(2).replace('.', ',')}</p></div>
              </div>

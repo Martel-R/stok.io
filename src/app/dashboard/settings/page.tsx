@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -453,7 +454,7 @@ function BranchesSettings() {
 function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users: User[]; onSave: (data: Omit<Branch, 'id' | 'organizationId'>) => void; onDone: () => void }) {
     const { user: currentUser } = useAuth();
     const [formData, setFormData] = useState(
-        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], lowStockThreshold: 10 }
+        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], lowStockThreshold: 10, taxRate: 8 }
     );
     const [open, setOpen] = useState(false);
 
@@ -491,12 +492,15 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
                 <Label htmlFor="location">Localização</Label>
                 <Input id="location" name="location" value={formData.location} onChange={handleChange} required placeholder="Ex: Rua, Nº, Bairro, Cidade - UF" />
             </div>
-            <div>
-                <Label htmlFor="lowStockThreshold">Limite para Estoque Baixo</Label>
-                <Input id="lowStockThreshold" name="lowStockThreshold" type="number" value={formData.lowStockThreshold} onChange={handleChange} required />
-                <p className="text-sm text-muted-foreground pt-1">
-                    Produtos com quantidade igual ou inferior a este valor serão marcados como "Estoque Baixo".
-                </p>
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <Label htmlFor="lowStockThreshold">Limite para Estoque Baixo</Label>
+                    <Input id="lowStockThreshold" name="lowStockThreshold" type="number" value={formData.lowStockThreshold} onChange={handleChange} required />
+                </div>
+                 <div>
+                    <Label htmlFor="taxRate">Imposto (%)</Label>
+                    <Input id="taxRate" name="taxRate" type="number" step="0.1" value={formData.taxRate} onChange={handleChange} required />
+                </div>
             </div>
             <div>
                 <Label>Usuários Vinculados</Label>

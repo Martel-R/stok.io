@@ -13,17 +13,20 @@ import Image from 'next/image';
 
 function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Product) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Product>(
-    product || { id: `prod${Date.now()}`, name: '', category: '', price: 0, stock: 0, imageUrl: 'https://placehold.co/400x400.png' }
+    product || { id: `prod${Date.now()}`, name: '', category: '', price: 0, stock: 0, imageUrl: '' }
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: type === 'number' ? parseFloat(value) : value }));
+    setFormData((prev) => ({ ...prev, [name]: type === 'number' ? parseFloat(value) || 0 : value }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+    onSave({
+      ...formData,
+      imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png'
+    });
     onDone();
   };
 
@@ -44,6 +47,10 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
       <div>
         <Label htmlFor="stock">Estoque</Label>
         <Input id="stock" name="stock" type="number" value={formData.stock} onChange={handleChange} required />
+      </div>
+      <div>
+        <Label htmlFor="imageUrl">URL da Imagem</Label>
+        <Input id="imageUrl" name="imageUrl" value={formData.imageUrl} onChange={handleChange} placeholder="https://exemplo.com/imagem.png" />
       </div>
       <Button type="submit">Salvar Produto</Button>
     </form>

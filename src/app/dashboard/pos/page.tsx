@@ -183,6 +183,18 @@ function CheckoutModal({
                   />
                 </div>
               )}
+               {(payment.type === 'credit' || payment.type === 'debit') && (
+                <div>
+                  <Label htmlFor={`receiptCode-${index}`}>Código do Comprovante</Label>
+                  <Input
+                    id={`receiptCode-${index}`}
+                    type="text"
+                    value={payment.receiptCode || ''}
+                    onChange={(e) => handlePaymentChange(index, 'receiptCode', e.target.value)}
+                    placeholder="Opcional"
+                  />
+                </div>
+              )}
             </div>
           ))}
           {remainingAmount > 0.01 && (

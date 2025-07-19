@@ -40,6 +40,7 @@ export interface PaymentDetail {
     type: PaymentConditionType;
     amount: number;
     installments: number;
+    receiptCode?: string;
 }
 
 

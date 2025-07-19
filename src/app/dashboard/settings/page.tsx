@@ -17,6 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { MoreHorizontal, PlusCircle, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -137,7 +138,6 @@ function UsersTable() {
                         <CardDescription>Gerencie as permissões dos usuários.</CardDescription>
                     </div>
                      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                        {/* The trigger button is removed, so we only need the Dialog, not the trigger */}
                         <DialogContent className="sm:max-w-[480px]">
                             <DialogHeader>
                                 <DialogTitle>{editingUser ? 'Editar Função do Usuário' : 'Adicionar Novo Usuário'}</DialogTitle>
@@ -253,26 +253,57 @@ function StockSettings() {
 
 
 function PaymentConditions() {
-    const [conditions, setConditions] = useState<{ id: string; name: string }[]>([]);
+    type PaymentConditionType = 'credit' | 'debit' | 'cash' | 'pix';
+    type FeeType = 'percentage' | 'fixed';
+
+    interface PaymentCondition {
+        id: string;
+        name: string;
+        type: PaymentConditionType;
+        fee: number;
+        feeType: FeeType;
+    }
+    
+    const [conditions, setConditions] = useState<PaymentCondition[]>([]);
     const [loading, setLoading] = useState(true);
-    const [newCondition, setNewCondition] = useState('');
+    const [newCondition, setNewCondition] = useState({
+        name: '',
+        type: 'credit' as PaymentConditionType,
+        fee: 0,
+        feeType: 'percentage' as FeeType,
+    });
     const { toast } = useToast();
 
     useEffect(() => {
         const unsubscribe = onSnapshot(collection(db, 'paymentConditions'), (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as { name: string } }));
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition));
             setConditions(data);
             setLoading(false);
         });
         return () => unsubscribe();
     }, []);
 
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value, type } = e.target;
+        setNewCondition(prev => ({
+            ...prev,
+            [name]: type === 'number' ? parseFloat(value) || 0 : value
+        }));
+    };
+    
+    const handleSelectChange = (name: string, value: string) => {
+         setNewCondition(prev => ({ ...prev, [name]: value }));
+    }
+
     const handleAdd = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newCondition.trim()) return;
+        if (!newCondition.name.trim()) {
+            toast({ title: 'O nome é obrigatório.', variant: 'destructive' });
+            return;
+        }
         try {
-            await addDoc(collection(db, 'paymentConditions'), { name: newCondition });
-            setNewCondition('');
+            await addDoc(collection(db, 'paymentConditions'), newCondition);
+            setNewCondition({ name: '', type: 'credit', fee: 0, feeType: 'percentage' });
             toast({ title: 'Condição de pagamento adicionada!' });
         } catch (error) {
             toast({ title: 'Erro ao adicionar condição', variant: 'destructive' });
@@ -287,36 +318,100 @@ function PaymentConditions() {
             toast({ title: 'Erro ao remover condição', variant: 'destructive' });
         }
     };
+    
+    const getTypeName = (type: PaymentConditionType) => {
+        const names = { credit: 'Crédito', debit: 'Débito', cash: 'Dinheiro', pix: 'Pix' };
+        return names[type] || 'Desconhecido';
+    }
 
     return (
         <Card>
             <CardHeader>
                 <CardTitle>Condições de Pagamento</CardTitle>
-                <CardDescription>Gerencie as formas de pagamento aceitas no PDV.</CardDescription>
+                <CardDescription>Gerencie as formas de pagamento aceitas no PDV, incluindo tipos e taxas.</CardDescription>
             </CardHeader>
             <CardContent>
-                <form onSubmit={handleAdd} className="flex items-center gap-2 mb-4">
-                    <Input 
-                        value={newCondition} 
-                        onChange={e => setNewCondition(e.target.value)}
-                        placeholder="Ex: Cartão de Débito"
-                    />
-                    <Button type="submit"><PlusCircle className="mr-2 h-4 w-4" /> Adicionar</Button>
+                <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg">
+                    <div className="space-y-2 col-span-3 md:col-span-1">
+                        <Label htmlFor="name">Nome da Condição</Label>
+                        <Input 
+                            id="name"
+                            name="name"
+                            value={newCondition.name} 
+                            onChange={handleInputChange}
+                            placeholder="Ex: Cartão de Débito"
+                        />
+                    </div>
+                     <div className="space-y-2 col-span-3 md:col-span-1">
+                        <Label htmlFor="type">Tipo</Label>
+                        <Select name="type" value={newCondition.type} onValueChange={(value) => handleSelectChange('type', value)}>
+                            <SelectTrigger id="type">
+                                <SelectValue placeholder="Selecione um tipo" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="credit">Crédito</SelectItem>
+                                <SelectItem value="debit">Débito</SelectItem>
+                                <SelectItem value="cash">Dinheiro</SelectItem>
+                                <SelectItem value="pix">Pix</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-2 col-span-3 md:col-span-1">
+                        <Label htmlFor="fee">Taxa</Label>
+                        <Input 
+                            id="fee"
+                            name="fee"
+                            type="number"
+                            step="0.01"
+                            value={newCondition.fee} 
+                            onChange={handleInputChange}
+                            placeholder="Ex: 2.5"
+                        />
+                    </div>
+                    <div className="space-y-2 col-span-3 md:col-span-1">
+                         <Label>Tipo de Taxa</Label>
+                         <RadioGroup
+                            name="feeType"
+                            value={newCondition.feeType}
+                            onValueChange={(value) => handleSelectChange('feeType', value)}
+                            className="flex items-center space-x-4"
+                         >
+                            <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="percentage" id="percentage" />
+                                <Label htmlFor="percentage">% (Percentual)</Label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="fixed" id="fixed" />
+                                <Label htmlFor="fixed">R$ (Fixo)</Label>
+                            </div>
+                        </RadioGroup>
+                    </div>
+                    <div className="col-span-3 md:col-span-2 flex items-end">
+                       <Button type="submit" className="w-full md:w-auto"><PlusCircle className="mr-2 h-4 w-4" /> Adicionar</Button>
+                    </div>
                 </form>
                 <Table>
                     <TableHeader>
                         <TableRow>
                             <TableHead>Nome</TableHead>
+                            <TableHead>Tipo</TableHead>
+                             <TableHead>Taxa</TableHead>
                             <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {loading ? (
-                            <TableRow><TableCell colSpan={2}><Skeleton className="h-5 w-full" /></TableCell></TableRow>
+                            <TableRow><TableCell colSpan={4}><Skeleton className="h-5 w-full" /></TableCell></TableRow>
                         ) : (
                             conditions.map(c => (
                                 <TableRow key={c.id}>
-                                    <TableCell>{c.name}</TableCell>
+                                    <TableCell className="font-medium">{c.name}</TableCell>
+                                    <TableCell><Badge variant="outline">{getTypeName(c.type)}</Badge></TableCell>
+                                    <TableCell>
+                                        {c.fee > 0 
+                                            ? `${c.fee.toLocaleString('pt-BR')} ${c.feeType === 'percentage' ? '%' : 'R$'}` 
+                                            : 'Sem taxa'}
+                                    </TableCell>
                                     <TableCell className="text-right">
                                         <Button variant="ghost" size="icon" onClick={() => handleDelete(c.id)}>
                                             <Trash2 className="h-4 w-4 text-destructive" />
@@ -443,3 +538,5 @@ export default function SettingsPage() {
         </div>
     )
 }
+
+    

@@ -73,14 +73,26 @@ export interface StockEntry {
 export interface ComboProduct {
   productId: string;
   productName: string; 
+  productPrice: number;
   quantity: number;
 }
+
+export type DiscountType = 'percentage' | 'fixed';
+
+export interface ComboDiscountRule {
+  paymentConditionIds: string[]; // Array of payment condition IDs, empty means "any" (default)
+  discountType: DiscountType;
+  discountValue: number;
+}
+
 
 export interface Combo {
   id: string;
   name: string;
   products: ComboProduct[];
-  price: number;
+  originalPrice: number;
+  finalPrice: number; // The price after the default discount
+  discountRules: ComboDiscountRule[];
   imageUrl: string;
   branchId: string;
 }

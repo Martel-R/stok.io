@@ -1,6 +1,6 @@
 
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -8,28 +8,51 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where } from 'firebase/firestore';
-import type { Product, Combo, ComboProduct } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, Trash2, Check, ChevronsUpDown } from 'lucide-react';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
+import type { Product, Combo, ComboProduct, ComboDiscountRule, PaymentCondition, DiscountType } from '@/lib/types';
+import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, Trash2, Check, ChevronsUpDown, Percent, Tag } from 'lucide-react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import Link from 'next/link';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
-function ComboForm({ combo, branchProducts, onSave, onDone }: { combo?: Combo; branchProducts: Product[]; onSave: (combo: Omit<Combo, 'id' | 'branchId'>) => void; onDone: () => void }) {
+const calculatePrices = (products: ComboProduct[], rules: ComboDiscountRule[]): { originalPrice: number, finalPrice: number } => {
+    const originalPrice = products.reduce((acc, p) => acc + (p.productPrice * p.quantity), 0);
+    const defaultRule = rules.find(r => r.paymentConditionIds.length === 0);
+    let finalPrice = originalPrice;
+
+    if (defaultRule) {
+        if (defaultRule.discountType === 'percentage') {
+            finalPrice = originalPrice * (1 - defaultRule.discountValue / 100);
+        } else {
+            finalPrice = originalPrice - defaultRule.discountValue;
+        }
+    }
+    
+    return { originalPrice, finalPrice: Math.max(0, finalPrice) };
+};
+
+function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }: { combo?: Combo; branchProducts: Product[]; paymentConditions: PaymentCondition[]; onSave: (combo: Omit<Combo, 'id' | 'branchId'>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Combo>>(
-    combo || { name: '', price: 0, products: [], imageUrl: '' }
+    combo || { name: '', products: [], discountRules: [], imageUrl: '' }
   );
   const [isUploading, setIsUploading] = useState(false);
   const [popoverOpen, setPopoverOpen] = useState(false);
+
+  const { originalPrice, finalPrice } = useMemo(
+    () => calculatePrices(formData.products || [], formData.discountRules || []), 
+    [formData.products, formData.discountRules]
+  );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
@@ -53,9 +76,9 @@ function ComboForm({ combo, branchProducts, onSave, onDone }: { combo?: Combo; b
     setFormData(prev => {
         const existingProduct = prev.products?.find(p => p.productId === product.id);
         if (existingProduct) {
-            return prev; // Or increment quantity, for now just prevent duplicates
+            return prev;
         }
-        const newProduct: ComboProduct = { productId: product.id, productName: product.name, quantity: 1 };
+        const newProduct: ComboProduct = { productId: product.id, productName: product.name, productPrice: product.price, quantity: 1 };
         return { ...prev, products: [...(prev.products || []), newProduct] };
     });
     setPopoverOpen(false);
@@ -67,6 +90,28 @@ function ComboForm({ combo, branchProducts, onSave, onDone }: { combo?: Combo; b
         products: prev.products?.filter(p => p.productId !== productId)
     }));
   }
+  
+  const updateDiscountRule = (index: number, field: keyof ComboDiscountRule, value: any) => {
+    setFormData(prev => {
+        const newRules = [...(prev.discountRules || [])];
+        (newRules[index] as any)[field] = value;
+        return { ...prev, discountRules: newRules };
+    });
+  };
+
+  const addDiscountRule = () => {
+      setFormData(prev => ({
+          ...prev,
+          discountRules: [...(prev.discountRules || []), { paymentConditionIds: [], discountType: 'percentage', discountValue: 0 }]
+      }));
+  }
+  
+  const removeDiscountRule = (index: number) => {
+      setFormData(prev => ({
+          ...prev,
+          discountRules: prev.discountRules?.filter((_, i) => i !== index)
+      }))
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,29 +119,29 @@ function ComboForm({ combo, branchProducts, onSave, onDone }: { combo?: Combo; b
         alert("Por favor, preencha o nome do combo e adicione pelo menos um produto.");
         return;
     }
+    const prices = calculatePrices(formData.products, formData.discountRules || []);
     onSave({
       ...formData,
+      originalPrice: prices.originalPrice,
+      finalPrice: prices.finalPrice,
       imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png'
     } as Omit<Combo, 'id' | 'branchId'>);
     onDone();
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-4">
       <div>
         <Label htmlFor="name">Nome do Combo</Label>
         <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
       </div>
-      <div>
-        <Label htmlFor="price">Preço do Combo</Label>
-        <Input id="price" name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} required />
-      </div>
+
        <div>
         <Label>Produtos no Combo</Label>
          <div className="space-y-2 rounded-md border p-2">
             {formData.products?.map(p => (
                 <div key={p.productId} className="flex items-center justify-between">
-                    <span className="text-sm">{p.productName} (x{p.quantity})</span>
+                    <span className="text-sm">{p.productName} (R$ {p.productPrice.toFixed(2)})</span>
                      <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeProductFromCombo(p.productId)}>
                         <Trash2 className="h-4 w-4 text-destructive"/>
                      </Button>
@@ -130,6 +175,73 @@ function ComboForm({ combo, branchProducts, onSave, onDone }: { combo?: Combo; b
             </Popover>
          </div>
        </div>
+
+      <Card>
+        <CardHeader>
+            <CardTitle>Preço e Descontos</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+            <div className="flex justify-between items-baseline">
+                <Label>Preço Original</Label>
+                <span className="text-muted-foreground text-lg line-through">R$ {originalPrice.toFixed(2)}</span>
+            </div>
+             <div className="flex justify-between items-baseline">
+                <Label>Preço Final (Padrão)</Label>
+                <span className="font-bold text-xl text-primary">R$ {finalPrice.toFixed(2)}</span>
+            </div>
+            
+            <Separator />
+            
+            <Label>Regras de Desconto</Label>
+            <div className="space-y-3">
+                {formData.discountRules?.map((rule, index) => (
+                    <div key={index} className="border p-3 rounded-md space-y-3 relative">
+                         <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7" onClick={() => removeDiscountRule(index)}>
+                             <Trash2 className="h-4 w-4 text-destructive"/>
+                         </Button>
+
+                        <div className="space-y-2">
+                          <Label>Condição de Pagamento</Label>
+                           <Select 
+                              value={rule.paymentConditionIds[0] || 'default'} 
+                              onValueChange={(val) => updateDiscountRule(index, 'paymentConditionIds', val === 'default' ? [] : [val])}
+                            >
+                               <SelectTrigger>
+                                  <SelectValue placeholder="Selecione..."/>
+                               </SelectTrigger>
+                               <SelectContent>
+                                   <SelectItem value="default">Desconto Padrão (Qualquer Pagamento)</SelectItem>
+                                   {paymentConditions.map(pc => (
+                                      <SelectItem key={pc.id} value={pc.id}>{pc.name}</SelectItem>
+                                   ))}
+                               </SelectContent>
+                           </Select>
+                           <p className="text-xs text-muted-foreground">"Padrão" se aplica se nenhuma outra regra específica for encontrada.</p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 items-end">
+                            <div className="space-y-2">
+                                <Label>Valor do Desconto</Label>
+                                <Input type="number" value={rule.discountValue} onChange={(e) => updateDiscountRule(index, 'discountValue', parseFloat(e.target.value) || 0)} />
+                            </div>
+                            <RadioGroup 
+                                value={rule.discountType} 
+                                onValueChange={(val: DiscountType) => updateDiscountRule(index, 'discountType', val)}
+                                className="flex space-x-2"
+                            >
+                               <Button type="button" variant={rule.discountType === 'percentage' ? 'secondary' : 'outline'} size="icon" onClick={() => updateDiscountRule(index, 'discountType', 'percentage')}><Percent/></Button>
+                               <Button type="button" variant={rule.discountType === 'fixed' ? 'secondary' : 'outline'} size="icon" onClick={() => updateDiscountRule(index, 'discountType', 'fixed')}><Tag/></Button>
+                            </RadioGroup>
+                        </div>
+                    </div>
+                ))}
+            </div>
+            <Button type="button" variant="outline" onClick={addDiscountRule} className="w-full">
+                <PlusCircle className="mr-2 h-4 w-4" /> Adicionar Regra de Desconto
+            </Button>
+        </CardContent>
+      </Card>
+
 
        <Tabs defaultValue="upload" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
@@ -171,6 +283,7 @@ function ComboForm({ combo, branchProducts, onSave, onDone }: { combo?: Combo; b
 export default function CombosPage() {
   const [combos, setCombos] = useState<Combo[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [paymentConditions, setPaymentConditions] = useState<PaymentCondition[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingCombo, setEditingCombo] = useState<Combo | undefined>(undefined);
@@ -188,6 +301,8 @@ export default function CombosPage() {
 
     const productsRef = collection(db, 'products');
     const qProducts = query(productsRef, where("branchId", "==", currentBranch.id));
+    
+    const conditionsQuery = query(collection(db, 'paymentConditions'));
 
     const unsubscribeCombos = onSnapshot(qCombos, (snapshot) => {
       const combosData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Combo[];
@@ -199,12 +314,19 @@ export default function CombosPage() {
         const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
         setProducts(productsData);
     });
+    
+    const unsubscribeConditions = onSnapshot(conditionsQuery, (snapshot) => {
+        const conditionsData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition);
+        setPaymentConditions(conditionsData);
+    });
+
 
     return () => {
         unsubscribeCombos();
         unsubscribeProducts();
+        unsubscribeConditions();
     };
-  }, [currentBranch, authLoading, toast]);
+  }, [currentBranch, authLoading]);
 
   const handleSave = async (comboData: Omit<Combo, 'id' | 'branchId'>) => {
     if (!currentBranch) {
@@ -272,13 +394,14 @@ export default function CombosPage() {
                         Adicionar Combo
                     </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-xl">
                     <DialogHeader>
                         <DialogTitle>{editingCombo ? 'Editar Combo' : 'Adicionar Novo Combo'}</DialogTitle>
                     </DialogHeader>
                     <ComboForm 
                         combo={editingCombo} 
                         branchProducts={products}
+                        paymentConditions={paymentConditions}
                         onSave={handleSave} 
                         onDone={() => setIsFormOpen(false)} 
                     />
@@ -293,7 +416,8 @@ export default function CombosPage() {
             <TableHead className="w-[80px]">Imagem</TableHead>
             <TableHead>Nome</TableHead>
             <TableHead>Produtos</TableHead>
-            <TableHead className="text-right">Preço</TableHead>
+            <TableHead className="text-right">Preço Original</TableHead>
+            <TableHead className="text-right">Preço Final</TableHead>
             <TableHead className="text-center">Ações</TableHead>
           </TableRow>
         </TableHeader>
@@ -304,6 +428,7 @@ export default function CombosPage() {
                     <TableCell><Skeleton className="h-10 w-10 rounded-md" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-48" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-64" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-center"><Skeleton className="h-8 w-8 mx-auto rounded-full" /></TableCell>
                 </TableRow>
@@ -320,7 +445,8 @@ export default function CombosPage() {
                         {combo.products.map(p => <Badge key={p.productId} variant="secondary">{p.productName}</Badge>)}
                     </div>
                 </TableCell>
-                <TableCell className="text-right">R${combo.price.toFixed(2).replace('.', ',')}</TableCell>
+                <TableCell className="text-right line-through text-muted-foreground">R${combo.originalPrice.toFixed(2).replace('.', ',')}</TableCell>
+                <TableCell className="text-right font-semibold">R${combo.finalPrice.toFixed(2).replace('.', ',')}</TableCell>
                 <TableCell className="text-center">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -339,7 +465,7 @@ export default function CombosPage() {
             ))
           ) : (
              <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center">
+                <TableCell colSpan={6} className="h-24 text-center">
                     Nenhum combo encontrado. Comece a criar seus combos promocionais!
                 </TableCell>
             </TableRow>

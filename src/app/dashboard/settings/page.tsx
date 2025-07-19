@@ -1,6 +1,7 @@
 
 'use client';
 
+import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -716,3 +717,5 @@ export default function SettingsPage() {
         </React.Suspense>
     )
 }
+
+    

@@ -20,8 +20,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 
 function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: User) => void; onDone: () => void }) {
-    const [formData, setFormData] = useState<User>(
-        user || { id: `user${Date.now()}`, name: '', email: '', role: 'cashier', avatar: '/avatars/01.png' }
+    const [formData, setFormData] = useState<Partial<User>>(
+        user || { id: `user${Date.now()}`, name: '', email: '', role: 'cashier', avatar: '/avatars/01.png', password: '' }
     );
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -35,9 +35,11 @@ function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: User) 
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData);
+        onSave(formData as User);
         onDone();
     };
+    
+    const isEditing = !!user;
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -48,6 +50,10 @@ function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: User) 
             <div>
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required />
+            </div>
+            <div>
+                <Label htmlFor="password">Senha</Label>
+                <Input id="password" name="password" type="password" value={formData.password} onChange={handleChange} required={!isEditing} placeholder={isEditing ? "Deixe em branco para não alterar" : ""}/>
             </div>
             <div>
                 <Label htmlFor="role">Função</Label>
@@ -91,7 +97,7 @@ function UsersTable() {
     }
     
     const openEditDialog = (user: User) => {
-        setEditingUser(user);
+        setEditingUser({...user, password: ''}); // Clear password for editing form
         setIsFormOpen(true);
     }
 
@@ -100,13 +106,21 @@ function UsersTable() {
         setIsFormOpen(true);
     }
     
-    const handleSave = (user: User) => {
+    const handleSave = (userToSave: Partial<User>) => {
         setUsers((prev) => {
-            const exists = prev.find((u) => u.id === user.id);
+            const exists = prev.find((u) => u.id === userToSave.id);
             if (exists) {
-                return prev.map((u) => (u.id === user.id ? user : u));
+                // If editing and password is empty, keep the old one
+                if (!userToSave.password) {
+                  userToSave.password = exists.password;
+                }
+                return prev.map((u) => (u.id === userToSave.id ? {...u, ...userToSave} as User : u));
             }
-            return [...prev, user];
+            // Ensure new user has a password, defaulting if necessary (though form requires it)
+            if (!userToSave.password) {
+              userToSave.password = 'password';
+            }
+            return [...prev, userToSave as User];
         });
         toast({ title: 'Usuário salvo com sucesso!'});
     };

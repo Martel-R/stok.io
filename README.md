@@ -77,4 +77,3 @@ firebase deploy
 
 ---
 
-Desenvolvido no **Firebase Studio** ✨

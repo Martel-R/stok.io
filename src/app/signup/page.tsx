@@ -124,7 +124,7 @@ export default function SignupPage() {
         <div className="absolute inset-0 bg-primary" />
         <div className="relative z-20 flex items-center text-lg font-medium">
           <Icons.logo className="mr-2 h-8 w-8" />
-          InStockAI
+          Stokio
         </div>
         <div className="relative z-20 mt-auto">
           <blockquote className="space-y-2">

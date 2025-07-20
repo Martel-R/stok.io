@@ -4,8 +4,8 @@ import { Providers } from '@/components/providers';
 import { Toaster } from '@/components/ui/toaster';
 
 export const metadata: Metadata = {
-  title: 'InStockAI',
-  description: 'Gestão Inteligente de Estoque',
+  title: 'Stokio',
+  description: 'Gestão Inteligente de Estoque com IA',
 };
 
 export default function RootLayout({

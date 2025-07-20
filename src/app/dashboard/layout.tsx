@@ -160,7 +160,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                 <SidebarHeader>
                     <div className="flex items-center gap-2">
                         <Icons.logo className="h-8 w-8 text-primary" />
-                        <span className="text-xl font-semibold">InStockAI</span>
+                        <span className="text-xl font-semibold">Stokio</span>
                     </div>
                 </SidebarHeader>
                 <SidebarContent className="p-2">

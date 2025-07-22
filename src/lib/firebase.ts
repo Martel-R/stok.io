@@ -28,11 +28,14 @@ const db = initializeFirestore(app, {
 
 // Initialize App Check
 if (typeof window !== 'undefined') {
-  initializeAppCheck(app, {
-    provider: new ReCaptchaV3Provider(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY!),
-    // Optional: set to true for development only
-    isTokenAutoRefreshEnabled: true
-  });
+  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
+  if (recaptchaSiteKey && recaptchaSiteKey !== 'SUA_CHAVE_RECAPTCHA_AQUI') {
+    initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(recaptchaSiteKey),
+      // Optional: set to true for development only
+      isTokenAutoRefreshEnabled: true
+    });
+  }
 }
 
 

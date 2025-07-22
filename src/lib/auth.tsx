@@ -3,7 +3,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc } from "firebase/firestore";
 import type { User, UserRole, Branch } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
@@ -31,6 +31,7 @@ interface AuthContextType {
   createUser: (email: string, pass: string, name: string, role: UserRole, organizationId: string) => Promise<{ success: boolean; error?: string }>;
   updateUserProfile: (data: Partial<User>) => Promise<{ success: boolean; error?: string }>;
   changeUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean, error?: string }>;
+  sendPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
   deleteTestData: (organizationId: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
@@ -330,6 +331,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const sendPasswordReset = async (email: string) => {
+    setLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      return { success: true };
+    } catch (error: any) {
+      console.error("Password Reset Error:", error);
+      let message = "Ocorreu um erro.";
+      if (error.code === 'auth/user-not-found') {
+          message = "Nenhum usuário encontrado com este e-mail.";
+      }
+      return { success: false, error: message };
+    } finally {
+        setLoading(false);
+    }
+  };
+
   const deleteTestData = async (organizationId: string) => {
     const collectionsToDelete = ['products', 'combos', 'sales', 'stockEntries'];
     const batch = writeBatch(db);
@@ -352,7 +370,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (loading) return; 
 
-    const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/signup');
+    const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/signup') || pathname.startsWith('/forgot-password');
     const isDashboardPage = pathname.startsWith('/dashboard');
 
     if (!isAuthenticated && isDashboardPage) {
@@ -375,7 +393,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [isAuthenticated, loading, pathname, router, user]);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, deleteTestData }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, deleteTestData }}>
       {children}
     </AuthContext.Provider>
   );

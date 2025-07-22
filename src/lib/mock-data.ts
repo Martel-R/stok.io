@@ -23,7 +23,7 @@ export const MOCK_SALES: Omit<Sale, 'id' | 'branchId' | 'organizationId'>[] = Ar
     productName: product.name,
     quantity,
     total: product.price * quantity,
-    date: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000), // a date in the last 30 days
+    date: new Date(Date.now() - Math.floor(Math.random() * 30) * 24 * 60 * 60 * 1000), // a date in the last 30 days
     cashier: MOCK_USERS.find(u => u.role === 'cashier')?.name ?? 'Caixa',
     payments: [],
   }

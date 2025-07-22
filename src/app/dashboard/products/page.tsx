@@ -22,9 +22,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 
-function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => void; onDone: () => void }) {
+function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId' | 'organizationId' | 'stock'>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Product>>(
-    product || { name: '', category: '', price: 0, stock: 0, imageUrl: '' }
+    product || { name: '', category: '', price: 0, imageUrl: '' }
   );
   const [isUploading, setIsUploading] = useState(false);
 
@@ -51,7 +51,7 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
     onSave({
       ...formData,
       imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png'
-    } as Omit<Product, 'id' | 'branchId' | 'organizationId'>);
+    } as Omit<Product, 'id' | 'branchId' | 'organizationId' | 'stock'>);
     onDone();
   };
 
@@ -69,11 +69,7 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
         <Label htmlFor="price">Preço</Label>
         <Input id="price" name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} required />
       </div>
-       <div>
-        <Label htmlFor="stock">Estoque Inicial</Label>
-        <Input id="stock" name="stock" type="number" value={formData.stock} onChange={handleChange} required />
-      </div>
-
+      
        <Tabs defaultValue="upload" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="upload"><Upload className="mr-2 h-4 w-4" /> Upload</TabsTrigger>
@@ -267,7 +263,7 @@ export default function ProductsPage() {
     return () => unsubscribe();
   }, [currentBranch, authLoading, toast, user]);
 
-  const handleSave = async (productData: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => {
+  const handleSave = async (productData: Omit<Product, 'id' | 'branchId' | 'organizationId' | 'stock'>) => {
     if (!currentBranch || !user?.organizationId) {
         toast({ title: 'Nenhuma filial selecionada', description: 'Selecione uma filial para salvar o produto.', variant: 'destructive' });
         return;
@@ -280,6 +276,7 @@ export default function ProductsPage() {
       } else {
         await addDoc(collection(db, "products"), { 
             ...productData, 
+            stock: 0, // Initial stock is always 0 now
             branchId: currentBranch.id, 
             organizationId: user.organizationId
         });
@@ -292,6 +289,7 @@ export default function ProductsPage() {
   };
 
   const handleDelete = async (productId: string) => {
+    // We should also check if there are stock entries or sales to prevent orphans
     try {
       await deleteDoc(doc(db, "products", productId));
       toast({ title: 'Produto excluído com sucesso!', variant: 'destructive' });
@@ -417,7 +415,3 @@ export default function ProductsPage() {
     </div>
   );
 }
-
-    
-
-    

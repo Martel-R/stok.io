@@ -17,7 +17,7 @@ export interface Product {
   name: string;
   category: string;
   price: number;
-  stock: number;
+  stock: number; // This will be calculated dynamically now, but kept for fetching.
   imageUrl: string;
   branchId: string;
   organizationId: string;

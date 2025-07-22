@@ -12,13 +12,14 @@ import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
+import Image from 'next/image';
 
 const availableAvatars = [
-    '/avatars/01.png',
-    '/avatars/02.png',
-    '/avatars/03.png',
-    '/avatars/04.png',
-    '/avatars/05.png',
+    'https://placehold.co/100x100.png?text=🦊',
+    'https://placehold.co/100x100.png?text=🦉',
+    'https://placehold.co/100x100.png?text=🐻',
+    'https://placehold.co/100x100.png?text=🦁',
+    'https://placehold.co/100x100.png?text=🦄',
 ];
 
 export default function ProfilePage() {
@@ -109,7 +110,9 @@ export default function ProfilePage() {
                                     {availableAvatars.map((src) => (
                                         <Label key={`label-${src}`} htmlFor={src} className="cursor-pointer">
                                             <Avatar className={`h-12 w-12 transition-all ${avatar === src ? 'ring-2 ring-primary ring-offset-2' : ''}`}>
-                                                <AvatarImage src={src} />
+                                                <AvatarImage asChild src={src}>
+                                                   <Image src={src} alt="Avatar" width={48} height={48} data-ai-hint="avatar animal" />
+                                                </AvatarImage>
                                             </Avatar>
                                         </Label>
                                     ))}

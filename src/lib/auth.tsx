@@ -9,6 +9,15 @@ import type { User, UserRole, Branch } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
 
+const availableAvatars = [
+    'https://placehold.co/100x100.png?text=🦊',
+    'https://placehold.co/100x100.png?text=🦉',
+    'https://placehold.co/100x100.png?text=🐻',
+    'https://placehold.co/100x100.png?text=🦁',
+    'https://placehold.co/100x100.png?text=🦄',
+];
+const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availableAvatars.length)];
+
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -70,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 email: firebaseUser.email || '',
                 name: firebaseUser.displayName || 'Usuário Google',
                 role: 'admin', 
-                avatar: firebaseUser.photoURL || `/avatars/0${Math.ceil(Math.random() * 3)}.png`,
+                avatar: firebaseUser.photoURL || getRandomAvatar(),
                 organizationId: organizationId, // Will be empty if not first user, needs handling
             }
             await setDoc(userDocRef, newUser);
@@ -132,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
       const firebaseUser = userCredential.user;
       
-      const avatar = `/avatars/0${Math.ceil(Math.random() * 3)}.png`;
+      const avatar = getRandomAvatar();
       await updateProfile(firebaseUser, {
         displayName: name,
         photoURL: avatar
@@ -192,7 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             name,
             email,
             role,
-            avatar: `/avatars/0${Math.ceil(Math.random() * 3)}.png`,
+            avatar: getRandomAvatar(),
             organizationId: organizationId,
         };
         

@@ -31,10 +31,18 @@ import { useSearchParams } from 'next/navigation';
 import { Separator } from '@/components/ui/separator';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
 
+const availableAvatars = [
+    'https://placehold.co/100x100.png?text=🦊',
+    'https://placehold.co/100x100.png?text=🦉',
+    'https://placehold.co/100x100.png?text=🐻',
+    'https://placehold.co/100x100.png?text=🦁',
+    'https://placehold.co/100x100.png?text=🦄',
+];
+const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availableAvatars.length)];
 
 function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partial<User>) => void; onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<User>>(
-        user || { name: '', email: '', role: 'cashier', avatar: '/avatars/01.png', password: '' }
+        user || { name: '', email: '', role: 'cashier', avatar: getRandomAvatar(), password: '' }
     );
     const [showPassword, setShowPassword] = useState(false);
 

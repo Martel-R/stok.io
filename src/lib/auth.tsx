@@ -43,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let branchesUnsubscribe: Unsubscribe | null = null;
 
     const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseAuthUser | null) => {
+      setLoading(true);
       if (branchesUnsubscribe) branchesUnsubscribe(); // Unsubscribe from previous user's branches listener
 
       if (firebaseUser) {
@@ -100,19 +101,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 } else {
                     setCurrentBranchState(null);
                 }
-                setLoading(false);
             });
         } else {
             setBranches([]);
             setCurrentBranchState(null);
-            setLoading(false);
         }
       } else {
         setUser(null);
         setBranches([]);
         setCurrentBranchState(null);
-        setLoading(false);
       }
+      setLoading(false);
     });
 
     return () => {

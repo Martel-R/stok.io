@@ -4,7 +4,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType } from '@/lib/types';
+import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType, StockEntry } from '@/lib/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -25,7 +25,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { format, getMonth, getYear, subMonths, startOfDay, fromUnixTime } from 'date-fns';
 
 
-type CartItem = (Product & { itemType: 'product'; quantity: number }) | (Combo & { itemType: 'combo'; quantity: number });
+type CartItem = (ProductWithStock & { itemType: 'product'; quantity: number }) | (ComboWithStock & { itemType: 'combo'; quantity: number });
+type ProductWithStock = Product & { stock: number };
+type ComboWithStock = Combo & { stock: number };
+
 
 interface AggregatedDailySale {
     date: string;
@@ -361,7 +364,7 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
 
 
 export default function POSPage() {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [combos, setCombos] = useState<Combo[]>([]);
   const [paymentConditions, setPaymentConditions] = useState<PaymentCondition[]>([]);
   const [salesHistory, setSalesHistory] = useState<Sale[]>([]);
@@ -384,11 +387,29 @@ export default function POSPage() {
     const combosQuery = query(collection(db, 'combos'), where('branchId', '==', currentBranch.id));
     const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId));
     const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id), orderBy('date', 'desc'));
+    const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
 
-    const unsubscribeProducts = onSnapshot(productsQuery, (querySnapshot) => {
-      const productsData: Product[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-      setProducts(productsData);
-      setLoading(false);
+    const unsubscribeProducts = onSnapshot(productsQuery, (productsSnapshot) => {
+        const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+
+        const unsubscribeSales = onSnapshot(salesQuery, (salesSnapshot) => {
+            const salesData = salesSnapshot.docs.map(convertSaleDoc);
+            setSalesHistory(salesData);
+
+            const unsubscribeEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
+                const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
+
+                const productsWithStock = productsData.map(p => {
+                    const totalEntries = entriesData.filter(e => e.productId === p.id).reduce((sum, e) => sum + e.quantityAdded, 0);
+                    const totalSales = salesData.filter(s => s.productId === p.id).reduce((sum, s) => sum + s.quantity, 0);
+                    return { ...p, stock: totalEntries - totalSales };
+                });
+                setProducts(productsWithStock);
+                setLoading(false);
+            });
+            return () => unsubscribeEntries();
+        });
+        return () => unsubscribeSales();
     });
 
     const unsubscribeCombos = onSnapshot(combosQuery, (querySnapshot) => {
@@ -401,23 +422,17 @@ export default function POSPage() {
         setPaymentConditions(conditionsData);
     });
 
-    const unsubscribeSalesHistory = onSnapshot(salesQuery, (snapshot) => {
-        const salesData = snapshot.docs.map(convertSaleDoc);
-        setSalesHistory(salesData);
-    });
-
 
     return () => {
         unsubscribeProducts();
         unsubscribeCombos();
         unsubscribeConditions();
-        unsubscribeSalesHistory();
     }
   }, [currentBranch, authLoading, user]);
 
-  const addToCart = (item: Product | Combo, type: 'product' | 'combo') => {
+  const addToCart = (item: ProductWithStock | Combo, type: 'product' | 'combo') => {
     if (type === 'product') {
-        const product = item as Product;
+        const product = item as ProductWithStock;
         if (product.stock <= 0) {
             toast({ title: 'Fora de estoque', description: `${product.name} não está disponível.`, variant: 'destructive'});
             return;
@@ -425,8 +440,8 @@ export default function POSPage() {
          setCart((prev) => {
             const existingItem = prev.find((cartItem) => cartItem.id === product.id && cartItem.itemType === 'product');
             if (existingItem) {
-                if (existingItem.quantity >= (existingItem as Product).stock) {
-                     toast({ title: 'Limite de estoque atingido', description: `Você não pode adicionar mais de ${(existingItem as Product).stock} unidades de ${existingItem.name}.`, variant: 'destructive'});
+                if (existingItem.quantity >= (existingItem as ProductWithStock).stock) {
+                     toast({ title: 'Limite de estoque atingido', description: `Você não pode adicionar mais de ${(existingItem as ProductWithStock).stock} unidades de ${existingItem.name}.`, variant: 'destructive'});
                     return prev;
                 }
                 return prev.map((ci) =>
@@ -448,6 +463,20 @@ export default function POSPage() {
         setCart(prev => {
             const existingItem = prev.find(ci => ci.id === combo.id && ci.itemType === 'combo');
             if (existingItem) {
+                // Check stock for subsequent additions of the same combo
+                for (const comboProduct of combo.products) {
+                    const productInStore = products.find(p => p.id === comboProduct.productId);
+                    const cartProduct = cart.find(ci => ci.id === comboProduct.productId && ci.itemType === 'product');
+                    const cartComboUsage = cart.filter(ci => ci.itemType === 'combo').reduce((acc, c) => {
+                        const pInCombo = (c as Combo).products.find(p => p.productId === comboProduct.productId);
+                        return acc + (pInCombo ? pInCombo.quantity * c.quantity : 0);
+                    }, 0);
+
+                    if (!productInStore || productInStore.stock < (cartProduct?.quantity || 0) + cartComboUsage + comboProduct.quantity) {
+                         toast({ title: 'Estoque insuficiente para o kit', description: `O produto ${comboProduct.productName} não tem estoque suficiente para adicionar outro kit ${combo.name}.`, variant: 'destructive'});
+                         return prev;
+                    }
+                }
                 return prev.map(ci => ci.id === combo.id ? {...ci, quantity: ci.quantity + 1} : ci);
             }
             return [...prev, {...combo, quantity: 1, itemType: 'combo'}];
@@ -480,7 +509,17 @@ export default function POSPage() {
         const batch = writeBatch(db);
         
         for (const item of cart) {
+             const productsToUpdate: { id: string, quantity: number }[] = [];
+             if (item.itemType === 'product') {
+                productsToUpdate.push({ id: item.id, quantity: item.quantity });
+             } else { // It's a combo
+                 item.products.forEach(p => {
+                    productsToUpdate.push({ id: p.productId, quantity: p.quantity * item.quantity });
+                 });
+             }
+
             const saleData: Omit<Sale, 'id'> = {
+                productId: item.id, // Can be product or combo id
                 productName: item.name,
                 quantity: item.quantity,
                 total: (item.itemType === 'product' ? item.price : item.finalPrice) * item.quantity,
@@ -492,22 +531,6 @@ export default function POSPage() {
             };
             const saleRef = doc(collection(db, "sales"));
             batch.set(saleRef, saleData);
-
-            if (item.itemType === 'product') {
-                const productRef = doc(db, "products", item.id);
-                const newStock = item.stock - item.quantity;
-                batch.update(productRef, { stock: newStock });
-            } else {
-                for (const comboProduct of item.products) {
-                    const productRef = doc(db, "products", comboProduct.productId);
-                    // This could be optimized by getting the product doc once
-                    const originalProduct = products.find(p => p.id === comboProduct.productId);
-                    if (originalProduct) {
-                         const newStock = originalProduct.stock - (comboProduct.quantity * item.quantity);
-                         batch.update(productRef, { stock: newStock });
-                    }
-                }
-            }
         }
         
         await batch.commit();
@@ -569,7 +592,7 @@ export default function POSPage() {
                             onClick={() => addToCart(product, 'product')} 
                             className="cursor-pointer hover:shadow-lg transition-shadow relative"
                             >
-                            {product.stock === 0 && <Badge variant="destructive" className="absolute top-1 right-1">Esgotado</Badge>}
+                            {product.stock <= 0 && <Badge variant="destructive" className="absolute top-1 right-1">Esgotado</Badge>}
                             <CardContent className="p-2 flex flex-col items-center justify-center">
                                 <Image src={product.imageUrl} alt={product.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="product image"/>
                                 <p className="font-semibold text-sm mt-2 text-center">{product.name}</p>

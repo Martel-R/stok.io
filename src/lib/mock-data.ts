@@ -19,10 +19,10 @@ export const MOCK_USERS: User[] = [
 
 // Mock products no longer need a static branchId, it will be assigned on creation.
 export const MOCK_PRODUCTS: Omit<Product, 'id' | 'branchId' | 'organizationId'>[] = [
-  { name: 'Laptop Quântico', category: 'Eletrônicos', price: 1200, stock: 45, imageUrl: 'https://placehold.co/400x400.png' },
-  { name: 'Smart-Watch Pro', category: 'Eletrônicos', price: 350, stock: 120, imageUrl: 'https://placehold.co/400x400.png' },
-  { name: 'Cadeira Ergonômica 5000', category: 'Móveis', price: 500, stock: 25, imageUrl: 'https://placehold.co/400x400.png' },
-  { name: 'Grãos de Café Orgânico', category: 'Mercearia', price: 25, stock: 200, imageUrl: 'https://placehold.co/400x400.png' },
+  { name: 'Laptop Quântico', category: 'Eletrônicos', price: 1200, imageUrl: 'https://placehold.co/400x400.png' },
+  { name: 'Smart-Watch Pro', category: 'Eletrônicos', price: 350, imageUrl: 'https://placehold.co/400x400.png' },
+  { name: 'Cadeira Ergonômica 5000', category: 'Móveis', price: 500, imageUrl: 'https://placehold.co/400x400.png' },
+  { name: 'Grãos de Café Orgânico', category: 'Mercearia', price: 25, imageUrl: 'https://placehold.co/400x400.png' },
 ];
 
 // This data is for dashboard visualization and also needs to be scoped
@@ -30,6 +30,7 @@ export const MOCK_SALES: Omit<Sale, 'id' | 'branchId' | 'organizationId'>[] = Ar
   const product = MOCK_PRODUCTS[i % MOCK_PRODUCTS.length];
   const quantity = Math.floor(Math.random() * 5) + 1;
   return {
+    productId: 'mock-product-id-' + (i % MOCK_PRODUCTS.length),
     productName: product.name,
     quantity,
     total: product.price * quantity,
@@ -38,5 +39,3 @@ export const MOCK_SALES: Omit<Sale, 'id' | 'branchId' | 'organizationId'>[] = Ar
     payments: [],
   }
 });
-
-    

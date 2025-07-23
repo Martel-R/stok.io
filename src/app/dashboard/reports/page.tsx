@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Lock } from 'lucide-react';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Sale, Product, Branch } from '@/lib/types';
+import type { Sale, Product, Branch, StockEntry } from '@/lib/types';
 
 // --- Sales Performance By Branch ---
 interface BranchPerformance {
@@ -82,7 +82,7 @@ function BestSellingProductsReport({ branches, products, sales }: { branches: Br
     const productsSold = sales
         .filter(s => s.branchId === selectedBranchId)
         .reduce((acc, sale) => {
-            const product = products.find(p => p.name === sale.productName && p.branchId === selectedBranchId);
+            const product = products.find(p => p.id === sale.productId);
             if (product) {
                 acc[product.id] = (acc[product.id] || 0) + sale.quantity;
             }
@@ -150,7 +150,21 @@ interface LowStockProduct {
     threshold: number;
 }
 
-function LowStockReport({ branches, products }: { branches: Branch[], products: Product[] }) {
+function LowStockReport({ branches, products, sales, stockEntries }: { branches: Branch[], products: Product[], sales: Sale[], stockEntries: StockEntry[] }) {
+    
+    const productsWithStock = products.map(product => {
+        const totalEntries = stockEntries
+            .filter(e => e.productId === product.id)
+            .reduce((sum, e) => sum + e.quantityAdded, 0);
+        const totalSales = sales
+            .filter(s => s.productId === product.id)
+            .reduce((sum, s) => sum + s.quantity, 0);
+        return {
+            ...product,
+            stock: totalEntries - totalSales
+        };
+    });
+    
     return (
         <Card>
             <CardHeader>
@@ -159,7 +173,7 @@ function LowStockReport({ branches, products }: { branches: Branch[], products: 
             </CardHeader>
             <CardContent className="space-y-4">
                 {branches.map(branch => {
-                    const lowStockProducts = products.filter(p => p.branchId === branch.id && p.stock <= branch.lowStockThreshold);
+                    const lowStockProducts = productsWithStock.filter(p => p.branchId === branch.id && p.stock <= branch.lowStockThreshold);
                     if (lowStockProducts.length === 0) return null;
 
                     return (
@@ -198,6 +212,7 @@ export default function ReportsPage() {
     const [sales, setSales] = useState<Sale[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
+    const [stockEntries, setStockEntries] = useState<StockEntry[]>([]);
 
     useEffect(() => {
         if (!user?.organizationId || user.role !== 'admin') {
@@ -212,11 +227,14 @@ export default function ReportsPage() {
                 const salesQuery = query(collection(db, 'sales'), where('organizationId', '==', user.organizationId));
                 const productsQuery = query(collection(db, 'products'), where('organizationId', '==', user.organizationId));
                 const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', user.organizationId));
+                const stockEntriesQuery = query(collection(db, 'stockEntries'), where('organizationId', '==', user.organizationId));
 
-                const [salesSnapshot, productsSnapshot, branchesSnapshot] = await Promise.all([
+
+                const [salesSnapshot, productsSnapshot, branchesSnapshot, stockEntriesSnapshot] = await Promise.all([
                     getDocs(salesQuery),
                     getDocs(productsQuery),
                     getDocs(branchesQuery),
+                    getDocs(stockEntriesQuery),
                 ]);
                 
                 const salesData = salesSnapshot.docs.map(doc => {
@@ -228,6 +246,8 @@ export default function ReportsPage() {
                 setSales(salesData);
                 setProducts(productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
                 setBranches(branchesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch)));
+                setStockEntries(stockEntriesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockEntry)));
+
 
             } catch (error) {
                 console.error("Error fetching report data:", error);
@@ -280,7 +300,7 @@ export default function ReportsPage() {
             <div className="space-y-4">
                 <SalesPerformanceReport branches={branches} sales={sales} />
                 <BestSellingProductsReport branches={branches} products={products} sales={sales} />
-                <LowStockReport branches={branches} products={products} />
+                <LowStockReport branches={branches} products={products} sales={sales} stockEntries={stockEntries} />
             </div>
         </div>
     );

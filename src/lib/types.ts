@@ -17,7 +17,6 @@ export interface Product {
   name: string;
   category: string;
   price: number;
-  stock: number; // This will be calculated dynamically now, but kept for fetching.
   imageUrl: string;
   branchId: string;
   organizationId: string;
@@ -46,6 +45,7 @@ export interface PaymentDetail {
 
 export interface Sale {
   id:string;
+  productId: string;
   productName: string;
   quantity: number;
   total: number;

@@ -8,7 +8,7 @@ import { Bar, BarChart as RechartsBarChart, ResponsiveContainer, XAxis, YAxis, T
 import { addDays, format, fromUnixTime } from 'date-fns';
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Product, Sale } from '@/lib/types';
+import type { Product, Sale, StockEntry } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
@@ -22,6 +22,7 @@ export default function DashboardPage() {
     const { user, currentBranch, loading: authLoading } = useAuth();
     const [products, setProducts] = useState<Product[]>([]);
     const [sales, setSales] = useState<Sale[]>([]);
+    const [stockEntries, setStockEntries] = useState<StockEntry[]>([]);
     const [loadingData, setLoadingData] = useState(true);
 
     useEffect(() => {
@@ -34,6 +35,7 @@ export default function DashboardPage() {
 
         const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
         const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
+        const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
 
         const unsubscribeProducts = onSnapshot(productsQuery, (snapshot) => {
             const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
@@ -43,19 +45,48 @@ export default function DashboardPage() {
         const unsubscribeSales = onSnapshot(salesQuery, (snapshot) => {
             const salesData = snapshot.docs.map(doc => convertSaleDates({ id: doc.id, ...doc.data() } as Sale));
             setSales(salesData);
-            setLoadingData(false);
         });
+
+        const unsubscribeStockEntries = onSnapshot(stockEntriesQuery, (snapshot) => {
+            const entriesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockEntry));
+            setStockEntries(entriesData);
+        });
+        
+        // This combines listeners, might need a more robust way to handle loading state
+        const timer = setTimeout(() => setLoadingData(false), 1500); // Give time for all listeners to fire
 
         return () => {
             unsubscribeProducts();
             unsubscribeSales();
+            unsubscribeStockEntries();
+            clearTimeout(timer);
         };
     }, [currentBranch, authLoading]);
     
     const totalRevenue = sales.reduce((acc, sale) => acc + sale.total, 0);
     const totalSalesCount = sales.length;
     const totalProducts = products.length;
-    const totalStock = products.reduce((acc, p) => acc + p.stock, 0);
+
+    const totalStock = useMemo(() => {
+        const stockByProduct = products.reduce((acc, p) => {
+            acc[p.id] = 0;
+            return acc;
+        }, {} as Record<string, number>);
+
+        stockEntries.forEach(entry => {
+            if(stockByProduct.hasOwnProperty(entry.productId)) {
+                stockByProduct[entry.productId] += entry.quantityAdded;
+            }
+        });
+
+        sales.forEach(sale => {
+            if(stockByProduct.hasOwnProperty(sale.productId)) {
+                stockByProduct[sale.productId] -= sale.quantity;
+            }
+        });
+        return Object.values(stockByProduct).reduce((sum, current) => sum + current, 0);
+    }, [products, sales, stockEntries]);
+
 
     const salesDataLast7Days = Array.from({length: 7}).map((_, i) => {
         const date = addDays(new Date(), -i);

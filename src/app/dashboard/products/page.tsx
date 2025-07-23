@@ -1,6 +1,6 @@
 
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -8,8 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query, where, runTransaction, serverTimestamp } from 'firebase/firestore';
-import type { Product, StockEntry } from '@/lib/types';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query, where, runTransaction, serverTimestamp, Timestamp } from 'firebase/firestore';
+import type { Product, StockEntry, Sale } from '@/lib/types';
 import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check } from 'lucide-react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -21,8 +21,11 @@ import Link from 'next/link';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
+import { fromUnixTime } from 'date-fns';
 
-function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId' | 'organizationId' | 'stock'>) => void; onDone: () => void }) {
+type ProductWithStock = Product & { stock: number };
+
+function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Product>>(
     product || { name: '', category: '', price: 0, imageUrl: '' }
   );
@@ -51,7 +54,7 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
     onSave({
       ...formData,
       imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png'
-    } as Omit<Product, 'id' | 'branchId' | 'organizationId' | 'stock'>);
+    } as Omit<Product, 'id' | 'branchId' | 'organizationId'>);
     onDone();
   };
 
@@ -108,8 +111,8 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
 }
 
 
-function AddStockForm({ products, onDone }: { products: Product[]; onDone: () => void }) {
-    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+function AddStockForm({ products, onDone }: { products: ProductWithStock[]; onDone: () => void }) {
+    const [selectedProduct, setSelectedProduct] = useState<ProductWithStock | null>(null);
     const [quantity, setQuantity] = useState(1);
     const [open, setOpen] = useState(false);
     const { user, currentBranch } = useAuth();
@@ -126,31 +129,22 @@ function AddStockForm({ products, onDone }: { products: Product[]; onDone: () =>
         const stockEntryRef = collection(db, 'stockEntries');
 
         try {
-            await runTransaction(db, async (transaction) => {
-                const productDoc = await transaction.get(productRef);
-                if (!productDoc.exists()) {
-                    throw "Produto não encontrado!";
-                }
+            const currentStock = selectedProduct.stock;
+            const newStock = currentStock + quantity;
 
-                const currentStock = productDoc.data().stock;
-                const newStock = currentStock + quantity;
-
-                transaction.update(productRef, { stock: newStock });
-
-                const newStockEntry: Omit<StockEntry, 'id'> = {
-                    productId: selectedProduct.id,
-                    productName: selectedProduct.name,
-                    quantityAdded: quantity,
-                    previousStock: currentStock,
-                    newStock: newStock,
-                    date: serverTimestamp(),
-                    userId: user.id,
-                    userName: user.name,
-                    branchId: currentBranch.id,
-                    organizationId: user.organizationId,
-                }
-                transaction.set(doc(stockEntryRef), newStockEntry);
-            });
+            const newStockEntry: Omit<StockEntry, 'id'> = {
+                productId: selectedProduct.id,
+                productName: selectedProduct.name,
+                quantityAdded: quantity,
+                previousStock: currentStock,
+                newStock: newStock,
+                date: serverTimestamp(),
+                userId: user.id,
+                userName: user.name,
+                branchId: currentBranch.id,
+                organizationId: user.organizationId,
+            }
+            await addDoc(stockEntryRef, newStockEntry);
 
             toast({ title: "Estoque atualizado!", description: `${quantity} unidades de ${selectedProduct.name} adicionadas.` });
             onDone();
@@ -233,7 +227,7 @@ function AddStockForm({ products, onDone }: { products: Product[]; onDone: () =>
 
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isStockFormOpen, setIsStockFormOpen] = useState(false);
@@ -248,22 +242,48 @@ export default function ProductsPage() {
     }
     
     const productsRef = collection(db, 'products');
-    const q = query(productsRef, where("branchId", "==", currentBranch.id));
+    const qProducts = query(productsRef, where("branchId", "==", currentBranch.id));
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
-      setProducts(productsData.sort((a,b) => a.name.localeCompare(b.name)));
-      setLoading(false);
+    const unsubscribeProducts = onSnapshot(qProducts, (productsSnapshot) => {
+      const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
+      
+      const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
+      const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
+      
+      const unsubSales = onSnapshot(salesQuery, (salesSnapshot) => {
+        const salesData = salesSnapshot.docs.map(doc => doc.data() as Sale);
+        const unsubEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
+            const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
+
+            const productsWithStock = productsData.map(product => {
+                const totalEntries = entriesData
+                    .filter(e => e.productId === product.id)
+                    .reduce((sum, e) => sum + e.quantityAdded, 0);
+                const totalSales = salesData
+                    .filter(s => s.productId === product.id)
+                    .reduce((sum, s) => sum + s.quantity, 0);
+                return {
+                    ...product,
+                    stock: totalEntries - totalSales
+                };
+            });
+            
+            setProducts(productsWithStock.sort((a,b) => a.name.localeCompare(b.name)));
+            setLoading(false);
+        });
+        return () => unsubEntries();
+      });
+      return () => unsubSales();
     }, (error) => {
         console.error("Error fetching products:", error);
         toast({title: "Erro ao buscar produtos", variant: "destructive"});
         setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => unsubscribeProducts();
   }, [currentBranch, authLoading, toast, user]);
 
-  const handleSave = async (productData: Omit<Product, 'id' | 'branchId' | 'organizationId' | 'stock'>) => {
+  const handleSave = async (productData: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => {
     if (!currentBranch || !user?.organizationId) {
         toast({ title: 'Nenhuma filial selecionada', description: 'Selecione uma filial para salvar o produto.', variant: 'destructive' });
         return;
@@ -276,7 +296,6 @@ export default function ProductsPage() {
       } else {
         await addDoc(collection(db, "products"), { 
             ...productData, 
-            stock: 0, // Initial stock is always 0 now
             branchId: currentBranch.id, 
             organizationId: user.organizationId
         });
@@ -330,7 +349,7 @@ export default function ProductsPage() {
         <div className="flex gap-2">
             <Dialog open={isStockFormOpen} onOpenChange={setIsStockFormOpen}>
                 <DialogTrigger asChild>
-                    <Button variant="outline">
+                    <Button variant="outline" disabled={products.length === 0}>
                         <PlusCircle className="mr-2 h-4 w-4" />
                         Adicionar Estoque
                     </Button>
@@ -383,7 +402,7 @@ export default function ProductsPage() {
                     <TableCell className="text-center"><Skeleton className="h-8 w-8 mx-auto rounded-full" /></TableCell>
                 </TableRow>
             ))
-          ) : (
+          ) : products.length > 0 ? (
             products.map((product) => (
               <TableRow key={product.id}>
                 <TableCell>
@@ -409,6 +428,12 @@ export default function ProductsPage() {
                 </TableCell>
               </TableRow>
             ))
+          ) : (
+             <TableRow>
+                <TableCell colSpan={6} className="h-24 text-center">
+                    Nenhum produto encontrado. Adicione produtos para começar.
+                </TableCell>
+            </TableRow>
           )}
         </TableBody>
       </Table>

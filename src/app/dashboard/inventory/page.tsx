@@ -15,6 +15,7 @@ import { fromUnixTime, format, startOfDay, subDays, endOfDay, parseISO } from 'd
 interface DailyStockInfo {
     date: string;
     productName: string;
+    productId: string;
     category: string;
     entries: number;
     sales: number;
@@ -84,14 +85,12 @@ export default function InventoryPage() {
         const dailyStockInfo: DailyStockInfo[] = [];
 
         products.forEach(product => {
-            let previousDayStock = product.stock; // Start with current stock and adjust backwards
-            
             allDays.forEach(day => {
                 const dayDate = startOfDay(parseISO(day));
                 const endOfday = endOfDay(dayDate);
 
                 const salesOnDay = sales
-                    .filter(s => s.productName === product.name && format(startOfDay(s.date), 'yyyy-MM-dd') === day)
+                    .filter(s => s.productId === product.id && format(startOfDay(s.date), 'yyyy-MM-dd') === day)
                     .reduce((sum, s) => sum + s.quantity, 0);
 
                 const entriesOnDay = entries
@@ -104,7 +103,7 @@ export default function InventoryPage() {
                     .reduce((sum, e) => sum + e.quantityAdded, 0);
                 
                 const totalSalesUntilDayEnd = sales
-                    .filter(s => s.productName === product.name && s.date <= endOfday)
+                    .filter(s => s.productId === product.id && s.date <= endOfday)
                     .reduce((sum, s) => sum + s.quantity, 0);
 
                 const finalStock = totalEntriesUntilDayEnd - totalSalesUntilDayEnd;
@@ -112,6 +111,7 @@ export default function InventoryPage() {
                 dailyStockInfo.push({
                     date: day,
                     productName: product.name,
+                    productId: product.id,
                     category: product.category,
                     entries: entriesOnDay,
                     sales: salesOnDay,

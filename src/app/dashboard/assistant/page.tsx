@@ -1,6 +1,6 @@
 
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { answerInventoryQuestion } from '@/ai/flows/answer-inventory-questions';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Send, Loader2, Lock } from 'lucide-react';
-import { MOCK_PRODUCTS } from '@/lib/mock-data';
+import type { Product, Sale, StockEntry } from '@/lib/types';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 interface Message {
   sender: 'user' | 'bot';
@@ -17,12 +19,44 @@ interface Message {
 }
 
 export default function AssistantPage() {
-  const { user } = useAuth();
+  const { user, currentBranch } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [inventoryContext, setInventoryContext] = useState('');
 
   const hasAccess = user?.role === 'admin' || user?.role === 'manager';
+
+  useEffect(() => {
+      if (!hasAccess || !currentBranch) return;
+
+      const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
+      const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
+      const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
+
+      const unsubProducts = onSnapshot(productsQuery, (productsSnapshot) => {
+          const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+          
+          const unsubSales = onSnapshot(salesQuery, (salesSnapshot) => {
+              const salesData = salesSnapshot.docs.map(doc => doc.data() as Sale);
+              
+              const unsubEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
+                  const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
+
+                  const context = productsData.map(product => {
+                      const totalEntries = entriesData.filter(e => e.productId === product.id).reduce((sum, e) => sum + e.quantityAdded, 0);
+                      const totalSales = salesData.filter(s => s.productId === product.id).reduce((sum, s) => sum + s.quantity, 0);
+                      const stock = totalEntries - totalSales;
+                      return `${product.name}: ${stock} unidades`;
+                  }).join(', ');
+                  setInventoryContext(context);
+              });
+              return unsubEntries;
+          });
+          return unsubSales;
+      });
+      return () => unsubProducts();
+  }, [hasAccess, currentBranch]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,9 +68,6 @@ export default function AssistantPage() {
     setLoading(true);
 
     try {
-      // In a real app, you would dynamically provide context based on the question.
-      // Here, we provide a summary of all products as context.
-      const inventoryContext = MOCK_PRODUCTS.map(p => `${p.name}: ${p.stock} unidades`).join(', ');
       const fullQuestion = `Dado o contexto do estoque: [${inventoryContext}], responda à seguinte pergunta: ${input}`;
 
       const response = await answerInventoryQuestion({ question: fullQuestion });

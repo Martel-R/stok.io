@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
-import { fromUnixTime, format, startOfDay, subDays } from 'date-fns';
+import { fromUnixTime, format, startOfDay, subDays, endOfDay, parseISO } from 'date-fns';
 
 interface DailyStockInfo {
     date: string;
@@ -84,8 +84,11 @@ export default function InventoryPage() {
         const dailyStockInfo: DailyStockInfo[] = [];
 
         products.forEach(product => {
+            let previousDayStock = product.stock; // Start with current stock and adjust backwards
+            
             allDays.forEach(day => {
-                const dayDate = startOfDay(new Date(day));
+                const dayDate = startOfDay(parseISO(day));
+                const endOfday = endOfDay(dayDate);
 
                 const salesOnDay = sales
                     .filter(s => s.productName === product.name && format(startOfDay(s.date), 'yyyy-MM-dd') === day)
@@ -95,7 +98,16 @@ export default function InventoryPage() {
                     .filter(e => e.productId === product.id && format(startOfDay(e.date), 'yyyy-MM-dd') === day)
                     .reduce((sum, e) => sum + e.quantityAdded, 0);
 
-                const finalStock = product.stock;
+                 // Calculate the stock at the END of the current day in the loop.
+                 const totalEntriesUntilDayEnd = entries
+                    .filter(e => e.productId === product.id && e.date <= endOfday)
+                    .reduce((sum, e) => sum + e.quantityAdded, 0);
+                
+                const totalSalesUntilDayEnd = sales
+                    .filter(s => s.productName === product.name && s.date <= endOfday)
+                    .reduce((sum, s) => sum + s.quantity, 0);
+
+                const finalStock = totalEntriesUntilDayEnd - totalSalesUntilDayEnd;
 
                 dailyStockInfo.push({
                     date: day,
@@ -172,10 +184,9 @@ export default function InventoryPage() {
                                     </TableRow>
                                 ))
                             ) : dailyStock.length > 0 ? (
-                                dailyStock.map((item, index) => (
-                                    (item.entries > 0 || item.sales > 0) &&
+                                dailyStock.filter(item => item.entries > 0 || item.sales > 0).map((item, index) => (
                                     <TableRow key={`${item.date}-${item.productName}`}>
-                                        <TableCell className="font-medium">{format(new Date(item.date), 'dd/MM/yyyy')}</TableCell>
+                                        <TableCell className="font-medium">{format(parseISO(item.date), 'dd/MM/yyyy')}</TableCell>
                                         <TableCell>{item.productName}</TableCell>
                                         <TableCell>{getStockStatus(item.finalStock)}</TableCell>
                                         <TableCell className="text-right text-green-600">+{item.entries}</TableCell>

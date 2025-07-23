@@ -22,6 +22,7 @@ export interface Product {
   imageUrl: string;
   branchId: string;
   organizationId: string;
+  lowStockThreshold: number;
 }
 
 export type PaymentConditionType = 'credit' | 'debit' | 'cash' | 'pix';
@@ -64,7 +65,6 @@ export interface Branch {
     cnpj: string;
     location: string;
     userIds: string[];
-    lowStockThreshold: number;
     taxRate: number; // Stored as a percentage, e.g., 8 for 8%
     organizationId: string;
 }
@@ -117,5 +117,3 @@ export interface Organization {
     ownerId: string;
     paymentStatus: PaymentStatus;
 }
-
-    

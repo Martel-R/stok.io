@@ -20,6 +20,7 @@ interface DailyStockInfo {
     entries: number;
     sales: number;
     finalStock: number;
+    lowStockThreshold: number;
 }
 
 const convertDate = (dateField: any): Date => {
@@ -115,7 +116,8 @@ export default function InventoryPage() {
                     category: product.category,
                     entries: entriesOnDay,
                     sales: salesOnDay,
-                    finalStock: finalStock
+                    finalStock: finalStock,
+                    lowStockThreshold: product.lowStockThreshold
                 });
             });
         });
@@ -130,10 +132,9 @@ export default function InventoryPage() {
     };
     
 
-    const getStockStatus = (stock: number) => {
-        const lowStockThreshold = currentBranch?.lowStockThreshold ?? 10;
+    const getStockStatus = (stock: number, threshold: number) => {
         if (stock <= 0) return <Badge variant="destructive">Sem Estoque</Badge>;
-        if (stock <= lowStockThreshold) return <Badge variant="secondary" className="bg-yellow-400 text-yellow-900">Estoque Baixo</Badge>;
+        if (stock <= threshold) return <Badge variant="secondary" className="bg-yellow-400 text-yellow-900">Estoque Baixo</Badge>;
         return <Badge variant="secondary" className="bg-green-400 text-green-900">Em Estoque</Badge>;
     };
 
@@ -188,7 +189,7 @@ export default function InventoryPage() {
                                     <TableRow key={`${item.date}-${item.productName}`}>
                                         <TableCell className="font-medium">{format(parseISO(item.date), 'dd/MM/yyyy')}</TableCell>
                                         <TableCell>{item.productName}</TableCell>
-                                        <TableCell>{getStockStatus(item.finalStock)}</TableCell>
+                                        <TableCell>{getStockStatus(item.finalStock, item.lowStockThreshold)}</TableCell>
                                         <TableCell className="text-right text-green-600">+{item.entries}</TableCell>
                                         <TableCell className="text-right text-red-500">-{item.sales}</TableCell>
                                         <TableCell className="text-right font-semibold">{item.finalStock}</TableCell>

@@ -27,7 +27,7 @@ type ProductWithStock = Product & { stock: number };
 
 function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Product>>(
-    product || { name: '', category: '', price: 0, imageUrl: '' }
+    product || { name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10 }
   );
   const [isUploading, setIsUploading] = useState(false);
 
@@ -68,9 +68,15 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
         <Label htmlFor="category">Categoria</Label>
         <Input id="category" name="category" value={formData.category} onChange={handleChange} required />
       </div>
-      <div>
-        <Label htmlFor="price">Preço</Label>
-        <Input id="price" name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} required />
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="price">Preço</Label>
+          <Input id="price" name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} required />
+        </div>
+        <div>
+          <Label htmlFor="lowStockThreshold">Limite para Estoque Baixo</Label>
+          <Input id="lowStockThreshold" name="lowStockThreshold" type="number" value={formData.lowStockThreshold} onChange={handleChange} required />
+        </div>
       </div>
       
        <Tabs defaultValue="upload" className="w-full">

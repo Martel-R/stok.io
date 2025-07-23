@@ -173,7 +173,7 @@ function LowStockReport({ branches, products, sales, stockEntries }: { branches:
             </CardHeader>
             <CardContent className="space-y-4">
                 {branches.map(branch => {
-                    const lowStockProducts = productsWithStock.filter(p => p.branchId === branch.id && p.stock <= branch.lowStockThreshold);
+                    const lowStockProducts = productsWithStock.filter(p => p.branchId === branch.id && p.stock <= p.lowStockThreshold);
                     if (lowStockProducts.length === 0) return null;
 
                     return (
@@ -192,7 +192,7 @@ function LowStockReport({ branches, products, sales, stockEntries }: { branches:
                                         <TableRow key={p.id}>
                                             <TableCell className="font-medium">{p.name}</TableCell>
                                             <TableCell className="text-right">{p.stock}</TableCell>
-                                            <TableCell className="text-right">{branch.lowStockThreshold}</TableCell>
+                                            <TableCell className="text-right">{p.lowStockThreshold}</TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>

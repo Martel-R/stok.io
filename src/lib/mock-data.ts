@@ -19,10 +19,10 @@ export const MOCK_USERS: User[] = [
 
 // Mock products no longer need a static branchId, it will be assigned on creation.
 export const MOCK_PRODUCTS: Omit<Product, 'id' | 'branchId' | 'organizationId'>[] = [
-  { name: 'Laptop Quântico', category: 'Eletrônicos', price: 1200, imageUrl: 'https://placehold.co/400x400.png' },
-  { name: 'Smart-Watch Pro', category: 'Eletrônicos', price: 350, imageUrl: 'https://placehold.co/400x400.png' },
-  { name: 'Cadeira Ergonômica 5000', category: 'Móveis', price: 500, imageUrl: 'https://placehold.co/400x400.png' },
-  { name: 'Grãos de Café Orgânico', category: 'Mercearia', price: 25, imageUrl: 'https://placehold.co/400x400.png' },
+  { name: 'Laptop Quântico', category: 'Eletrônicos', price: 1200, imageUrl: 'https://placehold.co/400x400.png', lowStockThreshold: 5 },
+  { name: 'Smart-Watch Pro', category: 'Eletrônicos', price: 350, imageUrl: 'https://placehold.co/400x400.png', lowStockThreshold: 10 },
+  { name: 'Cadeira Ergonômica 5000', category: 'Móveis', price: 500, imageUrl: 'https://placehold.co/400x400.png', lowStockThreshold: 3 },
+  { name: 'Grãos de Café Orgânico', category: 'Mercearia', price: 25, imageUrl: 'https://placehold.co/400x400.png', lowStockThreshold: 20 },
 ];
 
 // This data is for dashboard visualization and also needs to be scoped

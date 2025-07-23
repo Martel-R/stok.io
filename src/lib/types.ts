@@ -1,6 +1,7 @@
 
 
 export type UserRole = 'admin' | 'manager' | 'cashier';
+export type PaymentStatus = 'active' | 'overdue' | 'locked';
 
 export interface User {
   id: string;
@@ -10,6 +11,7 @@ export interface User {
   avatar: string;
   password?: string;
   organizationId: string;
+  paymentStatus?: PaymentStatus;
 }
 
 export interface Product {
@@ -113,6 +115,7 @@ export interface Organization {
     id: string;
     name: string;
     ownerId: string;
+    paymentStatus: PaymentStatus;
 }
 
     

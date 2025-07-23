@@ -1,11 +1,12 @@
 
+
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc } from "firebase/firestore";
-import type { User, UserRole, Branch, Product } from '@/lib/types';
+import type { User, UserRole, Branch, Product, Organization } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
 
@@ -51,10 +52,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let branchesUnsubscribe: Unsubscribe | null = null;
+    let orgUnsubscribe: Unsubscribe | null = null;
 
     const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseAuthUser | null) => {
       setLoading(true);
-      if (branchesUnsubscribe) branchesUnsubscribe(); // Unsubscribe from previous user's branches listener
+      if (branchesUnsubscribe) branchesUnsubscribe();
+      if (orgUnsubscribe) orgUnsubscribe();
 
       if (firebaseUser) {
         const userDocRef = doc(db, "users", firebaseUser.uid);
@@ -63,17 +66,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         let currentUser: User;
         if (userDocSnap.exists()) {
             currentUser = userDocSnap.data() as User;
-            // Sync Firebase Auth profile with Firestore on load, in case it was changed elsewhere
-            if (currentUser.name !== firebaseUser.displayName || currentUser.avatar !== firebaseUser.photoURL) {
-                currentUser.name = firebaseUser.displayName || currentUser.name;
-                currentUser.avatar = firebaseUser.photoURL || currentUser.avatar;
-            }
             setUser(currentUser);
         } else {
-             // This case is mainly for Google Sign-in for a new user
              const usersSnapshot = await getDocs(collection(db, "users"));
              const isFirstUser = usersSnapshot.empty;
-             const organizationId = isFirstUser ? doc(collection(db, 'organizations')).id : ''; // This needs a proper way to get orgId
+             const organizationId = isFirstUser ? doc(collection(db, 'organizations')).id : '';
              
              const newUser: User = {
                 id: firebaseUser.uid,
@@ -81,27 +78,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 name: firebaseUser.displayName || 'Usuário Google',
                 role: 'admin', 
                 avatar: firebaseUser.photoURL || getRandomAvatar(),
-                organizationId: organizationId, // Will be empty if not first user, needs handling
+                organizationId: organizationId,
             }
             await setDoc(userDocRef, newUser);
-            // This case needs a flow to either create a new org or join an existing one.
-            // For now, first Google user creates an org.
             if(isFirstUser) {
-                 await setDoc(doc(db, "organizations", organizationId), { ownerId: newUser.id, name: `${newUser.name}'s Organization` });
+                 await setDoc(doc(db, "organizations", organizationId), { ownerId: newUser.id, name: `${newUser.name}'s Organization`, paymentStatus: 'active' });
             }
             currentUser = newUser;
             setUser(currentUser);
         }
 
-        // Listen for branches associated with the user's organization
         if (currentUser.organizationId) {
+            const orgDocRef = doc(db, "organizations", currentUser.organizationId);
+            orgUnsubscribe = onSnapshot(orgDocRef, (orgDoc) => {
+                if (orgDoc.exists()) {
+                    const orgData = orgDoc.data() as Organization;
+                    setUser(prevUser => prevUser ? { ...prevUser, paymentStatus: orgData.paymentStatus } : null);
+                }
+            });
+
             const q = query(collection(db, "branches"), where("organizationId", "==", currentUser.organizationId));
             branchesUnsubscribe = onSnapshot(q, (snapshot) => {
                 const userBranches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
                 const userFilteredBranches = userBranches.filter(b => b.userIds.includes(currentUser.id));
                 setBranches(userFilteredBranches);
 
-                // Set current branch logic
                 const storedBranchId = localStorage.getItem('currentBranchId');
                 const storedBranch = userFilteredBranches.find(b => b.id === storedBranchId);
                 if (storedBranch) {
@@ -127,13 +128,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       authUnsubscribe();
       if (branchesUnsubscribe) branchesUnsubscribe();
+      if (orgUnsubscribe) orgUnsubscribe();
     };
   }, []);
   
   const signup = async (email: string, pass: string, name: string): Promise<{ success: boolean; error?: string, isFirstUser?: boolean }> => {
     setLoading(true);
     try {
-      // Check if any user exists to determine if this is the first one
       const usersSnapshot = await getDocs(collection(db, "users"));
       const isFirstUser = usersSnapshot.empty;
       
@@ -159,11 +160,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const batch = writeBatch(db);
       
-      // Create user doc
       batch.set(doc(db, "users", firebaseUser.uid), newUser);
       
-      // Create organization doc
-      batch.set(doc(db, "organizations", organizationId), { ownerId: newUser.id, name: `${name}'s Company` });
+      batch.set(doc(db, "organizations", organizationId), { 
+        ownerId: newUser.id, 
+        name: `${name}'s Company`,
+        paymentStatus: 'active' 
+      });
 
       await batch.commit();
       
@@ -184,8 +187,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const createUser = async (email: string, pass: string, name: string, role: UserRole, organizationId: string): Promise<{ success: boolean; error?: string }> => {
     try {
-        // This is a temporary auth instance trick to avoid logging out the admin.
-        // NOT recommended for production. A backend function is the proper way.
         const { getApp, initializeApp, deleteApp } = await import('firebase/app');
         const { getAuth: getAuth_local } = await import('firebase/auth');
 
@@ -230,7 +231,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loginCancelledRef.current = false;
     try {
         await signInWithEmailAndPassword(auth, email, pass);
-        // The onAuthStateChanged listener will handle the redirect.
         return true;
     } catch (error) {
         console.error("Firebase Login Error:", error);
@@ -248,7 +248,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
         const provider = new GoogleAuthProvider();
         await signInWithPopup(auth, provider);
-        // The onAuthStateChanged listener will handle the redirect.
         return true;
     } catch (error) {
         console.error("Google Login Error:", error);
@@ -289,17 +288,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'Usuário não autenticado.'};
     }
     try {
-        // Update Firebase Auth profile
         await updateProfile(auth.currentUser, {
             displayName: data.name,
             photoURL: data.avatar,
         });
 
-        // Update Firestore user document
         const userRef = doc(db, 'users', user.id);
-        await updateDoc(userRef, data);
+        const updateData = { ...data };
+        delete updateData.paymentStatus; // Do not allow user to update their own payment status
+        await updateDoc(userRef, updateData);
         
-        // Update local user state
         setUser(prev => prev ? { ...prev, ...data } : null);
         
         return { success: true };
@@ -317,7 +315,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const cred = EmailAuthProvider.credential(auth.currentUser.email, currentPass);
     
     try {
-        // Reauthenticate before changing password for security
         await reauthenticateWithCredential(auth.currentUser, cred);
         await updatePassword(auth.currentUser, newPass);
         return { success: true };
@@ -386,7 +383,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 router.push('/dashboard');
             }
         } else if (user.role === 'cashier' && pathname !== '/dashboard/pos' && pathname !== '/dashboard/profile') {
-            // If a cashier tries to access any other dashboard page, redirect them to POS
             router.push('/dashboard/pos');
         }
     }

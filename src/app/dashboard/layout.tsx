@@ -22,14 +22,14 @@ function DashboardNav() {
     const { user } = useAuth();
     
     const navItems = [
-        { href: '/dashboard', label: 'Início', icon: Home, roles: ['admin', 'manager'] },
-        { href: '/dashboard/products', label: 'Produtos', icon: Package, roles: ['admin', 'manager'] },
-        { href: '/dashboard/combos', label: 'Kits', icon: Gift, roles: ['admin', 'manager'] },
-        { href: '/dashboard/inventory', label: 'Movimentação', icon: BarChart, roles: ['admin', 'manager'] },
-        { href: '/dashboard/pos', label: 'Frente de Caixa', icon: ShoppingCart, roles: ['admin', 'manager', 'cashier'] },
-        { href: '/dashboard/assistant', label: 'Oráculo AI', icon: Bot, roles: ['admin', 'manager'] },
-        { href: '/dashboard/reports', label: 'Relatórios', icon: FileText, roles: ['admin'] },
-        { href: '/dashboard/settings', label: 'Ajustes', icon: Settings, roles: ['admin'] },
+        { href: '/dashboard', label: 'Início', icon: Home, roles: ['admin', 'manager'], module: 'dashboard' },
+        { href: '/dashboard/products', label: 'Produtos', icon: Package, roles: ['admin', 'manager'], module: 'products' },
+        { href: '/dashboard/combos', label: 'Kits', icon: Gift, roles: ['admin', 'manager'], module: 'combos' },
+        { href: '/dashboard/inventory', label: 'Movimentação', icon: BarChart, roles: ['admin', 'manager'], module: 'inventory' },
+        { href: '/dashboard/pos', label: 'Frente de Caixa', icon: ShoppingCart, roles: ['admin', 'manager', 'cashier'], module: 'pos' },
+        { href: '/dashboard/assistant', label: 'Oráculo AI', icon: Bot, roles: ['admin', 'manager'], module: 'assistant' },
+        { href: '/dashboard/reports', label: 'Relatórios', icon: FileText, roles: ['admin'], module: 'reports' },
+        { href: '/dashboard/settings', label: 'Ajustes', icon: Settings, roles: ['admin'], module: 'settings' },
     ];
 
     const isActive = (href: string) => {
@@ -38,19 +38,28 @@ function DashboardNav() {
       }
       return pathname === href;
     }
+    
+    const isModuleEnabled = (module: string) => {
+        if (!user?.enabledModules) return true; // Default to true if not set
+        return user.enabledModules[module as keyof typeof user.enabledModules] ?? true;
+    }
+
 
     return (
         <SidebarMenu>
-            {navItems.filter(item => user && item.roles.includes(user.role)).map((item) => (
-                <SidebarMenuItem key={item.href}>
-                    <Link href={item.href} passHref>
-                        <SidebarMenuButton isActive={isActive(item.href)}>
-                            <item.icon />
-                            <span>{item.label}</span>
-                        </SidebarMenuButton>
-                    </Link>
-                </SidebarMenuItem>
-            ))}
+            {navItems
+                .filter(item => user && item.roles.includes(user.role))
+                .filter(item => isModuleEnabled(item.module))
+                .map((item) => (
+                    <SidebarMenuItem key={item.href}>
+                        <Link href={item.href} passHref>
+                            <SidebarMenuButton isActive={isActive(item.href)}>
+                                <item.icon />
+                                <span>{item.label}</span>
+                            </SidebarMenuButton>
+                        </Link>
+                    </SidebarMenuItem>
+                ))}
         </SidebarMenu>
     );
 }

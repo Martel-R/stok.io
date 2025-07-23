@@ -3,6 +3,17 @@
 export type UserRole = 'admin' | 'manager' | 'cashier';
 export type PaymentStatus = 'active' | 'overdue' | 'locked';
 
+export interface EnabledModules {
+    dashboard: boolean;
+    products: boolean;
+    combos: boolean;
+    inventory: boolean;
+    pos: boolean;
+    assistant: boolean;
+    reports: boolean;
+    settings: boolean;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -12,6 +23,7 @@ export interface User {
   password?: string;
   organizationId: string;
   paymentStatus?: PaymentStatus;
+  enabledModules?: EnabledModules;
 }
 
 export interface Product {
@@ -116,4 +128,5 @@ export interface Organization {
     name: string;
     ownerId: string;
     paymentStatus: PaymentStatus;
+    enabledModules: EnabledModules;
 }

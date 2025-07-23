@@ -6,7 +6,7 @@ import { createContext, useContext, useState, useEffect, ReactNode, useRef } fro
 import { useRouter, usePathname } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc } from "firebase/firestore";
-import type { User, UserRole, Branch, Product, Organization } from '@/lib/types';
+import type { User, UserRole, Branch, Product, Organization, EnabledModules } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
 
@@ -34,6 +34,7 @@ interface AuthContextType {
   changeUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean, error?: string }>;
   sendPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
   deleteTestData: (organizationId: string) => Promise<void>;
+  updateOrganizationModules: (modules: EnabledModules) => Promise<void>;
   logout: () => void;
   loading: boolean;
   cancelLogin: () => void;
@@ -93,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             orgUnsubscribe = onSnapshot(orgDocRef, (orgDoc) => {
                 if (orgDoc.exists()) {
                     const orgData = orgDoc.data() as Organization;
-                    setUser(prevUser => prevUser ? { ...prevUser, paymentStatus: orgData.paymentStatus } : null);
+                    setUser(prevUser => prevUser ? { ...prevUser, paymentStatus: orgData.paymentStatus, enabledModules: orgData.enabledModules } : null);
                 }
             });
 
@@ -165,7 +166,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       batch.set(doc(db, "organizations", organizationId), { 
         ownerId: newUser.id, 
         name: `${name}'s Company`,
-        paymentStatus: 'active' 
+        paymentStatus: 'active',
+        enabledModules: {
+            dashboard: true,
+            products: true,
+            combos: true,
+            inventory: true,
+            pos: true,
+            assistant: true,
+            reports: true,
+            settings: true,
+        }
       });
 
       await batch.commit();
@@ -360,6 +371,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await batch.commit();
   };
 
+  const updateOrganizationModules = async (modules: EnabledModules) => {
+    if (!user?.organizationId) {
+        throw new Error("Organização não encontrada.");
+    }
+    const orgRef = doc(db, 'organizations', user.organizationId);
+    await updateDoc(orgRef, { enabledModules: modules });
+  };
+
   const isAuthenticated = !!user;
   
   useEffect(() => {
@@ -389,7 +408,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [isAuthenticated, loading, pathname, router, user]);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, deleteTestData }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, deleteTestData, updateOrganizationModules }}>
       {children}
     </AuthContext.Provider>
   );

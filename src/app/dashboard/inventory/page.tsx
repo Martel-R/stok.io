@@ -184,7 +184,7 @@ export default function InventoryPage() {
                                     </TableRow>
                                 ))
                             ) : dailyStock.length > 0 ? (
-                                dailyStock.filter(item => item.entries > 0 || item.sales > 0).map((item, index) => (
+                                dailyStock.map((item, index) => (
                                     <TableRow key={`${item.date}-${item.productName}`}>
                                         <TableCell className="font-medium">{format(parseISO(item.date), 'dd/MM/yyyy')}</TableCell>
                                         <TableCell>{item.productName}</TableCell>

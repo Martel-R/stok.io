@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History, TrendingUp, TrendingDown, Minus, Archive } from 'lucide-react';
 import Image from 'next/image';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -362,6 +362,65 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
 }
 
 
+interface AggregatedProductSale {
+    productId: string;
+    productName: string;
+    totalQuantitySold: number;
+    totalRevenue: number;
+}
+
+function ProductHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
+    const aggregatedProductSales = useMemo<AggregatedProductSale[]>(() => {
+        const productSales: { [key: string]: { productName: string; totalQuantitySold: number; totalRevenue: number } } = {};
+        salesHistory.forEach(sale => {
+            const key = sale.productId;
+            if (!productSales[key]) {
+                productSales[key] = {
+                    productName: sale.productName,
+                    totalQuantitySold: 0,
+                    totalRevenue: 0,
+                };
+            }
+            productSales[key].totalQuantitySold += sale.quantity;
+            productSales[key].totalRevenue += sale.total;
+        });
+
+        return Object.entries(productSales)
+            .map(([productId, data]) => ({ productId, ...data }))
+            .sort((a, b) => b.totalRevenue - a.totalRevenue);
+    }, [salesHistory]);
+
+    return (
+        <ScrollArea className="h-[calc(100vh-18rem)]">
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>Produto</TableHead>
+                        <TableHead className="text-right">Quantidade Vendida</TableHead>
+                        <TableHead className="text-right">Receita Total</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {aggregatedProductSales.length > 0 ? (
+                        aggregatedProductSales.map(product => (
+                            <TableRow key={product.productId}>
+                                <TableCell className="font-medium">{product.productName}</TableCell>
+                                <TableCell className="text-right">{product.totalQuantitySold}</TableCell>
+                                <TableCell className="text-right">R${product.totalRevenue.toFixed(2)}</TableCell>
+                            </TableRow>
+                        ))
+                    ) : (
+                        <TableRow>
+                            <TableCell colSpan={3} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
+                        </TableRow>
+                    )}
+                </TableBody>
+            </Table>
+        </ScrollArea>
+    );
+}
+
+
 
 export default function POSPage() {
   const [products, setProducts] = useState<ProductWithStock[]>([]);
@@ -565,10 +624,11 @@ export default function POSPage() {
         <Card className="h-full flex flex-col">
           <CardHeader>
              <Tabs defaultValue="products">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="products"><Package className="mr-2 h-4 w-4"/> Produtos</TabsTrigger>
                 <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Kits</TabsTrigger>
                 <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/> Histórico</TabsTrigger>
+                <TabsTrigger value="product-history"><Archive className="mr-2 h-4 w-4"/> Histórico por Produto</TabsTrigger>
               </TabsList>
               <TabsContent value="products" className="mt-4">
                  <ScrollArea className="h-[calc(100vh-18rem)]">
@@ -631,6 +691,9 @@ export default function POSPage() {
               </TabsContent>
                <TabsContent value="history" className="mt-4">
                     <SalesHistoryTab salesHistory={salesHistory} />
+              </TabsContent>
+              <TabsContent value="product-history" className="mt-4">
+                    <ProductHistoryTab salesHistory={salesHistory} />
               </TabsContent>
             </Tabs>
           </CardHeader>

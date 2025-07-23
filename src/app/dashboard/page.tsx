@@ -1,6 +1,6 @@
 
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, DollarSign, Package, Users, Trophy } from 'lucide-react';
@@ -252,5 +252,7 @@ export default function DashboardPage() {
         </div>
     );
 }
+
+    
 
     

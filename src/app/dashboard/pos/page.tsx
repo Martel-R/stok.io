@@ -239,179 +239,30 @@ const convertSaleDoc = (doc: any): Sale => {
 
 
 function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
-    const aggregatedSales = useMemo<AggregatedDailySale[]>(() => {
-        const dailySales: { [key: string]: { totalQuantity: number; totalAmount: number } } = {};
-        salesHistory.forEach(sale => {
-            if (!(sale.date instanceof Date) || isNaN(sale.date.getTime())) return;
-            const dateKey = format(startOfDay(sale.date), 'yyyy-MM-dd');
-            if (!dailySales[dateKey]) {
-                dailySales[dateKey] = { totalQuantity: 0, totalAmount: 0 };
-            }
-            dailySales[dateKey].totalQuantity += sale.quantity;
-            dailySales[dateKey].totalAmount += sale.total;
-        });
-
-        return Object.entries(dailySales)
-            .map(([date, data]) => ({ date, ...data }))
-            .sort((a, b) => b.date.localeCompare(a.date));
-    }, [salesHistory]);
-
-    const monthlySummary = useMemo<MonthlyPaymentSummary>(() => {
-        const summary: MonthlyPaymentSummary = {};
-        const now = new Date();
-        const currentMonth = getMonth(now);
-        const currentYear = getYear(now);
-        const prevMonthDate = subMonths(now, 1);
-        const previousMonth = getMonth(prevMonthDate);
-        const previousMonthYear = getYear(prevMonthDate);
-
-        salesHistory.forEach(sale => {
-            if (!(sale.date instanceof Date) || isNaN(sale.date.getTime())) return;
-            sale.payments?.forEach(p => {
-                const paymentType = p.type;
-                if (!summary[paymentType]) {
-                    summary[paymentType] = { currentMonthTotal: 0, previousMonthTotal: 0, change: 0 };
-                }
-                const saleMonth = getMonth(sale.date);
-                const saleYear = getYear(sale.date);
-
-                if (saleMonth === currentMonth && saleYear === currentYear) {
-                    summary[paymentType].currentMonthTotal += p.amount;
-                } else if (saleMonth === previousMonth && saleYear === previousMonthYear) {
-                    summary[paymentType].previousMonthTotal += p.amount;
-                }
-            });
-        });
-        
-        Object.keys(summary).forEach(key => {
-            const current = summary[key].currentMonthTotal;
-            const previous = summary[key].previousMonthTotal;
-            if (previous > 0) {
-                summary[key].change = ((current - previous) / previous) * 100;
-            } else if (current > 0) {
-                summary[key].change = 100; // From 0 to something is a 100% "new" increase.
-            }
-        });
-
-        return summary;
-    }, [salesHistory]);
-
-    const ChangeIndicator = ({ value }: { value: number }) => {
-        if (value === 0) {
-            return <p className="text-xs text-muted-foreground flex items-center"><Minus className="h-4 w-4 mr-1" />Sem alteração</p>;
-        }
-        const isPositive = value > 0;
-        return (
-            <p className={`text-xs flex items-center ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                {isPositive ? <TrendingUp className="h-4 w-4 mr-1" /> : <TrendingDown className="h-4 w-4 mr-1" />}
-                {value.toFixed(1)}% vs. mês anterior
-            </p>
-        );
-    };
-
-    const getPaymentTypeName = (type: PaymentConditionType) => {
-        const names = { credit: 'Crédito', debit: 'Débito', cash: 'Dinheiro', pix: 'Pix' };
-        return names[type] || 'Desconhecido';
-    };
-
     return (
         <ScrollArea className="h-[calc(100vh-18rem)]">
-             <div className="mb-6">
-                <CardDescription>Resumo de vendas do mês atual por tipo de pagamento</CardDescription>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
-                    {Object.entries(monthlySummary).map(([type, data]) => (
-                        <Card key={type}>
-                            <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium">{getPaymentTypeName(type as PaymentConditionType)}</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">R${data.currentMonthTotal.toFixed(2)}</div>
-                                <ChangeIndicator value={data.change} />
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
-            </div>
-
             <Table>
                 <TableHeader>
                     <TableRow>
                         <TableHead>Data</TableHead>
-                        <TableHead className="text-right">Produtos Vendidos</TableHead>
-                        <TableHead className="text-right">Total Arrecadado</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {aggregatedSales.length > 0 ? (
-                        aggregatedSales.map(sale => (
-                            <TableRow key={sale.date}>
-                                <TableCell>{format(new Date(sale.date), 'dd/MM/yyyy')}</TableCell>
-                                <TableCell className="text-right font-medium">{sale.totalQuantity}</TableCell>
-                                <TableCell className="text-right">R${sale.totalAmount.toFixed(2)}</TableCell>
-                            </TableRow>
-                        ))
-                    ) : (
-                        <TableRow>
-                            <TableCell colSpan={3} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
-                        </TableRow>
-                    )}
-                </TableBody>
-            </Table>
-        </ScrollArea>
-    );
-}
-
-
-interface AggregatedProductSale {
-    productId: string;
-    productName: string;
-    totalQuantitySold: number;
-    totalRevenue: number;
-}
-
-function ProductHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
-    const aggregatedProductSales = useMemo<AggregatedProductSale[]>(() => {
-        const productSales: { [key: string]: { productName: string; totalQuantitySold: number; totalRevenue: number } } = {};
-        salesHistory.forEach(sale => {
-            const key = sale.productId;
-            if (!productSales[key]) {
-                productSales[key] = {
-                    productName: sale.productName,
-                    totalQuantitySold: 0,
-                    totalRevenue: 0,
-                };
-            }
-            productSales[key].totalQuantitySold += sale.quantity;
-            productSales[key].totalRevenue += sale.total;
-        });
-
-        return Object.entries(productSales)
-            .map(([productId, data]) => ({ productId, ...data }))
-            .sort((a, b) => b.totalRevenue - a.totalRevenue);
-    }, [salesHistory]);
-
-    return (
-        <ScrollArea className="h-[calc(100vh-18rem)]">
-            <Table>
-                <TableHeader>
-                    <TableRow>
                         <TableHead>Produto</TableHead>
-                        <TableHead className="text-right">Quantidade Vendida</TableHead>
-                        <TableHead className="text-right">Receita Total</TableHead>
+                        <TableHead className="text-right">Qtd.</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {aggregatedProductSales.length > 0 ? (
-                        aggregatedProductSales.map(product => (
-                            <TableRow key={product.productId}>
-                                <TableCell className="font-medium">{product.productName}</TableCell>
-                                <TableCell className="text-right">{product.totalQuantitySold}</TableCell>
-                                <TableCell className="text-right">R${product.totalRevenue.toFixed(2)}</TableCell>
+                    {salesHistory.length > 0 ? (
+                        salesHistory.map(sale => (
+                            <TableRow key={sale.id}>
+                                <TableCell>{format(sale.date, 'dd/MM/yyyy HH:mm')}</TableCell>
+                                <TableCell className="font-medium">{sale.productName}</TableCell>
+                                <TableCell className="text-right">{sale.quantity}</TableCell>
+                                <TableCell className="text-right">R${sale.total.toFixed(2)}</TableCell>
                             </TableRow>
                         ))
                     ) : (
                         <TableRow>
-                            <TableCell colSpan={3} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
+                            <TableCell colSpan={4} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
                         </TableRow>
                     )}
                 </TableBody>
@@ -419,7 +270,6 @@ function ProductHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
         </ScrollArea>
     );
 }
-
 
 
 export default function POSPage() {
@@ -624,11 +474,10 @@ export default function POSPage() {
         <Card className="h-full flex flex-col">
           <CardHeader>
              <Tabs defaultValue="products">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="products"><Package className="mr-2 h-4 w-4"/> Produtos</TabsTrigger>
                 <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Kits</TabsTrigger>
                 <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/> Histórico</TabsTrigger>
-                <TabsTrigger value="product-history"><Archive className="mr-2 h-4 w-4"/> Histórico por Produto</TabsTrigger>
               </TabsList>
               <TabsContent value="products" className="mt-4">
                  <ScrollArea className="h-[calc(100vh-18rem)]">
@@ -691,9 +540,6 @@ export default function POSPage() {
               </TabsContent>
                <TabsContent value="history" className="mt-4">
                     <SalesHistoryTab salesHistory={salesHistory} />
-              </TabsContent>
-              <TabsContent value="product-history" className="mt-4">
-                    <ProductHistoryTab salesHistory={salesHistory} />
               </TabsContent>
             </Tabs>
           </CardHeader>

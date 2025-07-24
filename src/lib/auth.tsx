@@ -91,10 +91,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (currentUser.organizationId) {
             const orgDocRef = doc(db, "organizations", currentUser.organizationId);
-            orgUnsubscribe = onSnapshot(orgDocRef, (orgDoc) => {
+            orgUnsubscribe = onSnapshot(orgDocRef, async (orgDoc) => {
                 if (orgDoc.exists()) {
                     const orgData = orgDoc.data() as Organization;
-                    setUser(prevUser => prevUser ? { ...prevUser, paymentStatus: orgData.paymentStatus, enabledModules: orgData.enabledModules } : null);
+                    let modules = orgData.enabledModules;
+                    
+                    if (!modules) {
+                        modules = {
+                            dashboard: true,
+                            products: true,
+                            combos: true,
+                            inventory: true,
+                            pos: true,
+                            assistant: true,
+                            reports: true,
+                            settings: true,
+                        };
+                        await updateDoc(orgDocRef, { enabledModules: modules });
+                    }
+
+                    setUser(prevUser => prevUser ? { ...prevUser, paymentStatus: orgData.paymentStatus, enabledModules: modules } : null);
                 }
             });
 

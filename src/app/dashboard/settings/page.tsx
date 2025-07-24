@@ -464,7 +464,7 @@ function BranchesSettings() {
 function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users: User[]; onSave: (data: Omit<Branch, 'id' | 'organizationId'>) => void; onDone: () => void }) {
     const { user: currentUser } = useAuth();
     const [formData, setFormData] = useState(
-        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], taxRate: 8 }
+        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], taxRate: 8, lowStockThreshold: 10 }
     );
     const [open, setOpen] = useState(false);
 
@@ -733,12 +733,14 @@ function PaymentConditions() {
 }
 
 function ModulesSettings() {
-    const { user, updateOrganizationModules } = useAuth();
+    const { user, updateOrganizationModules, loading } = useAuth();
     const { toast } = useToast();
-    const [enabledModules, setEnabledModules] = useState<EnabledModules | undefined>(user?.enabledModules);
+    const [enabledModules, setEnabledModules] = useState<EnabledModules | undefined>(undefined);
 
     useEffect(() => {
-        setEnabledModules(user?.enabledModules);
+        if (user?.enabledModules) {
+            setEnabledModules(user.enabledModules);
+        }
     }, [user?.enabledModules]);
 
     const handleModuleToggle = async (module: keyof EnabledModules, checked: boolean) => {
@@ -757,7 +759,7 @@ function ModulesSettings() {
         }
     };
     
-    if (!enabledModules) {
+    if (loading || !enabledModules) {
         return <Skeleton className="h-48 w-full" />;
     }
 

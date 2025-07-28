@@ -106,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                             assistant: true,
                             reports: true,
                             settings: true,
+                            kits: true,
                         };
                         await updateDoc(orgDocRef, { enabledModules: modules });
                     }
@@ -192,6 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             assistant: true,
             reports: true,
             settings: true,
+            kits: true,
         }
       });
 
@@ -373,7 +375,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteTestData = async (organizationId: string) => {
-    const collectionsToDelete = ['products', 'combos', 'sales', 'stockEntries'];
+    const collectionsToDelete = ['products', 'combos', 'sales', 'stockEntries', 'kits'];
     const batch = writeBatch(db);
 
     for (const collectionName of collectionsToDelete) {

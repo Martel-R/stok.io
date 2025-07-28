@@ -8,7 +8,7 @@ import { Icons } from '@/components/icons';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Home, Package, BarChart, ShoppingCart, Bot, FileText, LogOut, Loader2, Users, Settings, ChevronsUpDown, Check, Building, Gift, AlertTriangle, CreditCard } from 'lucide-react';
+import { Home, Package, BarChart, ShoppingCart, Bot, FileText, LogOut, Loader2, Users, Settings, ChevronsUpDown, Check, Building, Gift, AlertTriangle, CreditCard, Component } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -24,7 +24,8 @@ function DashboardNav() {
     const navItems = [
         { href: '/dashboard', label: 'Início', icon: Home, roles: ['admin', 'manager'], module: 'dashboard' },
         { href: '/dashboard/products', label: 'Produtos', icon: Package, roles: ['admin', 'manager'], module: 'products' },
-        { href: '/dashboard/combos', label: 'Kits', icon: Gift, roles: ['admin', 'manager'], module: 'combos' },
+        { href: '/dashboard/combos', label: 'Combos', icon: Gift, roles: ['admin', 'manager'], module: 'combos' },
+        { href: '/dashboard/kits', label: 'Kits', icon: Component, roles: ['admin', 'manager'], module: 'kits' },
         { href: '/dashboard/inventory', label: 'Movimentação', icon: BarChart, roles: ['admin', 'manager'], module: 'inventory' },
         { href: '/dashboard/pos', label: 'Frente de Caixa', icon: ShoppingCart, roles: ['admin', 'manager', 'cashier'], module: 'pos' },
         { href: '/dashboard/assistant', label: 'Oráculo AI', icon: Bot, roles: ['admin', 'manager'], module: 'assistant' },
@@ -52,7 +53,7 @@ function DashboardNav() {
                 .filter(item => isModuleEnabled(item.module))
                 .map((item) => (
                     <SidebarMenuItem key={item.href}>
-                        <Link href={item.href} passHref>
+                        <Link href={item.href}>
                             <SidebarMenuButton isActive={isActive(item.href)}>
                                 <item.icon />
                                 <span>{item.label}</span>
@@ -147,7 +148,7 @@ function UserNav() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
-                    <Link href="/dashboard/profile" passHref>
+                    <Link href="/dashboard/profile">
                         <DropdownMenuItem>
                             <Users className="mr-2 h-4 w-4" />
                             <span>Perfil</span>

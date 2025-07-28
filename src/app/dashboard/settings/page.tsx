@@ -16,7 +16,7 @@ import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType, Pr
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, ShoppingCart, Gift, Bot, FileText } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, ShoppingCart, Gift, Bot, FileText, Component } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -765,7 +765,8 @@ function ModulesSettings() {
 
     const moduleConfig = [
         { key: 'pos', label: 'Frente de Caixa (PDV)', icon: ShoppingCart, description: 'Permite o registro de vendas e pagamentos.' },
-        { key: 'combos', label: 'Kits Promocionais', icon: Gift, description: 'Crie e gerencie pacotes de produtos.' },
+        { key: 'combos', label: 'Combos Promocionais', icon: Gift, description: 'Crie e gerencie pacotes de produtos fixos.' },
+        { key: 'kits', label: 'Kits Dinâmicos', icon: Component, description: 'Crie e gerencie pacotes de produtos flexíveis.' },
         { key: 'assistant', label: 'Oráculo AI', icon: Bot, description: 'Assistente virtual para perguntas sobre o estoque.' },
         { key: 'reports', label: 'Relatórios Gerenciais', icon: FileText, description: 'Acesso a relatórios consolidados de desempenho.' },
     ] as const;
@@ -837,7 +838,7 @@ function TestDataSettings() {
             <CardHeader>
                 <CardTitle>Dados de Teste</CardTitle>
                 <CardDescription>
-                    Esta ação excluirá permanentemente todos os produtos, kits, vendas e entradas de estoque da sua organização.
+                    Esta ação excluirá permanentemente todos os produtos, combos, kits, vendas e entradas de estoque da sua organização.
                     Use para limpar o ambiente de teste. Esta ação é irreversível e só pode ser executada uma vez.
                 </CardDescription>
             </CardHeader>
@@ -853,7 +854,7 @@ function TestDataSettings() {
                         <AlertDialogHeader>
                             <AlertDialogTitle>Você tem certeza absoluta?</AlertDialogTitle>
                             <AlertDialogDescription>
-                                Esta ação não pode ser desfeita. Todos os dados transacionais (produtos, vendas, kits) serão removidos permanentemente.
+                                Esta ação não pode ser desfeita. Todos os dados transacionais (produtos, vendas, combos, kits) serão removidos permanentemente.
                             </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>

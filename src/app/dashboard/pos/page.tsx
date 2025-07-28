@@ -4,14 +4,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType, StockEntry } from '@/lib/types';
+import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType, StockEntry, Kit } from '@/lib/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History, TrendingUp, TrendingDown, Minus, Archive } from 'lucide-react';
+import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History, Minus, Component } from 'lucide-react';
 import Image from 'next/image';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -22,28 +22,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { format, getMonth, getYear, subMonths, startOfDay, fromUnixTime } from 'date-fns';
+import { format, fromUnixTime } from 'date-fns';
 
 
-type CartItem = (ProductWithStock & { itemType: 'product'; quantity: number }) | (ComboWithStock & { itemType: 'combo'; quantity: number });
+type CartItem = 
+    | (ProductWithStock & { itemType: 'product'; quantity: number }) 
+    | (Combo & { itemType: 'combo'; quantity: number })
+    | ({ kit: Kit; chosenProducts: Product[] } & { id: string; name: string; itemType: 'kit'; quantity: number; total: number });
+
 type ProductWithStock = Product & { stock: number };
-type ComboWithStock = Combo & { stock: number };
-
-
-interface AggregatedDailySale {
-    date: string;
-    totalQuantity: number;
-    totalAmount: number;
-}
-
-interface MonthlyPaymentSummary {
-    [key: string]: {
-        currentMonthTotal: number;
-        previousMonthTotal: number;
-        change: number;
-    }
-}
-
 
 function CheckoutModal({
   isOpen,
@@ -271,29 +258,96 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
     );
 }
 
+function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: { kit: Kit; products: ProductWithStock[]; isOpen: boolean; onOpenChange: (isOpen: boolean) => void; onConfirm: (chosenProducts: Product[]) => void; }) {
+    const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
+    const { toast } = useToast();
+
+    const eligibleProducts = useMemo(() => {
+        return products.filter(p => kit.eligibleProductIds.includes(p.id));
+    }, [kit, products]);
+
+    const toggleProduct = (product: Product) => {
+        setSelectedProducts(prev => {
+            if (prev.find(p => p.id === product.id)) {
+                return prev.filter(p => p.id !== product.id);
+            }
+            if (prev.length < kit.numberOfItems) {
+                return [...prev, product];
+            } else {
+                toast({ title: `Limite de ${kit.numberOfItems} produtos atingido.`, variant: 'destructive' });
+                return prev;
+            }
+        });
+    };
+
+    const handleConfirm = () => {
+        if (selectedProducts.length !== kit.numberOfItems) {
+            toast({ title: `Você deve selecionar ${kit.numberOfItems} produtos.`, variant: 'destructive' });
+            return;
+        }
+        onConfirm(selectedProducts);
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>Monte seu Kit: {kit.name}</DialogTitle>
+                    <DialogDescription>Selecione {kit.numberOfItems} dos produtos abaixo.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                    <p className="mb-2 font-medium">Selecionados: {selectedProducts.length} de {kit.numberOfItems}</p>
+                    <ScrollArea className="h-64 border rounded-md">
+                        <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
+                            {eligibleProducts.map(p => (
+                                <Card
+                                    key={p.id}
+                                    onClick={() => toggleProduct(p)}
+                                    className={`cursor-pointer ${selectedProducts.some(sp => sp.id === p.id) ? 'border-primary ring-2 ring-primary' : ''}`}
+                                >
+                                    <CardContent className="p-2 text-center">
+                                        <Image src={p.imageUrl} alt={p.name} width={80} height={80} className="mx-auto rounded-md" data-ai-hint="product image"/>
+                                        <p className="text-sm font-medium mt-1">{p.name}</p>
+                                        <p className="text-xs text-muted-foreground">R$ {p.price.toFixed(2)}</p>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    </ScrollArea>
+                </div>
+                <DialogFooter>
+                    <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
+                    <Button onClick={handleConfirm}>Confirmar Seleção</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
 
 export default function POSPage() {
   const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [combos, setCombos] = useState<Combo[]>([]);
+  const [kits, setKits] = useState<Kit[]>([]);
   const [paymentConditions, setPaymentConditions] = useState<PaymentCondition[]>([]);
   const [salesHistory, setSalesHistory] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
+  const [selectedKit, setSelectedKit] = useState<Kit | null>(null);
   const { toast } = useToast();
   const { user, currentBranch, loading: authLoading } = useAuth();
 
   useEffect(() => {
     if (authLoading || !currentBranch || !user?.organizationId) {
-        setProducts([]);
-        setCombos([]);
-        setSalesHistory([]);
         setLoading(true);
         return;
     }
 
     const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
     const combosQuery = query(collection(db, 'combos'), where('branchId', '==', currentBranch.id));
+    const kitsQuery = query(collection(db, 'kits'), where('branchId', '==', currentBranch.id));
     const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId));
     const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id), orderBy('date', 'desc'));
     const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
@@ -322,22 +376,47 @@ export default function POSPage() {
     });
 
     const unsubscribeCombos = onSnapshot(combosQuery, (querySnapshot) => {
-      const combosData: Combo[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Combo));
-      setCombos(combosData);
+      setCombos(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Combo)));
+    });
+
+    const unsubscribeKits = onSnapshot(kitsQuery, (querySnapshot) => {
+      setKits(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kit)));
     });
     
     const unsubscribeConditions = onSnapshot(conditionsQuery, (snapshot) => {
-        const conditionsData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition);
-        setPaymentConditions(conditionsData);
+        setPaymentConditions(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition));
     });
 
 
     return () => {
         unsubscribeProducts();
         unsubscribeCombos();
+        unsubscribeKits();
         unsubscribeConditions();
     }
   }, [currentBranch, authLoading, user]);
+  
+  const handleKitSelection = (kit: Kit, chosenProducts: Product[]) => {
+      const originalPrice = chosenProducts.reduce((sum, p) => sum + p.price, 0);
+      let finalPrice = originalPrice;
+      if (kit.discountType === 'percentage') {
+          finalPrice = originalPrice * (1 - kit.discountValue / 100);
+      } else {
+          finalPrice = originalPrice - kit.discountValue;
+      }
+
+      const cartItem: CartItem = {
+          id: kit.id,
+          name: `${kit.name} (Kit)`,
+          itemType: 'kit',
+          quantity: 1,
+          kit,
+          chosenProducts,
+          total: finalPrice
+      };
+      setCart(prev => [...prev, cartItem]);
+      setSelectedKit(null);
+  };
 
   const addToCart = (item: ProductWithStock | Combo, type: 'product' | 'combo') => {
     if (type === 'product') {
@@ -365,7 +444,7 @@ export default function POSPage() {
         for (const comboProduct of combo.products) {
             const productInStore = products.find(p => p.id === comboProduct.productId);
             if (!productInStore || productInStore.stock < comboProduct.quantity) {
-                toast({ title: 'Estoque insuficiente para o kit', description: `O produto ${comboProduct.productName} não tem estoque suficiente para montar o kit ${combo.name}.`, variant: 'destructive'});
+                toast({ title: 'Estoque insuficiente para o combo', description: `O produto ${comboProduct.productName} não tem estoque suficiente para montar o combo ${combo.name}.`, variant: 'destructive'});
                 return;
             }
         }
@@ -382,7 +461,7 @@ export default function POSPage() {
                     }, 0);
 
                     if (!productInStore || productInStore.stock < (cartProduct?.quantity || 0) + cartComboUsage + comboProduct.quantity) {
-                         toast({ title: 'Estoque insuficiente para o kit', description: `O produto ${comboProduct.productName} não tem estoque suficiente para adicionar outro kit ${combo.name}.`, variant: 'destructive'});
+                         toast({ title: 'Estoque insuficiente para o combo', description: `O produto ${comboProduct.productName} não tem estoque suficiente para adicionar outro combo ${combo.name}.`, variant: 'destructive'});
                          return prev;
                     }
                 }
@@ -393,13 +472,16 @@ export default function POSPage() {
     }
   };
   
-  const removeFromCart = (itemId: string, itemType: 'product' | 'combo') => {
+  const removeFromCart = (itemId: string, itemType: 'product' | 'combo' | 'kit') => {
       setCart(cart => cart.filter(item => !(item.id === itemId && item.itemType === itemType)));
   }
 
   const total = cart.reduce((acc, item) => {
-      const price = item.itemType === 'product' ? item.price : item.finalPrice;
-      return acc + price * item.quantity
+      let price = 0;
+      if (item.itemType === 'product') price = item.price;
+      if (item.itemType === 'combo') price = item.finalPrice;
+      if (item.itemType === 'kit') price = item.total;
+      return acc + price * item.quantity;
   }, 0);
   const tax = total * ((currentBranch?.taxRate || 0) / 100);
   const grandTotal = total + tax;
@@ -418,20 +500,18 @@ export default function POSPage() {
         const batch = writeBatch(db);
         
         for (const item of cart) {
-             const productsToUpdate: { id: string, quantity: number }[] = [];
-             if (item.itemType === 'product') {
-                productsToUpdate.push({ id: item.id, quantity: item.quantity });
-             } else { // It's a combo
-                 item.products.forEach(p => {
-                    productsToUpdate.push({ id: p.productId, quantity: p.quantity * item.quantity });
-                 });
-             }
+            let saleTotal = 0;
+            if (item.itemType === 'product') saleTotal = item.price * item.quantity;
+            if (item.itemType === 'combo') saleTotal = item.finalPrice * item.quantity;
+            if (item.itemType === 'kit') saleTotal = item.total * item.quantity;
 
             const saleData: Omit<Sale, 'id'> = {
-                productId: item.id, // Can be product or combo id
-                productName: item.name,
+                productId: item.id, // Can be product, combo or kit id
+                productName: item.itemType === 'kit' 
+                    ? `${item.name}: ${item.chosenProducts.map(p => p.name).join(', ')}` 
+                    : item.name,
                 quantity: item.quantity,
-                total: (item.itemType === 'product' ? item.price : item.finalPrice) * item.quantity,
+                total: saleTotal,
                 date: new Date(),
                 cashier: user.name,
                 branchId: currentBranch.id,
@@ -474,9 +554,10 @@ export default function POSPage() {
         <Card className="h-full flex flex-col">
           <CardHeader>
              <Tabs defaultValue="products">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="products"><Package className="mr-2 h-4 w-4"/> Produtos</TabsTrigger>
-                <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Kits</TabsTrigger>
+                <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Combos</TabsTrigger>
+                <TabsTrigger value="kits"><Component className="mr-2 h-4 w-4"/> Kits</TabsTrigger>
                 <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/> Histórico</TabsTrigger>
               </TabsList>
               <TabsContent value="products" className="mt-4">
@@ -538,6 +619,31 @@ export default function POSPage() {
                     )}
                  </ScrollArea>
               </TabsContent>
+               <TabsContent value="kits" className="mt-4">
+                 <ScrollArea className="h-[calc(100vh-18rem)]">
+                    {loading ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                           {Array.from({ length: 5 }).map((_, i) => ( <Skeleton key={i} className="h-[150px] w-full" /> ))}
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                        {kits.map((kit) => (
+                            <Card 
+                            key={kit.id} 
+                            onClick={() => setSelectedKit(kit)} 
+                            className="cursor-pointer hover:shadow-lg transition-shadow relative"
+                            >
+                            <CardContent className="p-2 flex flex-col items-center justify-center">
+                                <Image src={kit.imageUrl} alt={kit.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="kit offer"/>
+                                <p className="font-semibold text-sm mt-2 text-center">{kit.name}</p>
+                                <p className="text-xs text-muted-foreground">Monte seu kit!</p>
+                            </CardContent>
+                            </Card>
+                        ))}
+                        </div>
+                    )}
+                 </ScrollArea>
+              </TabsContent>
                <TabsContent value="history" className="mt-4">
                     <SalesHistoryTab salesHistory={salesHistory} />
               </TabsContent>
@@ -557,19 +663,29 @@ export default function POSPage() {
                     <p className="text-muted-foreground text-center">O carrinho está vazio</p>
                 ) : (
                     <div className="space-y-4">
-                        {cart.map(item => (
-                            <div key={`${item.id}-${item.itemType}`} className="flex justify-between items-center">
+                        {cart.map((item, index) => (
+                            <div key={`${item.id}-${index}`} className="flex justify-between items-center">
                                 <div>
                                     <p className="font-medium flex items-center gap-2">
                                         {item.name}
-                                        {item.itemType === 'combo' && <Badge variant="secondary">Kit</Badge>}
+                                        {(item.itemType === 'combo' || item.itemType === 'kit') && <Badge variant="secondary">{item.itemType === 'combo' ? 'Combo' : 'Kit'}</Badge>}
                                     </p>
                                     <p className="text-sm text-muted-foreground">
-                                        R${(item.itemType === 'product' ? item.price : item.finalPrice).toFixed(2).replace('.', ',')} x {item.quantity}
+                                        {item.itemType === 'kit' 
+                                            ? `Total do Kit: R$${item.total.toFixed(2).replace('.', ',')}`
+                                            : `R$${(item.itemType === 'product' ? item.price : item.finalPrice).toFixed(2).replace('.', ',')} x ${item.quantity}`
+                                        }
                                     </p>
+                                    {item.itemType === 'kit' && (
+                                        <div className="text-xs text-muted-foreground pl-2">
+                                            {item.chosenProducts.map(p => p.name).join(', ')}
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <p className="font-semibold">R${((item.itemType === 'product' ? item.price : item.finalPrice) * item.quantity).toFixed(2).replace('.', ',')}</p>
+                                    <p className="font-semibold">
+                                        R${((item.itemType === 'product' ? item.price : (item.itemType === 'combo' ? item.finalPrice : item.total)) * item.quantity).toFixed(2).replace('.', ',')}
+                                    </p>
                                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFromCart(item.id, item.itemType)}>
                                         <X className="h-4 w-4 text-destructive"/>
                                     </Button>
@@ -595,6 +711,15 @@ export default function POSPage() {
         </Card>
       </div>
     </div>
+    {selectedKit && (
+        <KitSelectionModal
+            kit={selectedKit}
+            products={products}
+            isOpen={!!selectedKit}
+            onOpenChange={(isOpen) => !isOpen && setSelectedKit(null)}
+            onConfirm={(chosen) => handleKitSelection(selectedKit, chosen)}
+        />
+    )}
     <CheckoutModal
       isOpen={isCheckoutModalOpen}
       onOpenChange={setIsCheckoutModalOpen}

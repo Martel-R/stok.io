@@ -12,6 +12,7 @@ export interface EnabledModules {
     assistant: boolean;
     reports: boolean;
     settings: boolean;
+    kits: boolean;
 }
 
 export interface User {
@@ -60,7 +61,7 @@ export interface PaymentDetail {
 
 export interface Sale {
   id:string;
-  productId: string;
+  productId: string; // Can be a product, combo, or kit ID
   productName: string;
   quantity: number;
   total: number;
@@ -122,6 +123,19 @@ export interface Combo {
   branchId: string;
   organizationId: string;
 }
+
+export interface Kit {
+  id: string;
+  name: string;
+  eligibleProductIds: string[];
+  numberOfItems: number;
+  discountType: DiscountType;
+  discountValue: number;
+  imageUrl: string;
+  branchId: string;
+  organizationId: string;
+}
+
 
 export interface Organization {
     id: string;

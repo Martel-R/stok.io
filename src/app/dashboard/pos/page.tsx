@@ -349,7 +349,7 @@ export default function POSPage() {
     const combosQuery = query(collection(db, 'combos'), where('branchId', '==', currentBranch.id));
     const kitsQuery = query(collection(db, 'kits'), where('branchId', '==', currentBranch.id));
     const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId));
-    const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id), orderBy('date', 'desc'));
+    const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
     const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
 
     const unsubscribeProducts = onSnapshot(productsQuery, (productsSnapshot) => {
@@ -357,7 +357,7 @@ export default function POSPage() {
 
         const unsubscribeSales = onSnapshot(salesQuery, (salesSnapshot) => {
             const salesData = salesSnapshot.docs.map(convertSaleDoc);
-            setSalesHistory(salesData);
+            setSalesHistory(salesData.sort((a,b) => b.date.getTime() - a.date.getTime()));
 
             const unsubscribeEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
                 const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
@@ -479,22 +479,26 @@ export default function POSPage() {
   const { subtotal, totalDiscount } = useMemo(() => {
     return cart.reduce(
         (acc, item) => {
-            let itemSubtotal = 0;
-            let itemDiscount = 0;
+            let itemTotal;
+            let itemOriginalTotal;
 
             if (item.itemType === 'product') {
-                itemSubtotal = item.price * item.quantity;
+                itemTotal = item.price * item.quantity;
+                itemOriginalTotal = itemTotal;
             } else if (item.itemType === 'combo') {
-                itemSubtotal = item.finalPrice * item.quantity;
-                itemDiscount = (item.originalPrice - item.finalPrice) * item.quantity;
+                itemTotal = item.finalPrice * item.quantity;
+                itemOriginalTotal = item.originalPrice * item.quantity;
             } else if (item.itemType === 'kit') {
                 const originalPrice = item.chosenProducts.reduce((sum, p) => sum + p.price, 0);
-                itemSubtotal = item.total * item.quantity;
-                itemDiscount = (originalPrice - item.total) * item.quantity;
+                itemTotal = item.total * item.quantity;
+                itemOriginalTotal = originalPrice * item.quantity;
+            } else {
+                itemTotal = 0;
+                itemOriginalTotal = 0;
             }
-
-            acc.subtotal += itemSubtotal;
-            acc.totalDiscount += itemDiscount;
+            
+            acc.subtotal += itemTotal;
+            acc.totalDiscount += (itemOriginalTotal - itemTotal);
             return acc;
         },
         { subtotal: 0, totalDiscount: 0 }
@@ -755,3 +759,4 @@ export default function POSPage() {
     </>
   );
 }
+

@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query, where, runTransaction, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { Product, StockEntry, Sale } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy } from 'lucide-react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
@@ -323,6 +323,15 @@ export default function ProductsPage() {
        toast({ title: 'Erro ao excluir produto', description: 'Ocorreu um erro, por favor tente novamente.', variant: 'destructive' });
     }
   };
+
+  const handleCopy = async (product: ProductWithStock) => {
+    const { id, stock, ...productToCopy } = product;
+    const newProductData = {
+        ...productToCopy,
+        name: `${product.name} (Cópia)`,
+    };
+    await handleSave(newProductData);
+  }
   
   const openEditDialog = (product: Product) => {
     setEditingProduct(product);
@@ -428,6 +437,10 @@ export default function ProductsPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => openEditDialog(product)}>Editar</DropdownMenuItem>
+                       <DropdownMenuItem onClick={() => handleCopy(product)}>
+                        <Copy className="mr-2 h-4 w-4" />
+                        Copiar
+                      </DropdownMenuItem>
                       <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(product.id)}>Excluir</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import type { Product, Combo, ComboProduct, ComboDiscountRule, PaymentCondition, DiscountType } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, Trash2, Check, ChevronsUpDown, Percent, Tag } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, Trash2, Check, ChevronsUpDown, Percent, Tag, Copy } from 'lucide-react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
@@ -363,6 +363,15 @@ export default function CombosPage() {
        toast({ title: 'Erro ao excluir combo', description: 'Ocorreu um erro, por favor tente novamente.', variant: 'destructive' });
     }
   };
+
+  const handleCopy = async (combo: Combo) => {
+    const { id, ...comboToCopy } = combo;
+    const newComboData = {
+        ...comboToCopy,
+        name: `${combo.name} (Cópia)`,
+    };
+    await handleSave(newComboData);
+  }
   
   const openEditDialog = (combo: Combo) => {
     setEditingCombo(combo);
@@ -463,6 +472,10 @@ export default function CombosPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => openEditDialog(combo)}>Editar</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleCopy(combo)}>
+                        <Copy className="mr-2 h-4 w-4" />
+                        Copiar
+                      </DropdownMenuItem>
                       <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(combo.id)}>Excluir</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

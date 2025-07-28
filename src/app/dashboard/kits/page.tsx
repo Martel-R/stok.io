@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where } from 'firebase/firestore';
 import type { Product, Kit, DiscountType } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Trash2, Check, ChevronsUpDown, Percent, Tag, Upload, Link as LinkIcon, Loader2 } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Check, ChevronsUpDown, Percent, Tag, Upload, Link as LinkIcon, Loader2, Copy } from 'lucide-react';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -236,6 +236,15 @@ export default function KitsPage() {
             toast({ title: 'Erro ao excluir kit.', variant: 'destructive' });
         }
     };
+
+    const handleCopy = async (kit: Kit) => {
+        const { id, ...kitToCopy } = kit;
+        const newKitData = {
+            ...kitToCopy,
+            name: `${kit.name} (Cópia)`,
+        };
+        await handleSave(newKitData);
+    }
     
     const openEditDialog = (kit: Kit) => {
         setEditingKit(kit);
@@ -330,6 +339,10 @@ export default function KitsPage() {
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
                                             <DropdownMenuItem onClick={() => openEditDialog(kit)}>Editar</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => handleCopy(kit)}>
+                                                <Copy className="mr-2 h-4 w-4" />
+                                                Copiar
+                                            </DropdownMenuItem>
                                             <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(kit.id)}>Excluir</DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>

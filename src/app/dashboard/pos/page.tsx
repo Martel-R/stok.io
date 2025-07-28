@@ -244,7 +244,7 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
                                 <TableCell>{format(sale.date, 'dd/MM/yyyy HH:mm')}</TableCell>
                                 <TableCell className="font-medium">{sale.productName}</TableCell>
                                 <TableCell className="text-right">{sale.quantity}</TableCell>
-                                <TableCell className="text-right">R${sale.total.toFixed(2)}</TableCell>
+                                <TableCell className="text-right">R${sale.total.toFixed(2).replace('.', ',')}</TableCell>
                             </TableRow>
                         ))
                     ) : (
@@ -476,15 +476,33 @@ export default function POSPage() {
       setCart(cart => cart.filter(item => !(item.id === itemId && item.itemType === itemType)));
   }
 
-  const total = cart.reduce((acc, item) => {
-      let price = 0;
-      if (item.itemType === 'product') price = item.price;
-      if (item.itemType === 'combo') price = item.finalPrice;
-      if (item.itemType === 'kit') price = item.total;
-      return acc + price * item.quantity;
-  }, 0);
-  const tax = total * ((currentBranch?.taxRate || 0) / 100);
-  const grandTotal = total + tax;
+  const { subtotal, totalDiscount } = useMemo(() => {
+    return cart.reduce(
+        (acc, item) => {
+            let itemSubtotal = 0;
+            let itemDiscount = 0;
+
+            if (item.itemType === 'product') {
+                itemSubtotal = item.price * item.quantity;
+            } else if (item.itemType === 'combo') {
+                itemSubtotal = item.finalPrice * item.quantity;
+                itemDiscount = (item.originalPrice - item.finalPrice) * item.quantity;
+            } else if (item.itemType === 'kit') {
+                const originalPrice = item.chosenProducts.reduce((sum, p) => sum + p.price, 0);
+                itemSubtotal = item.total * item.quantity;
+                itemDiscount = (originalPrice - item.total) * item.quantity;
+            }
+
+            acc.subtotal += itemSubtotal;
+            acc.totalDiscount += itemDiscount;
+            return acc;
+        },
+        { subtotal: 0, totalDiscount: 0 }
+    );
+  }, [cart]);
+
+  const tax = subtotal * ((currentBranch?.taxRate || 0) / 100);
+  const grandTotal = subtotal + tax;
   
   const handleCheckout = async (payments: PaymentDetail[]) => {
       if (cart.length === 0) {
@@ -698,7 +716,13 @@ export default function POSPage() {
           </CardContent>
           <CardFooter className="flex-col !p-6 border-t">
              <div className="w-full space-y-2">
-                 <div className="flex justify-between"><p>Subtotal</p><p>R${total.toFixed(2).replace('.', ',')}</p></div>
+                 {totalDiscount > 0 && (
+                     <div className="flex justify-between text-destructive">
+                         <p>Descontos</p>
+                         <p>-R${totalDiscount.toFixed(2).replace('.', ',')}</p>
+                     </div>
+                 )}
+                 <div className="flex justify-between"><p>Subtotal</p><p>R${subtotal.toFixed(2).replace('.', ',')}</p></div>
                  <div className="flex justify-between"><p>Imposto ({currentBranch?.taxRate || 0}%)</p><p>R${tax.toFixed(2).replace('.', ',')}</p></div>
                  <Separator />
                  <div className="flex justify-between font-bold text-lg"><p>Total</p><p>R${grandTotal.toFixed(2).replace('.', ',')}</p></div>

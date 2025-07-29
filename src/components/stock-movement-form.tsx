@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/lib/auth';
 import type { Product, Branch, StockEntry, StockEntryType } from '@/lib/types';
 import { db } from '@/lib/firebase';
-import { writeBatch, collection, doc, serverTimestamp } from 'firebase/firestore';
+import { writeBatch, collection, doc, serverTimestamp, getDocs, query, where, limit } from 'firebase/firestore';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DialogFooter } from './ui/dialog';
@@ -52,13 +52,43 @@ export function StockMovementForm({ type, products, branches = [], onDone }: Sto
 
         const batch = writeBatch(db);
         const date = serverTimestamp();
+        let destinationProductId = selectedProduct.id;
+
+        // For transfers, check if product exists in destination branch. If not, create it.
+        if (type === 'transfer' && destinationBranch) {
+             const productsRef = collection(db, 'products');
+             const q = query(
+                 productsRef, 
+                 where('branchId', '==', destinationBranch.id), 
+                 where('name', '==', selectedProduct.name),
+                 limit(1)
+             );
+            
+            const existingProductSnap = await getDocs(q);
+            
+            if (existingProductSnap.empty) {
+                // Product does not exist, create it in the destination branch
+                const { id, branchId, organizationId, ...productToCopy } = selectedProduct as any; // 'stock' is not part of Product type
+                const newProductRef = doc(collection(db, 'products'));
+                batch.set(newProductRef, {
+                    ...productToCopy,
+                    branchId: destinationBranch.id,
+                    organizationId: user.organizationId
+                });
+                destinationProductId = newProductRef.id;
+            } else {
+                // Product exists, use its ID for the stock entry
+                destinationProductId = existingProductSnap.docs[0].id;
+            }
+        }
+
 
         // Outgoing entry (from currentBranch)
         const outgoingEntry: Omit<StockEntry, 'id'> = {
             productId: selectedProduct.id,
             productName: selectedProduct.name,
             quantity: type === 'entry' ? quantity : -quantity,
-            type: type === 'transfer' ? 'transfer' : type,
+            type: type,
             date,
             userId: user.id,
             userName: user.name,
@@ -72,7 +102,7 @@ export function StockMovementForm({ type, products, branches = [], onDone }: Sto
         // Incoming entry for transfers
         if (type === 'transfer' && destinationBranch) {
             const incomingEntry: Omit<StockEntry, 'id'> = {
-                productId: selectedProduct.id,
+                productId: destinationProductId, // Use the correct product ID for the destination
                 productName: selectedProduct.name,
                 quantity: quantity,
                 type: 'transfer',
@@ -194,4 +224,3 @@ export function StockMovementForm({ type, products, branches = [], onDone }: Sto
         </form>
     );
 }
-

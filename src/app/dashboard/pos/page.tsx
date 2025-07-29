@@ -2,7 +2,7 @@
 
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType, StockEntry, Kit } from '@/lib/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -319,21 +319,44 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
     const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
     const { toast } = useToast();
 
-    const eligibleProducts = useMemo(() => {
-        return products.filter(p => kit.eligibleProductIds.includes(p.id) && p.stock > 0);
-    }, [kit, products]);
+    useEffect(() => {
+        if (!isOpen) {
+            setSelectedProducts([]);
+        }
+    }, [isOpen]);
 
-    const toggleProduct = (product: Product) => {
+    const eligibleProducts = useMemo(() => {
+        const uniqueProducts = products.filter(p => kit.eligibleProductIds.includes(p.id));
+        return uniqueProducts.map(p => {
+            const stockInCart = selectedProducts.filter(sp => sp.id === p.id).length;
+            return {
+                ...p,
+                availableStock: p.stock - stockInCart,
+            };
+        });
+    }, [kit, products, selectedProducts]);
+
+    const addProduct = (product: Product) => {
+        const productWithStock = eligibleProducts.find(p => p.id === product.id);
+        if (!productWithStock || productWithStock.availableStock <= 0) {
+            toast({ title: `Estoque insuficiente para ${product.name}`, variant: "destructive" });
+            return;
+        }
+
+        if (selectedProducts.length < kit.numberOfItems) {
+            setSelectedProducts(prev => [...prev, product]);
+        } else {
+            toast({ title: `Limite de ${kit.numberOfItems} produtos atingido.`, variant: "destructive" });
+        }
+    };
+
+    const removeProduct = (productId: string) => {
         setSelectedProducts(prev => {
-            if (prev.find(p => p.id === product.id)) {
-                return prev.filter(p => p.id !== product.id);
-            }
-            if (prev.length < kit.numberOfItems) {
-                return [...prev, product];
-            } else {
-                toast({ title: `Limite de ${kit.numberOfItems} produtos atingido.`, variant: 'destructive' });
-                return prev;
-            }
+            const lastIndex = prev.map(p => p.id).lastIndexOf(productId);
+            if (lastIndex === -1) return prev;
+            const newProducts = [...prev];
+            newProducts.splice(lastIndex, 1);
+            return newProducts;
         });
     };
 
@@ -345,34 +368,80 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
         onConfirm(selectedProducts);
     };
 
+    const groupedSelectedProducts = useMemo(() => {
+        return selectedProducts.reduce((acc, product) => {
+            if (!acc[product.id]) {
+                acc[product.id] = { ...product, count: 0 };
+            }
+            acc[product.id].count++;
+            return acc;
+        }, {} as Record<string, Product & { count: number }>);
+    }, [selectedProducts]);
+
+
     if (!isOpen) return null;
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-2xl">
+            <DialogContent className="sm:max-w-4xl grid-rows-[auto,1fr,auto]">
                 <DialogHeader>
                     <DialogTitle>Monte seu Kit: {kit.name}</DialogTitle>
-                    <DialogDescription>Selecione {kit.numberOfItems} dos produtos abaixo.</DialogDescription>
+                    <DialogDescription>Selecione {kit.numberOfItems} dos produtos abaixo. Você pode selecionar o mesmo produto mais de uma vez.</DialogDescription>
                 </DialogHeader>
-                <div className="py-4">
-                    <p className="mb-2 font-medium">Selecionados: {selectedProducts.length} de {kit.numberOfItems}</p>
-                    <ScrollArea className="h-64 border rounded-md">
-                        <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
-                            {eligibleProducts.map(p => (
-                                <Card
-                                    key={p.id}
-                                    onClick={() => toggleProduct(p)}
-                                    className={`cursor-pointer ${selectedProducts.some(sp => sp.id === p.id) ? 'border-primary ring-2 ring-primary' : ''}`}
-                                >
-                                    <CardContent className="p-2 text-center">
-                                        <Image src={p.imageUrl} alt={p.name} width={80} height={80} className="mx-auto rounded-md" data-ai-hint="product image"/>
-                                        <p className="text-sm font-medium mt-1">{p.name}</p>
-                                        <p className="text-xs text-muted-foreground">R$ {p.price.toFixed(2)}</p>
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
-                    </ScrollArea>
+                <div className="grid md:grid-cols-2 gap-6 overflow-hidden">
+                    <div className="flex flex-col gap-4">
+                        <h3 className="font-semibold">Produtos Disponíveis</h3>
+                        <ScrollArea className="h-96 border rounded-md">
+                            <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
+                                {eligibleProducts.map(p => (
+                                    <Card
+                                        key={p.id}
+                                        onClick={() => addProduct(p)}
+                                        className={`cursor-pointer transition-all ${p.availableStock <= 0 ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md'}`}
+                                    >
+                                        <CardContent className="p-2 text-center relative">
+                                            <Badge className="absolute top-1 right-1" variant={p.availableStock > 0 ? "secondary" : "destructive"}>
+                                                {p.availableStock}
+                                            </Badge>
+                                            <Image src={p.imageUrl} alt={p.name} width={80} height={80} className="mx-auto rounded-md" data-ai-hint="product image"/>
+                                            <p className="text-sm font-medium mt-1">{p.name}</p>
+                                            <p className="text-xs text-muted-foreground">R$ {p.price.toFixed(2)}</p>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        </ScrollArea>
+                    </div>
+                     <div className="flex flex-col gap-4">
+                        <h3 className="font-semibold">Sua Seleção ({selectedProducts.length} de {kit.numberOfItems})</h3>
+                        <ScrollArea className="h-96 border rounded-md p-4">
+                           {selectedProducts.length === 0 ? (
+                                <div className="flex items-center justify-center h-full text-muted-foreground">
+                                    Selecione produtos da lista ao lado.
+                                </div>
+                           ) : (
+                                <div className="space-y-2">
+                                    {Object.values(groupedSelectedProducts).map(p => (
+                                        <div key={p.id} className="flex items-center justify-between p-2 rounded-md bg-muted/50">
+                                            <div className="flex items-center gap-2">
+                                                <Image src={p.imageUrl} alt={p.name} width={40} height={40} className="rounded-md" data-ai-hint="product image"/>
+                                                <div>
+                                                    <p className="font-medium">{p.name}</p>
+                                                    <p className="text-xs text-muted-foreground">R$ {p.price.toFixed(2)}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-bold">x {p.count}</span>
+                                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeProduct(p.id)}>
+                                                    <Minus className="h-4 w-4"/>
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                           )}
+                        </ScrollArea>
+                    </div>
                 </div>
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
@@ -465,7 +534,7 @@ export default function POSPage() {
       }
 
       const cartItem: CartItem = {
-          id: kit.id,
+          id: `${kit.id}-${Date.now()}`, // Unique ID for each kit instance in cart
           name: `${kit.name} (Kit)`,
           itemType: 'kit',
           quantity: 1,
@@ -617,7 +686,7 @@ export default function POSPage() {
                     const entry: Omit<StockEntry, 'id'> = {
                         productId: product.id,
                         productName: product.name,
-                        quantity: -item.quantity, // Assuming 1 of each product per kit
+                        quantity: -1, // Each chosen product is one unit from stock
                         type: 'sale',
                         date: saleDate,
                         userId: user.id,

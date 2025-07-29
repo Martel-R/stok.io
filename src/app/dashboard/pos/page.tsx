@@ -327,13 +327,15 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
 
     const eligibleProducts = useMemo(() => {
         const uniqueProducts = products.filter(p => kit.eligibleProductIds.includes(p.id));
-        return uniqueProducts.map(p => {
+        const mappedProducts = uniqueProducts.map(p => {
             const stockInCart = selectedProducts.filter(sp => sp.id === p.id).length;
             return {
                 ...p,
                 availableStock: p.stock - stockInCart,
             };
         });
+        // Sort to show items with stock first
+        return mappedProducts.sort((a, b) => b.availableStock - a.availableStock);
     }, [kit, products, selectedProducts]);
 
     const addProduct = (product: Product) => {

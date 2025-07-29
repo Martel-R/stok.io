@@ -16,7 +16,7 @@ import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType, Pr
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, ShoppingCart, Gift, Bot, FileText, Component } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -30,7 +30,6 @@ import { cn } from '@/lib/utils';
 import { useSearchParams } from 'next/navigation';
 import { Separator } from '@/components/ui/separator';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
-import { Switch } from '@/components/ui/switch';
 
 
 const availableAvatars = [
@@ -736,75 +735,6 @@ function PaymentConditions() {
     );
 }
 
-function ModulesSettings() {
-    const { user, updateOrganizationModules, loading } = useAuth();
-    const { toast } = useToast();
-    const [enabledModules, setEnabledModules] = useState<EnabledModules | null>(null);
-
-    useEffect(() => {
-        if (user?.enabledModules) {
-            setEnabledModules(user.enabledModules);
-        }
-    }, [user]);
-
-    const handleModuleToggle = async (module: keyof EnabledModules, checked: boolean) => {
-        if (!user?.organizationId || !enabledModules) return;
-        
-        const updatedModules = { ...enabledModules, [module]: checked };
-        setEnabledModules(updatedModules); // Update local state for immediate UI feedback
-
-        try {
-            await updateOrganizationModules(updatedModules);
-            toast({ title: 'Módulo atualizado com sucesso!' });
-        } catch (error) {
-            toast({ title: 'Erro ao atualizar módulo', variant: 'destructive' });
-            // Revert optimistic update
-            setEnabledModules(prev => ({...prev!, [module]: !checked}));
-        }
-    };
-    
-    if (loading || !enabledModules) {
-        return <Skeleton className="h-48 w-full" />;
-    }
-
-    const moduleConfig = [
-        { key: 'pos', label: 'Frente de Caixa (PDV)', icon: ShoppingCart, description: 'Permite o registro de vendas e pagamentos.' },
-        { key: 'combos', label: 'Combos Promocionais', icon: Gift, description: 'Crie e gerencie pacotes de produtos fixos.' },
-        { key: 'kits', label: 'Kits Dinâmicos', icon: Component, description: 'Crie e gerencie pacotes de produtos flexíveis.' },
-        { key: 'assistant', label: 'Oráculo AI', icon: Bot, description: 'Assistente virtual para perguntas sobre o estoque.' },
-        { key: 'reports', label: 'Relatórios Gerenciais', icon: FileText, description: 'Acesso a relatórios consolidados de desempenho.' },
-    ] as const;
-
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Módulos do Sistema</CardTitle>
-                <CardDescription>
-                    Habilite ou desabilite funcionalidades para adequar o sistema às suas necessidades.
-                </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                {moduleConfig.map(mod => (
-                    <div key={mod.key} className="flex flex-row items-center justify-between rounded-lg border p-4">
-                        <div className="flex items-center space-x-3">
-                            <mod.icon className="h-5 w-5" />
-                            <div className="space-y-0.5">
-                                <Label className="text-base">{mod.label}</Label>
-                                <p className="text-sm text-muted-foreground">{mod.description}</p>
-                            </div>
-                        </div>
-                        <Switch
-                            checked={enabledModules[mod.key]}
-                            onCheckedChange={(checked) => handleModuleToggle(mod.key, checked)}
-                        />
-                    </div>
-                ))}
-            </CardContent>
-        </Card>
-    )
-}
-
-
 function TestDataSettings() {
     const { deleteTestData, user } = useAuth();
     const { toast } = useToast();
@@ -890,7 +820,6 @@ function SettingsPageContent() {
                     <TabsTrigger value="users">Usuários</TabsTrigger>
                     <TabsTrigger value="branches">Filiais</TabsTrigger>
                     <TabsTrigger value="payments">Pagamentos</TabsTrigger>
-                    <TabsTrigger value="modules">Módulos</TabsTrigger>
                 </TabsList>
                 <TabsContent value="users">
                    <UsersTable />
@@ -900,9 +829,6 @@ function SettingsPageContent() {
                 </TabsContent>
                 <TabsContent value="payments">
                     <PaymentConditions />
-                </TabsContent>
-                 <TabsContent value="modules">
-                    <ModulesSettings />
                 </TabsContent>
             </Tabs>
              <Separator />

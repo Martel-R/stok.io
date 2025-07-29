@@ -3,26 +3,98 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc } from 'firebase/firestore';
-import type { Organization, User, PaymentStatus } from '@/lib/types';
+import type { Organization, User, PaymentStatus, EnabledModules } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, ShoppingCart, Gift, Bot, FileText, Component } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 type OrgWithUser = Organization & { owner?: User };
+
+function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void }) {
+    const { toast } = useToast();
+    const [enabledModules, setEnabledModules] = useState<EnabledModules>(
+        organization.enabledModules || {
+            dashboard: true, products: true, combos: true, inventory: true, pos: true, assistant: true, reports: true, settings: true, kits: true,
+        }
+    );
+
+    useEffect(() => {
+        if (organization.enabledModules) {
+            setEnabledModules(organization.enabledModules);
+        }
+    }, [organization]);
+
+    const handleModuleToggle = async (module: keyof EnabledModules, checked: boolean) => {
+        const updatedModules = { ...enabledModules, [module]: checked };
+        setEnabledModules(updatedModules);
+
+        try {
+            const orgRef = doc(db, 'organizations', organization.id);
+            await updateDoc(orgRef, { enabledModules: updatedModules });
+            toast({ title: 'Módulo atualizado com sucesso!' });
+        } catch (error) {
+            toast({ title: 'Erro ao atualizar módulo', variant: 'destructive' });
+            setEnabledModules(prev => ({...prev, [module]: !checked}));
+        }
+    };
+
+    const moduleConfig = [
+        { key: 'pos', label: 'Frente de Caixa (PDV)', icon: ShoppingCart, description: 'Permite o registro de vendas e pagamentos.' },
+        { key: 'combos', label: 'Combos Promocionais', icon: Gift, description: 'Crie e gerencie pacotes de produtos fixos.' },
+        { key: 'kits', label: 'Kits Dinâmicos', icon: Component, description: 'Crie e gerencie pacotes de produtos flexíveis.' },
+        { key: 'assistant', label: 'Oráculo AI', icon: Bot, description: 'Assistente virtual para perguntas sobre o estoque.' },
+        { key: 'reports', label: 'Relatórios Gerenciais', icon: FileText, description: 'Acesso a relatórios consolidados de desempenho.' },
+    ] as const;
+
+    if (!isOpen) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Gerenciar Módulos</DialogTitle>
+                    <DialogDescription>Habilite ou desabilite funcionalidades para a organização "{organization.name}".</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                     {moduleConfig.map(mod => (
+                        <div key={mod.key} className="flex flex-row items-center justify-between rounded-lg border p-4">
+                            <div className="flex items-center space-x-3">
+                                <mod.icon className="h-5 w-5" />
+                                <div className="space-y-0.5">
+                                    <Label className="text-base">{mod.label}</Label>
+                                </div>
+                            </div>
+                            <Switch
+                                checked={enabledModules[mod.key]}
+                                onCheckedChange={(checked) => handleModuleToggle(mod.key, checked)}
+                            />
+                        </div>
+                    ))}
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 
 function SuperAdminPage() {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
     const [organizations, setOrganizations] = useState<OrgWithUser[]>([]);
     const [loading, setLoading] = useState(true);
+    const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
+    const [isModuleDialogOpen, setIsModuleDialogOpen] = useState(false);
     const { toast } = useToast();
 
     // Check for super admin access
@@ -96,6 +168,11 @@ function SuperAdminPage() {
             default: return <Badge variant="outline">{status}</Badge>;
         }
     }
+    
+    const handleOpenModuleDialog = (org: Organization) => {
+        setSelectedOrg(org);
+        setIsModuleDialogOpen(true);
+    };
 
     if (authLoading || loading) {
         return (
@@ -162,6 +239,9 @@ function SuperAdminPage() {
                                                             </SelectContent>
                                                         </Select>
                                                      </div>
+                                                    <DropdownMenuItem onSelect={() => handleOpenModuleDialog(org)}>
+                                                        <SlidersHorizontal className="mr-2 h-4 w-4" /> Gerenciar Módulos
+                                                    </DropdownMenuItem>
                                                     <DropdownMenuSeparator />
                                                      <AlertDialogTrigger asChild>
                                                         <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive">
@@ -192,6 +272,13 @@ function SuperAdminPage() {
                     </Table>
                 </CardContent>
             </Card>
+             {selectedOrg && (
+                <ModulesSettingsDialog
+                    organization={selectedOrg}
+                    isOpen={isModuleDialogOpen}
+                    onOpenChange={setIsModuleDialogOpen}
+                />
+            )}
         </div>
     );
 }

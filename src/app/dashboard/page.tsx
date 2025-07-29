@@ -68,24 +68,12 @@ export default function DashboardPage() {
     const totalProducts = products.length;
 
     const totalStock = useMemo(() => {
-        const stockByProduct = products.reduce((acc, p) => {
-            acc[p.id] = 0;
-            return acc;
-        }, {} as Record<string, number>);
-
-        stockEntries.forEach(entry => {
-            if(stockByProduct.hasOwnProperty(entry.productId)) {
-                stockByProduct[entry.productId] += entry.quantityAdded;
-            }
-        });
-
-        sales.forEach(sale => {
-            if(stockByProduct.hasOwnProperty(sale.productId)) {
-                stockByProduct[sale.productId] -= sale.quantity;
-            }
-        });
-        return Object.values(stockByProduct).reduce((sum, current) => sum + current, 0);
-    }, [products, sales, stockEntries]);
+        return stockEntries.reduce((sum, entry) => {
+            // Ensure quantity is a valid number, default to 0 if not
+            const quantity = typeof entry.quantity === 'number' ? entry.quantity : 0;
+            return sum + quantity;
+        }, 0);
+    }, [stockEntries]);
 
 
     const salesDataLast7Days = Array.from({length: 7}).map((_, i) => {
@@ -252,7 +240,3 @@ export default function DashboardPage() {
         </div>
     );
 }
-
-    
-
-    

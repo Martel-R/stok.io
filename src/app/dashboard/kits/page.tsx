@@ -24,6 +24,7 @@ import { RadioGroup } from '@/components/ui/radio-group';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from '@/components/ui/checkbox';
 
 function KitForm({ kit, branchProducts, onSave, onDone }: { kit?: Kit; branchProducts: Product[]; onSave: (kit: Omit<Kit, 'id' | 'branchId' | 'organizationId'>) => void; onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<Kit>>(
@@ -62,6 +63,14 @@ function KitForm({ kit, branchProducts, onSave, onDone }: { kit?: Kit; branchPro
             return { ...prev, eligibleProductIds: newIds };
         });
     };
+    
+    const toggleAllProducts = (checked: boolean) => {
+        setFormData(prev => {
+            const allProductIds = checked ? branchProducts.map(p => p.id) : [];
+            return { ...prev, eligibleProductIds: allProductIds };
+        });
+    };
+
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -95,16 +104,23 @@ function KitForm({ kit, branchProducts, onSave, onDone }: { kit?: Kit; branchPro
 
             <div>
                 <Label>Produtos Elegíveis</Label>
+                <div className="flex items-center space-x-2 my-2">
+                    <Checkbox
+                        id="select-all-products"
+                        checked={branchProducts.length > 0 && formData.eligibleProductIds?.length === branchProducts.length}
+                        onCheckedChange={(checked) => toggleAllProducts(checked === true)}
+                    />
+                    <Label htmlFor="select-all-products" className="font-normal">Selecionar todos os produtos</Label>
+                </div>
                 <ScrollArea className="h-40 rounded-md border">
                     <div className="p-4">
                         {branchProducts.map(product => (
                             <div key={product.id} className="flex items-center justify-between">
                                 <Label htmlFor={`product-${product.id}`} className="font-normal">{product.name}</Label>
-                                <input
-                                    type="checkbox"
+                                <Checkbox
                                     id={`product-${product.id}`}
                                     checked={formData.eligibleProductIds?.includes(product.id)}
-                                    onChange={() => toggleProduct(product.id)}
+                                    onCheckedChange={() => toggleProduct(product.id)}
                                 />
                             </div>
                         ))}

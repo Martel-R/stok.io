@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { PlusCircle, ArrowRightLeft, MinusCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { StockMovementForm } from '@/components/stock-movement-form';
+import { useToast } from '@/hooks/use-toast';
 
 
 const convertDate = (dateField: any): Date => {
@@ -179,4 +180,3 @@ export default function InventoryPage() {
         </div>
     );
 }
-

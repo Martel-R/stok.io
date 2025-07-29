@@ -22,6 +22,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 const convertDate = (dateField: any): Date => {
     if (dateField instanceof Timestamp) return dateField.toDate();
     if (dateField && typeof dateField.seconds === 'number') return new Date(dateField.seconds * 1000);
+    if (typeof dateField === 'string') return parseISO(dateField);
     return new Date(); // Fallback
 };
 
@@ -52,7 +53,7 @@ export default function InventoryPage() {
             return;
         }
 
-        const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id), orderBy('date', 'asc'));
+        const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
         const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
 
         const unsubscribeEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
@@ -82,9 +83,11 @@ export default function InventoryPage() {
     }, [products, allStockEntries]);
 
     const dailyStockHistory = useMemo(() => {
+        const sortedEntries = [...allStockEntries].sort((a,b) => a.date.getTime() - b.date.getTime());
+
         const groupedByDayAndProduct: Record<string, Record<string, StockEntry[]>> = {};
 
-        allStockEntries.forEach(entry => {
+        sortedEntries.forEach(entry => {
             const day = format(entry.date, 'yyyy-MM-dd');
             if (!groupedByDayAndProduct[day]) groupedByDayAndProduct[day] = {};
             if (!groupedByDayAndProduct[day][entry.productId]) groupedByDayAndProduct[day][entry.productId] = [];
@@ -320,5 +323,4 @@ export default function InventoryPage() {
             </Dialog>
         </div>
     );
-
-    
+}

@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query, where, runTransaction, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { Product, StockEntry, Sale } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp } from 'lucide-react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
@@ -22,6 +22,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { fromUnixTime } from 'date-fns';
+import { ImportProductsDialog } from '@/components/import-products-dialog';
+
 
 type ProductWithStock = Product & { stock: number };
 
@@ -237,6 +239,7 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isStockFormOpen, setIsStockFormOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
   const { toast } = useToast();
   const { user, currentBranch, loading: authLoading } = useAuth();
@@ -332,6 +335,30 @@ export default function ProductsPage() {
     };
     await handleSave(newProductData);
   }
+
+  const handleImport = async (importedProducts: Omit<Product, 'id' | 'branchId' | 'organizationId'>[]) => {
+      if (!currentBranch || !user?.organizationId) {
+          toast({ title: 'Nenhuma filial selecionada', description: 'Selecione uma filial para importar os produtos.', variant: 'destructive' });
+          return;
+      }
+      const batch = writeBatch(db);
+      importedProducts.forEach(productData => {
+          const productRef = doc(collection(db, "products"));
+          batch.set(productRef, {
+              ...productData,
+              branchId: currentBranch.id,
+              organizationId: user.organizationId
+          });
+      });
+      try {
+          await batch.commit();
+          toast({ title: `${importedProducts.length} produtos importados com sucesso!` });
+          setIsImportOpen(false);
+      } catch (error) {
+          console.error("Error importing products:", error);
+          toast({ title: 'Erro ao importar produtos', description: 'Não foi possível salvar os produtos. Verifique o arquivo e tente novamente.', variant: 'destructive' });
+      }
+  };
   
   const openEditDialog = (product: Product) => {
     setEditingProduct(product);
@@ -362,6 +389,12 @@ export default function ProductsPage() {
        <div className="flex justify-between items-center gap-4">
         <h1 className="text-3xl font-bold">Produtos</h1>
         <div className="flex gap-2">
+            <ImportProductsDialog
+                isOpen={isImportOpen}
+                onOpenChange={setIsImportOpen}
+                onImport={handleImport}
+            />
+
             <Dialog open={isStockFormOpen} onOpenChange={setIsStockFormOpen}>
                 <DialogTrigger asChild>
                     <Button variant="outline" disabled={products.length === 0}>

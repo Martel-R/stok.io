@@ -1,5 +1,6 @@
 
-import { Layers3 } from 'lucide-react';
+
+import { Layers3, FileUp } from 'lucide-react';
 
 export const Icons = {
   logo: (props: React.SVGProps<SVGSVGElement>) => (
@@ -26,4 +27,7 @@ export const Icons = {
       <path fill="none" d="M1 1h22v22H1z"></path>
     </svg>
   ),
+  import: (props: React.SVGProps<SVGSVGElement>) => (
+    <FileUp className="h-6 w-6" {...props} />
+  )
 };

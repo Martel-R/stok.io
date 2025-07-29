@@ -22,7 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { format, fromUnixTime } from 'date-fns';
+import { format } from 'date-fns';
 
 
 type CartItem = 
@@ -211,17 +211,16 @@ function CheckoutModal({
   );
 }
 
-const convertSaleDoc = (doc: any): Sale => {
-    const data = doc.data();
+const convertSaleDate = (docData: any): Sale => {
     let date;
-    if (data.date instanceof Timestamp) {
-        date = data.date.toDate();
-    } else if (data.date && typeof data.date.seconds === 'number') {
-        date = fromUnixTime(data.date.seconds);
+    if (docData.date instanceof Timestamp) {
+        date = docData.date.toDate();
+    } else if (docData.date && typeof docData.date.seconds === 'number') {
+        date = new Date(docData.date.seconds * 1000);
     } else {
         date = new Date(); // Fallback
     }
-    return { ...data, id: doc.id, date } as Sale;
+    return { ...docData, date } as Sale;
 };
 
 
@@ -289,8 +288,7 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
                     <TableHeader>
                         <TableRow>
                             <TableHead>Data</TableHead>
-                            <TableHead>Produto</TableHead>
-                            <TableHead className="text-right">Qtd.</TableHead>
+                            <TableHead>Itens</TableHead>
                             <TableHead className="text-right">Total</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -299,14 +297,15 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
                             salesHistory.map(sale => (
                                 <TableRow key={sale.id}>
                                     <TableCell>{format(sale.date, 'dd/MM/yyyy HH:mm')}</TableCell>
-                                    <TableCell className="font-medium">{sale.productName}</TableCell>
-                                    <TableCell className="text-right">{sale.quantity}</TableCell>
+                                    <TableCell className="font-medium">
+                                        {sale.items?.map(item => item.name).join(', ')}
+                                    </TableCell>
                                     <TableCell className="text-right">R${sale.total.toFixed(2).replace('.', ',')}</TableCell>
                                 </TableRow>
                             ))
                         ) : (
                             <TableRow>
-                                <TableCell colSpan={4} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
+                                <TableCell colSpan={3} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
                             </TableRow>
                         )}
                     </TableBody>
@@ -407,32 +406,31 @@ export default function POSPage() {
     const combosQuery = query(collection(db, 'combos'), where('branchId', '==', currentBranch.id));
     const kitsQuery = query(collection(db, 'kits'), where('branchId', '==', currentBranch.id));
     const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId));
-    const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
+    const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id), orderBy('date', 'desc'));
     const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
 
     const unsubscribeProducts = onSnapshot(productsQuery, (productsSnapshot) => {
         const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
 
-        const salesSub = onSnapshot(salesQuery, (salesSnapshot) => {
-            const salesData = salesSnapshot.docs.map(doc => convertSaleDoc(doc));
-            
-            // Sort sales history on the client side
-            setSalesHistory(salesData.sort((a,b) => b.date.getTime() - a.date.getTime()));
+        const entriesSub = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
+            const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
 
-            const entriesSub = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
-                const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
-
-                const productsWithStock = productsData.map(p => {
-                    const totalEntries = entriesData.filter(e => e.productId === p.id).reduce((sum, e) => sum + e.quantityAdded, 0);
-                    const totalSales = salesData.filter(s => s.productId === p.id).reduce((sum, s) => sum + s.quantity, 0);
-                    return { ...p, stock: totalEntries - totalSales };
-                });
-                setProducts(productsWithStock);
-                setLoading(false);
+            const productsWithStock = productsData.map(p => {
+                const stock = entriesData
+                    .filter(e => e.productId === p.id)
+                    .reduce((sum, e) => sum + e.quantity, 0);
+                return { ...p, stock: stock };
             });
-            return () => entriesSub();
+            setProducts(productsWithStock);
+            setLoading(false);
         });
-        return () => salesSub();
+
+        return () => entriesSub();
+    });
+
+    const unsubscribeSales = onSnapshot(salesQuery, (salesSnapshot) => {
+        const salesData = salesSnapshot.docs.map(doc => convertSaleDate({ id: doc.id, ...doc.data() }));
+        setSalesHistory(salesData);
     });
 
     const unsubscribeCombos = onSnapshot(combosQuery, (querySnapshot) => {
@@ -453,6 +451,7 @@ export default function POSPage() {
         unsubscribeCombos();
         unsubscribeKits();
         unsubscribeConditions();
+        unsubscribeSales();
     }
   }, [currentBranch, authLoading, user]);
   
@@ -580,29 +579,70 @@ export default function POSPage() {
 
       try {
         const batch = writeBatch(db);
+        const saleDate = serverTimestamp();
         
+        // Create stock entries first
         for (const item of cart) {
-            let saleTotal = 0;
-            if (item.itemType === 'product') saleTotal = item.price * item.quantity;
-            if (item.itemType === 'combo') saleTotal = item.finalPrice * item.quantity;
-            if (item.itemType === 'kit') saleTotal = item.total * item.quantity;
-
-            const saleData: Omit<Sale, 'id'> = {
-                productId: item.id, // Can be product, combo or kit id
-                productName: item.itemType === 'kit' 
-                    ? `${item.name}: ${item.chosenProducts.map(p => p.name).join(', ')}` 
-                    : item.name,
-                quantity: item.quantity,
-                total: saleTotal,
-                date: new Date(),
-                cashier: user.name,
-                branchId: currentBranch.id,
-                organizationId: user.organizationId,
-                payments: payments
-            };
-            const saleRef = doc(collection(db, "sales"));
-            batch.set(saleRef, saleData);
+            if (item.itemType === 'product') {
+                 const entry: Omit<StockEntry, 'id'> = {
+                    productId: item.id,
+                    productName: item.name,
+                    quantity: -item.quantity,
+                    type: 'sale',
+                    date: saleDate,
+                    userId: user.id,
+                    userName: user.name,
+                    branchId: currentBranch.id,
+                    organizationId: user.organizationId,
+                };
+                batch.set(doc(collection(db, "stockEntries")), entry);
+            } else if (item.itemType === 'combo') {
+                for(const product of item.products) {
+                    const entry: Omit<StockEntry, 'id'> = {
+                        productId: product.productId,
+                        productName: product.productName,
+                        quantity: -product.quantity * item.quantity,
+                        type: 'sale',
+                        date: saleDate,
+                        userId: user.id,
+                        userName: user.name,
+                        branchId: currentBranch.id,
+                        organizationId: user.organizationId,
+                        notes: `Venda Combo: ${item.name}`
+                    };
+                    batch.set(doc(collection(db, "stockEntries")), entry);
+                }
+            } else if (item.itemType === 'kit') {
+                 for(const product of item.chosenProducts) {
+                    const entry: Omit<StockEntry, 'id'> = {
+                        productId: product.id,
+                        productName: product.name,
+                        quantity: -item.quantity, // Assuming 1 of each product per kit
+                        type: 'sale',
+                        date: saleDate,
+                        userId: user.id,
+                        userName: user.name,
+                        branchId: currentBranch.id,
+                        organizationId: user.organizationId,
+                        notes: `Venda Kit: ${item.name}`
+                    };
+                    batch.set(doc(collection(db, "stockEntries")), entry);
+                }
+            }
         }
+
+        // Create one consolidated sale document
+        const saleRef = doc(collection(db, "sales"));
+        const saleData: Omit<Sale, 'id'> = {
+            items: cart.map(item => ({ id: item.id, name: item.name, quantity: item.quantity, type: item.itemType })),
+            total: grandTotal,
+            date: new Date(),
+            cashier: user.name,
+            branchId: currentBranch.id,
+            organizationId: user.organizationId,
+            payments: payments,
+        };
+        batch.set(saleRef, { ...saleData, date: saleDate }); // Use server timestamp for sale as well
         
         await batch.commit();
 

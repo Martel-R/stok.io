@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
@@ -9,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query, where, runTransaction, serverTimestamp, Timestamp } from 'firebase/firestore';
-import type { Product, StockEntry, Sale } from '@/lib/types';
+import type { Product, StockEntry } from '@/lib/types';
 import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp, ListChecks } from 'lucide-react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -26,6 +27,7 @@ import { ImportProductsDialog } from '@/components/import-products-dialog';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { StockMovementForm } from '@/components/stock-movement-form';
 
 
 type ProductWithStock = Product & { stock: number };
@@ -131,121 +133,6 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
 }
 
 
-function AddStockForm({ products, onDone }: { products: ProductWithStock[]; onDone: () => void }) {
-    const [selectedProduct, setSelectedProduct] = useState<ProductWithStock | null>(null);
-    const [quantity, setQuantity] = useState(1);
-    const [open, setOpen] = useState(false);
-    const { user, currentBranch } = useAuth();
-    const { toast } = useToast();
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!selectedProduct || quantity <= 0 || !user || !currentBranch) {
-            toast({ title: "Dados inválidos", description: "Selecione um produto e informe uma quantidade maior que zero.", variant: "destructive" });
-            return;
-        }
-
-        const productRef = doc(db, 'products', selectedProduct.id);
-        const stockEntryRef = collection(db, 'stockEntries');
-
-        try {
-            const currentStock = selectedProduct.stock;
-            const newStock = currentStock + quantity;
-
-            const newStockEntry: Omit<StockEntry, 'id'> = {
-                productId: selectedProduct.id,
-                productName: selectedProduct.name,
-                quantityAdded: quantity,
-                previousStock: currentStock,
-                newStock: newStock,
-                date: serverTimestamp(),
-                userId: user.id,
-                userName: user.name,
-                branchId: currentBranch.id,
-                organizationId: user.organizationId,
-            }
-            await addDoc(stockEntryRef, newStockEntry);
-
-            toast({ title: "Estoque atualizado!", description: `${quantity} unidades de ${selectedProduct.name} adicionadas.` });
-            onDone();
-        } catch (error) {
-            console.error("Erro ao adicionar estoque:", error);
-            toast({ title: "Erro na transação", description: "Não foi possível atualizar o estoque.", variant: "destructive" });
-        }
-    };
-
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-             <div>
-                <Label>Produto</Label>
-                 <Popover open={open} onOpenChange={setOpen}>
-                    <PopoverTrigger asChild>
-                        <Button
-                            variant="outline"
-                            role="combobox"
-                            aria-expanded={open}
-                            className="w-full justify-between"
-                        >
-                            <span className="truncate">{selectedProduct?.name || "Selecione o produto..."}</span>
-                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-full p-0">
-                        <Command>
-                            <CommandInput placeholder="Buscar produto..." />
-                            <CommandList>
-                                <CommandEmpty>Nenhum produto encontrado.</CommandEmpty>
-                                <CommandGroup>
-                                    {products.map((product) => (
-                                        <CommandItem
-                                            key={product.id}
-                                            value={product.name}
-                                            onSelect={() => {
-                                                setSelectedProduct(product);
-                                                setOpen(false);
-                                            }}
-                                        >
-                                            <Check
-                                                className={cn(
-                                                    "mr-2 h-4 w-4",
-                                                    selectedProduct?.id === product.id ? "opacity-100" : "opacity-0"
-                                                )}
-                                            />
-                                            {product.name}
-                                        </CommandItem>
-                                    ))}
-                                </CommandGroup>
-                            </CommandList>
-                        </Command>
-                    </PopoverContent>
-                </Popover>
-            </div>
-
-            {selectedProduct && (
-                <p className="text-sm text-muted-foreground">Estoque atual: {selectedProduct.stock}</p>
-            )}
-
-            <div>
-                <Label htmlFor="quantity">Quantidade a Adicionar</Label>
-                <Input
-                    id="quantity"
-                    type="number"
-                    min="1"
-                    value={quantity}
-                    onChange={(e) => setQuantity(parseInt(e.target.value, 10))}
-                    required
-                />
-            </div>
-            
-            <DialogFooter className="pt-4">
-                <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
-                <Button type="submit">Salvar Entrada</Button>
-            </DialogFooter>
-        </form>
-    );
-}
-
-
 export default function ProductsPage() {
   const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [loading, setLoading] = useState(true);
@@ -269,33 +156,22 @@ export default function ProductsPage() {
     const unsubscribeProducts = onSnapshot(qProducts, (productsSnapshot) => {
       const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
       
-      const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
       const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
       
-      const unsubSales = onSnapshot(salesQuery, (salesSnapshot) => {
-        const salesData = salesSnapshot.docs.map(doc => doc.data() as Sale);
-        const unsubEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
-            const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
+      const unsubEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
+          const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
 
-            const productsWithStock = productsData.map(product => {
-                const totalEntries = entriesData
-                    .filter(e => e.productId === product.id)
-                    .reduce((sum, e) => sum + e.quantityAdded, 0);
-                const totalSales = salesData
-                    .filter(s => s.productId === product.id)
-                    .reduce((sum, s) => sum + s.quantity, 0);
-                return {
-                    ...product,
-                    stock: totalEntries - totalSales
-                };
-            });
-            
-            setProducts(productsWithStock.sort((a,b) => a.name.localeCompare(b.name)));
-            setLoading(false);
-        });
-        return () => unsubEntries();
+          const productsWithStock = productsData.map(product => {
+              const stock = entriesData
+                  .filter(e => e.productId === product.id)
+                  .reduce((sum, e) => sum + e.quantity, 0);
+              return { ...product, stock };
+          });
+          
+          setProducts(productsWithStock.sort((a,b) => a.name.localeCompare(b.name)));
+          setLoading(false);
       });
-      return () => unsubSales();
+      return () => unsubEntries();
     }, (error) => {
         console.error("Error fetching products:", error);
         toast({title: "Erro ao buscar produtos", variant: "destructive"});
@@ -474,7 +350,11 @@ export default function ProductsPage() {
                     <DialogHeader>
                         <DialogTitle>Adicionar Estoque</DialogTitle>
                     </DialogHeader>
-                    <AddStockForm products={products} onDone={() => setIsStockFormOpen(false)} />
+                     <StockMovementForm 
+                        type="entry"
+                        products={products}
+                        onDone={() => setIsStockFormOpen(false)}
+                    />
                 </DialogContent>
             </Dialog>
 

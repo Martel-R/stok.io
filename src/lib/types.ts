@@ -62,9 +62,7 @@ export interface PaymentDetail {
 
 export interface Sale {
   id:string;
-  productId: string; // Can be a product, combo, or kit ID
-  productName: string;
-  quantity: number;
+  items: any[]; // Simplified for historical data viewing
   total: number;
   date: Date;
   cashier: string;
@@ -83,19 +81,26 @@ export interface Branch {
     organizationId: string;
 }
 
+export type StockEntryType = 'entry' | 'adjustment' | 'sale' | 'transfer';
+
 export interface StockEntry {
     id: string;
     productId: string;
     productName: string;
-    quantityAdded: number;
-    previousStock: number;
-    newStock: number;
+    // Positive for additions, negative for subtractions
+    quantity: number;
+    type: StockEntryType;
     date: any; // ServerTimestamp
     userId: string;
     userName: string;
     branchId: string;
     organizationId: string;
+    notes?: string;
+    // For transfers
+    relatedBranchId?: string;
+    relatedBranchName?: string;
 }
+
 
 export interface ComboProduct {
   productId: string;

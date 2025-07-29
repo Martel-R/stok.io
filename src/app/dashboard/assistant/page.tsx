@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
@@ -31,29 +32,23 @@ export default function AssistantPage() {
       if (!hasAccess || !currentBranch) return;
 
       const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
-      const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
       const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
 
       const unsubProducts = onSnapshot(productsQuery, (productsSnapshot) => {
           const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
           
-          const unsubSales = onSnapshot(salesQuery, (salesSnapshot) => {
-              const salesData = salesSnapshot.docs.map(doc => doc.data() as Sale);
-              
-              const unsubEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
-                  const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
+          const unsubEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
+              const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
 
-                  const context = productsData.map(product => {
-                      const totalEntries = entriesData.filter(e => e.productId === product.id).reduce((sum, e) => sum + e.quantityAdded, 0);
-                      const totalSales = salesData.filter(s => s.productId === product.id).reduce((sum, s) => sum + s.quantity, 0);
-                      const stock = totalEntries - totalSales;
-                      return `${product.name}: ${stock} unidades`;
-                  }).join(', ');
-                  setInventoryContext(context);
-              });
-              return unsubEntries;
+              const context = productsData.map(product => {
+                  const stock = entriesData
+                    .filter(e => e.productId === product.id)
+                    .reduce((sum, e) => sum + e.quantity, 0);
+                  return `${product.name}: ${stock} unidades`;
+              }).join(', ');
+              setInventoryContext(context);
           });
-          return unsubSales;
+          return unsubEntries;
       });
       return () => unsubProducts();
   }, [hasAccess, currentBranch]);

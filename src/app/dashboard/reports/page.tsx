@@ -76,16 +76,13 @@ interface ProductSalesInfo {
     quantitySold: number;
 }
 
-function BestSellingProductsReport({ branches, products, sales }: { branches: Branch[], products: Product[], sales: Sale[] }) {
+function BestSellingProductsReport({ branches, products, stockEntries }: { branches: Branch[], products: Product[], stockEntries: StockEntry[] }) {
     const [selectedBranchId, setSelectedBranchId] = useState<string>(branches[0]?.id || '');
 
-    const productsSold = sales
-        .filter(s => s.branchId === selectedBranchId)
-        .reduce((acc, sale) => {
-            const product = products.find(p => p.id === sale.productId);
-            if (product) {
-                acc[product.id] = (acc[product.id] || 0) + sale.quantity;
-            }
+    const productsSold = stockEntries
+        .filter(s => s.branchId === selectedBranchId && s.type === 'sale')
+        .reduce((acc, saleEntry) => {
+            acc[saleEntry.productId] = (acc[saleEntry.productId] || 0) + Math.abs(saleEntry.quantity);
             return acc;
         }, {} as Record<string, number>);
 
@@ -150,18 +147,15 @@ interface LowStockProduct {
     threshold: number;
 }
 
-function LowStockReport({ branches, products, sales, stockEntries }: { branches: Branch[], products: Product[], sales: Sale[], stockEntries: StockEntry[] }) {
+function LowStockReport({ branches, products, stockEntries }: { branches: Branch[], products: Product[], stockEntries: StockEntry[] }) {
     
     const productsWithStock = products.map(product => {
-        const totalEntries = stockEntries
+        const stock = stockEntries
             .filter(e => e.productId === product.id)
-            .reduce((sum, e) => sum + e.quantityAdded, 0);
-        const totalSales = sales
-            .filter(s => s.productId === product.id)
-            .reduce((sum, s) => sum + s.quantity, 0);
+            .reduce((sum, e) => sum + e.quantity, 0);
         return {
             ...product,
-            stock: totalEntries - totalSales
+            stock: stock
         };
     });
     
@@ -299,11 +293,9 @@ export default function ReportsPage() {
             
             <div className="space-y-4">
                 <SalesPerformanceReport branches={branches} sales={sales} />
-                <BestSellingProductsReport branches={branches} products={products} sales={sales} />
-                <LowStockReport branches={branches} products={products} sales={sales} stockEntries={stockEntries} />
+                <BestSellingProductsReport branches={branches} products={products} stockEntries={stockEntries} />
+                <LowStockReport branches={branches} products={products} stockEntries={stockEntries} />
             </div>
         </div>
     );
 }
-
-    

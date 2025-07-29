@@ -477,7 +477,7 @@ export default function POSPage() {
     const combosQuery = query(collection(db, 'combos'), where('branchId', '==', currentBranch.id));
     const kitsQuery = query(collection(db, 'kits'), where('branchId', '==', currentBranch.id));
     const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId));
-    const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id), orderBy('date', 'desc'));
+    const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
     const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
 
     const unsubscribeProducts = onSnapshot(productsQuery, (productsSnapshot) => {
@@ -501,7 +501,8 @@ export default function POSPage() {
 
     const unsubscribeSales = onSnapshot(salesQuery, (salesSnapshot) => {
         const salesData = salesSnapshot.docs.map(doc => convertSaleDate({ id: doc.id, ...doc.data() }));
-        setSalesHistory(salesData);
+        const sortedSales = salesData.sort((a,b) => b.date.getTime() - a.date.getTime());
+        setSalesHistory(sortedSales);
     });
 
     const unsubscribeCombos = onSnapshot(combosQuery, (querySnapshot) => {
@@ -932,3 +933,6 @@ export default function POSPage() {
     </>
   );
 }
+
+
+    

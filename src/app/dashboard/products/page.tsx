@@ -3,14 +3,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query, where, runTransaction, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { Product, StockEntry, Sale } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp, ListChecks } from 'lucide-react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { fromUnixTime } from 'date-fns';
 import { ImportProductsDialog } from '@/components/import-products-dialog';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 
 
 type ProductWithStock = Product & { stock: number };
@@ -251,6 +252,7 @@ export default function ProductsPage() {
   const [isStockFormOpen, setIsStockFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const { toast } = useToast();
   const { user, currentBranch, loading: authLoading } = useAuth();
 
@@ -379,6 +381,42 @@ export default function ProductsPage() {
     setEditingProduct(undefined);
     setIsFormOpen(true);
   }
+  
+  const handleSelectProduct = (productId: string, checked: boolean | 'indeterminate') => {
+    setSelectedProductIds(prev => 
+        checked ? [...prev, productId] : prev.filter(id => id !== productId)
+    );
+  };
+
+  const handleSelectAll = (checked: boolean | 'indeterminate') => {
+    if (checked) {
+        setSelectedProductIds(products.map(p => p.id));
+    } else {
+        setSelectedProductIds([]);
+    }
+  };
+
+  const handleBulkUpdateSalable = async (isSalable: boolean) => {
+    if (selectedProductIds.length === 0) {
+        toast({ title: 'Nenhum produto selecionado', variant: 'destructive' });
+        return;
+    }
+
+    const batch = writeBatch(db);
+    selectedProductIds.forEach(id => {
+        const productRef = doc(db, 'products', id);
+        batch.update(productRef, { isSalable });
+    });
+
+    try {
+        await batch.commit();
+        toast({ title: `${selectedProductIds.length} produtos atualizados com sucesso!` });
+        setSelectedProductIds([]);
+    } catch (error) {
+        toast({ title: 'Erro ao atualizar produtos', variant: 'destructive' });
+    }
+  };
+
 
   if (!currentBranch && !authLoading) {
     return (
@@ -399,6 +437,25 @@ export default function ProductsPage() {
        <div className="flex justify-between items-center gap-4">
         <h1 className="text-3xl font-bold">Produtos</h1>
         <div className="flex gap-2">
+            {selectedProductIds.length > 0 && (
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="outline">
+                            <ListChecks className="mr-2" />
+                            Ações em Lote ({selectedProductIds.length})
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                        <DropdownMenuItem onClick={() => handleBulkUpdateSalable(true)}>
+                            Marcar como Comerciável
+                        </DropdownMenuItem>
+                         <DropdownMenuItem onClick={() => handleBulkUpdateSalable(false)}>
+                            Marcar como Não Comerciável
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            )}
+
             <ImportProductsDialog
                 isOpen={isImportOpen}
                 onOpenChange={setIsImportOpen}
@@ -440,9 +497,17 @@ export default function ProductsPage() {
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead className="w-[50px]">
+                <Checkbox
+                    checked={selectedProductIds.length === products.length && products.length > 0}
+                    onCheckedChange={handleSelectAll}
+                    aria-label="Selecionar todas as linhas"
+                />
+            </TableHead>
             <TableHead className="w-[80px]">Imagem</TableHead>
             <TableHead>Nome</TableHead>
             <TableHead>Categoria</TableHead>
+            <TableHead>Comerciável</TableHead>
             <TableHead className="text-right">Preço</TableHead>
             <TableHead className="text-right">Estoque</TableHead>
             <TableHead className="text-center">Ações</TableHead>
@@ -452,9 +517,11 @@ export default function ProductsPage() {
           {loading ? (
              Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
+                    <TableCell><Skeleton className="h-5 w-5"/></TableCell>
                     <TableCell><Skeleton className="h-10 w-10 rounded-md" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-48" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-center"><Skeleton className="h-8 w-8 mx-auto rounded-full" /></TableCell>
@@ -462,12 +529,24 @@ export default function ProductsPage() {
             ))
           ) : products.length > 0 ? (
             products.map((product) => (
-              <TableRow key={product.id}>
+              <TableRow key={product.id} data-state={selectedProductIds.includes(product.id) && "selected"}>
+                <TableCell>
+                    <Checkbox
+                        checked={selectedProductIds.includes(product.id)}
+                        onCheckedChange={(checked) => handleSelectProduct(product.id, checked)}
+                        aria-label={`Selecionar ${product.name}`}
+                    />
+                </TableCell>
                 <TableCell>
                    <Image src={product.imageUrl} alt={product.name} width={40} height={40} className="rounded-md object-cover aspect-square" data-ai-hint="product image" />
                 </TableCell>
                 <TableCell className="font-medium">{product.name}</TableCell>
                 <TableCell>{product.category}</TableCell>
+                <TableCell>
+                    <Badge variant={product.isSalable ? "secondary" : "outline"}>
+                        {product.isSalable ? "Sim" : "Não"}
+                    </Badge>
+                </TableCell>
                 <TableCell className="text-right">R${product.price.toFixed(2).replace('.', ',')}</TableCell>
                 <TableCell className="text-right">{product.stock}</TableCell>
                 <TableCell className="text-center">
@@ -492,7 +571,7 @@ export default function ProductsPage() {
             ))
           ) : (
              <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center">
+                <TableCell colSpan={8} className="h-24 text-center">
                     Nenhum produto encontrado. Adicione produtos para começar.
                 </TableCell>
             </TableRow>

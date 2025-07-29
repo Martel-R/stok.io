@@ -36,6 +36,7 @@ export interface Product {
   branchId: string;
   organizationId: string;
   lowStockThreshold: number;
+  isSalable: boolean;
 }
 
 export type PaymentConditionType = 'credit' | 'debit' | 'cash' | 'pix';

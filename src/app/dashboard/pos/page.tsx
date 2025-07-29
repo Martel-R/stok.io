@@ -355,11 +355,11 @@ export default function POSPage() {
     const unsubscribeProducts = onSnapshot(productsQuery, (productsSnapshot) => {
         const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
 
-        const unsubscribeSales = onSnapshot(salesQuery, (salesSnapshot) => {
+        const salesSub = onSnapshot(salesQuery, (salesSnapshot) => {
             const salesData = salesSnapshot.docs.map(convertSaleDoc);
             setSalesHistory(salesData.sort((a,b) => b.date.getTime() - a.date.getTime()));
 
-            const unsubscribeEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
+            const entriesSub = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
                 const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
 
                 const productsWithStock = productsData.map(p => {
@@ -370,9 +370,9 @@ export default function POSPage() {
                 setProducts(productsWithStock);
                 setLoading(false);
             });
-            return () => unsubscribeEntries();
+            return () => entriesSub();
         });
-        return () => unsubscribeSales();
+        return () => salesSub();
     });
 
     const unsubscribeCombos = onSnapshot(combosQuery, (querySnapshot) => {
@@ -569,6 +569,8 @@ export default function POSPage() {
     )
   }
 
+  const salableProducts = products.filter(p => p.isSalable);
+
   return (
     <>
     <div className="grid h-[calc(100vh-8rem)] md:grid-cols-3 gap-8">
@@ -598,7 +600,7 @@ export default function POSPage() {
                         </div>
                     ) : (
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                        {products.map((product) => (
+                        {salableProducts.map((product) => (
                             <Card 
                             key={product.id} 
                             onClick={() => addToCart(product, 'product')} 
@@ -759,4 +761,3 @@ export default function POSPage() {
     </>
   );
 }
-

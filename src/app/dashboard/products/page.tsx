@@ -23,13 +23,14 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { cn } from '@/lib/utils';
 import { fromUnixTime } from 'date-fns';
 import { ImportProductsDialog } from '@/components/import-products-dialog';
+import { Switch } from '@/components/ui/switch';
 
 
 type ProductWithStock = Product & { stock: number };
 
 function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Product>>(
-    product || { name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10 }
+    product || { name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true }
   );
   const [isUploading, setIsUploading] = useState(false);
 
@@ -109,6 +110,15 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
               </div>
           </div>
       )}
+
+      <div className="flex items-center space-x-2">
+        <Switch 
+          id="isSalable" 
+          checked={formData.isSalable} 
+          onCheckedChange={(checked) => setFormData(prev => ({...prev, isSalable: checked}))}
+        />
+        <Label htmlFor="isSalable">Produto Comerciável</Label>
+      </div>
 
       <Button type="submit" disabled={isUploading}>
         {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

@@ -46,9 +46,9 @@ export function ImportProductsDialog({
     };
 
     const parseCSV = (csvText: string) => {
-        const lines = csvText.split(/\r\n|\n/);
+        const lines = csvText.split(/\r\n|\n/).filter(line => line.trim() !== ''); // Ignore empty lines
         const headers = lines[0].split(',').map(h => h.trim());
-        const expectedHeaders = ['name', 'category', 'price', 'lowStockThreshold'];
+        const expectedHeaders = ['name', 'category', 'price', 'lowStockThreshold', 'isSalable'];
         
         if (JSON.stringify(headers) !== JSON.stringify(expectedHeaders)) {
             toast({ title: 'Cabeçalhos inválidos', description: `O cabeçalho do CSV deve ser: ${expectedHeaders.join(',')}`, variant: 'destructive' });
@@ -62,7 +62,14 @@ export function ImportProductsDialog({
             const entry: any = {};
             headers.forEach((header, index) => {
                 const value = values[index]?.trim() || '';
-                entry[header] = header === 'price' || header === 'lowStockThreshold' ? parseFloat(value) || 0 : value;
+                if (header === 'price' || header === 'lowStockThreshold') {
+                    entry[header] = parseFloat(value) || 0;
+                } else if (header === 'isSalable') {
+                    // Default to true if blank or invalid
+                    entry[header] = value.toLowerCase() === 'false' ? false : true;
+                } else {
+                    entry[header] = value;
+                }
             });
             if (entry.name && entry.category && entry.price > 0) {
                  data.push(entry as ParsedProduct);
@@ -72,8 +79,8 @@ export function ImportProductsDialog({
     };
     
     const downloadTemplate = () => {
-        const headers = "name,category,price,lowStockThreshold";
-        const example = "Laptop Gamer,Eletrônicos,7500.50,5\nMouse sem Fio,Acessórios,150.00,20";
+        const headers = "name,category,price,lowStockThreshold,isSalable";
+        const example = "Laptop Gamer,Eletrônicos,7500.50,5,TRUE\nSacola Plástica,Insumos,0.50,100,FALSE";
         const csvContent = `data:text/csv;charset=utf-8,${headers}\n${example}`;
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");

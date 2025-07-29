@@ -661,37 +661,41 @@ function PaymentConditions() {
                             </SelectContent>
                         </Select>
                     </div>
-                    <div className="space-y-2 col-span-3 md:col-span-1">
-                        <Label htmlFor="fee">Taxa</Label>
-                        <Input 
-                            id="fee"
-                            name="fee"
-                            type="number"
-                            step="0.01"
-                            value={newCondition.fee} 
-                            onChange={handleInputChange}
-                            placeholder="Ex: 2.5"
-                        />
-                    </div>
-                    <div className="space-y-2 col-span-3 md:col-span-1">
-                         <Label>Tipo de Taxa</Label>
-                         <RadioGroup
-                            name="feeType"
-                            value={newCondition.feeType}
-                            onValueChange={(value) => handleSelectChange('feeType', value)}
-                            className="flex items-center space-x-4"
-                         >
-                            <div className="flex items-center space-x-2">
-                                <RadioGroupItem value="percentage" id="percentage" />
-                                <Label htmlFor="percentage">% (Percentual)</Label>
+                    {newCondition.type !== 'cash' && (
+                        <>
+                            <div className="space-y-2 col-span-3 md:col-span-1">
+                                <Label htmlFor="fee">Taxa</Label>
+                                <Input 
+                                    id="fee"
+                                    name="fee"
+                                    type="number"
+                                    step="0.01"
+                                    value={newCondition.fee} 
+                                    onChange={handleInputChange}
+                                    placeholder="Ex: 2.5"
+                                />
                             </div>
-                            <div className="flex items-center space-x-2">
-                                <RadioGroupItem value="fixed" id="fixed" />
-                                <Label htmlFor="fixed">R$ (Fixo)</Label>
+                            <div className="space-y-2 col-span-3 md:col-span-1">
+                                <Label>Tipo de Taxa</Label>
+                                <RadioGroup
+                                    name="feeType"
+                                    value={newCondition.feeType}
+                                    onValueChange={(value) => handleSelectChange('feeType', value)}
+                                    className="flex items-center space-x-4"
+                                >
+                                    <div className="flex items-center space-x-2">
+                                        <RadioGroupItem value="percentage" id="percentage" />
+                                        <Label htmlFor="percentage">% (Percentual)</Label>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                        <RadioGroupItem value="fixed" id="fixed" />
+                                        <Label htmlFor="fixed">R$ (Fixo)</Label>
+                                    </div>
+                                </RadioGroup>
                             </div>
-                        </RadioGroup>
-                    </div>
-                    <div className="col-span-3 md:col-span-2 flex items-end">
+                        </>
+                    )}
+                    <div className="col-span-3 md:col-span-3 flex items-end">
                        <Button type="submit" className="w-full md:w-auto"><PlusCircle className="mr-2 h-4 w-4" /> Adicionar</Button>
                     </div>
                 </form>

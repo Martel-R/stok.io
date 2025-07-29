@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History, Minus, Component } from 'lucide-react';
+import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History, Minus, Component, DollarSign } from 'lucide-react';
 import Image from 'next/image';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -226,35 +226,93 @@ const convertSaleDoc = (doc: any): Sale => {
 
 
 function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
+    const totalsByPaymentType = useMemo(() => {
+        const totals: Record<PaymentConditionType, number> = {
+            cash: 0,
+            credit: 0,
+            debit: 0,
+            pix: 0,
+        };
+
+        salesHistory.forEach(sale => {
+            sale.payments?.forEach(payment => {
+                if (totals.hasOwnProperty(payment.type)) {
+                    totals[payment.type] += payment.amount;
+                }
+            });
+        });
+        return totals;
+    }, [salesHistory]);
+
     return (
-        <ScrollArea className="h-[calc(100vh-18rem)]">
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead>Data</TableHead>
-                        <TableHead>Produto</TableHead>
-                        <TableHead className="text-right">Qtd.</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {salesHistory.length > 0 ? (
-                        salesHistory.map(sale => (
-                            <TableRow key={sale.id}>
-                                <TableCell>{format(sale.date, 'dd/MM/yyyy HH:mm')}</TableCell>
-                                <TableCell className="font-medium">{sale.productName}</TableCell>
-                                <TableCell className="text-right">{sale.quantity}</TableCell>
-                                <TableCell className="text-right">R${sale.total.toFixed(2).replace('.', ',')}</TableCell>
-                            </TableRow>
-                        ))
-                    ) : (
+        <div className="flex flex-col h-[calc(100vh-18rem)]">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Crédito</CardTitle>
+                        <CreditCard className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-lg font-bold">R$ {totalsByPaymentType.credit.toFixed(2).replace('.',',')}</div>
+                    </CardContent>
+                </Card>
+                 <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Débito</CardTitle>
+                        <CreditCard className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-lg font-bold">R$ {totalsByPaymentType.debit.toFixed(2).replace('.',',')}</div>
+                    </CardContent>
+                </Card>
+                 <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Pix</CardTitle>
+                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-lg font-bold">R$ {totalsByPaymentType.pix.toFixed(2).replace('.',',')}</div>
+                    </CardContent>
+                </Card>
+                 <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Dinheiro</CardTitle>
+                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-lg font-bold">R$ {totalsByPaymentType.cash.toFixed(2).replace('.',',')}</div>
+                    </CardContent>
+                </Card>
+            </div>
+            <ScrollArea className="flex-grow">
+                <Table>
+                    <TableHeader>
                         <TableRow>
-                            <TableCell colSpan={4} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
+                            <TableHead>Data</TableHead>
+                            <TableHead>Produto</TableHead>
+                            <TableHead className="text-right">Qtd.</TableHead>
+                            <TableHead className="text-right">Total</TableHead>
                         </TableRow>
-                    )}
-                </TableBody>
-            </Table>
-        </ScrollArea>
+                    </TableHeader>
+                    <TableBody>
+                        {salesHistory.length > 0 ? (
+                            salesHistory.map(sale => (
+                                <TableRow key={sale.id}>
+                                    <TableCell>{format(sale.date, 'dd/MM/yyyy HH:mm')}</TableCell>
+                                    <TableCell className="font-medium">{sale.productName}</TableCell>
+                                    <TableCell className="text-right">{sale.quantity}</TableCell>
+                                    <TableCell className="text-right">R${sale.total.toFixed(2).replace('.', ',')}</TableCell>
+                                </TableRow>
+                            ))
+                        ) : (
+                            <TableRow>
+                                <TableCell colSpan={4} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
+                            </TableRow>
+                        )}
+                    </TableBody>
+                </Table>
+            </ScrollArea>
+        </div>
     );
 }
 

@@ -25,6 +25,7 @@ import { fromUnixTime } from 'date-fns';
 import { ImportProductsDialog } from '@/components/import-products-dialog';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 
 
 type ProductWithStock = Product & { stock: number };

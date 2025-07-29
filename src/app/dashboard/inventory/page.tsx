@@ -71,7 +71,7 @@ export default function InventoryPage() {
     const getBadgeForType = (type: StockEntryType) => {
         switch (type) {
             case 'entry': return <Badge variant="secondary" className="bg-green-100 text-green-800">Entrada</Badge>;
-            case 'adjustment': return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Ajuste (Saída)</Badge>;
+            case 'adjustment': return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Saída</Badge>;
             case 'sale': return <Badge variant="outline">Venda</Badge>;
             case 'transfer': return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Transferência</Badge>;
             default: return <Badge variant="outline">{type}</Badge>;
@@ -98,16 +98,16 @@ export default function InventoryPage() {
                 <h1 className="text-3xl font-bold">Movimentação de Estoque</h1>
                 <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                     <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => handleOpenForm('entry')}><PlusCircle className="mr-2" />Nova Entrada</Button>
-                        <Button variant="outline" onClick={() => handleOpenForm('adjustment')}><MinusCircle className="mr-2" />Novo Ajuste</Button>
+                        <Button variant="outline" onClick={() => handleOpenForm('entry')}><PlusCircle className="mr-2" />Entrada</Button>
+                        <Button variant="outline" onClick={() => handleOpenForm('adjustment')}><MinusCircle className="mr-2" />Saída</Button>
                         <Button variant="outline" onClick={() => handleOpenForm('transfer')} disabled={branches.length <= 1}><ArrowRightLeft className="mr-2" />Transferir</Button>
                     </div>
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>
-                                {formType === 'entry' && 'Nova Entrada de Estoque'}
-                                {formType === 'adjustment' && 'Novo Ajuste de Estoque (Saída)'}
-                                {formType === 'transfer' && 'Transferência de Estoque entre Filiais'}
+                                {formType === 'entry' && 'Entrada de Estoque'}
+                                {formType === 'adjustment' && 'Saída de Estoque'}
+                                {formType === 'transfer' && 'Transferência de Estoque'}
                             </DialogTitle>
                              <DialogDescription>
                                 {formType === 'transfer' ? "Selecione o produto, quantidade e filial de destino." : "Selecione o produto e a quantidade para registrar a movimentação."}

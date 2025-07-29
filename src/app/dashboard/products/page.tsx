@@ -164,7 +164,10 @@ export default function ProductsPage() {
           const productsWithStock = productsData.map(product => {
               const stock = entriesData
                   .filter(e => e.productId === product.id)
-                  .reduce((sum, e) => sum + e.quantity, 0);
+                  .reduce((sum, e) => {
+                      const quantity = e.quantity || 0; // Ensure quantity is a number
+                      return sum + quantity;
+                  }, 0);
               return { ...product, stock };
           });
           

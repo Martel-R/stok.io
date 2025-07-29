@@ -400,7 +400,7 @@ export default function CombosPage() {
   return (
     <div className="space-y-6">
        <div className="flex justify-between items-center gap-4">
-        <h1 className="text-3xl font-bold">Combos Promocionais</h1>
+        <h1 className="text-3xl font-bold">Combos</h1>
         <div className="flex gap-2">
             <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                 <DialogTrigger asChild>

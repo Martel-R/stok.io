@@ -263,7 +263,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
     const { toast } = useToast();
 
     const eligibleProducts = useMemo(() => {
-        return products.filter(p => kit.eligibleProductIds.includes(p.id));
+        return products.filter(p => kit.eligibleProductIds.includes(p.id) && p.stock > 0);
     }, [kit, products]);
 
     const toggleProduct = (product: Product) => {
@@ -356,7 +356,9 @@ export default function POSPage() {
         const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
 
         const salesSub = onSnapshot(salesQuery, (salesSnapshot) => {
-            const salesData = salesSnapshot.docs.map(convertSaleDoc);
+            const salesData = salesSnapshot.docs.map(doc => convertSaleDoc(doc));
+            
+            // Sort sales history on the client side
             setSalesHistory(salesData.sort((a,b) => b.date.getTime() - a.date.getTime()));
 
             const entriesSub = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
@@ -569,7 +571,7 @@ export default function POSPage() {
     )
   }
 
-  const salableProducts = products.filter(p => p.isSalable);
+  const salableProducts = products.filter(p => p.isSalable && p.stock > 0);
 
   return (
     <>

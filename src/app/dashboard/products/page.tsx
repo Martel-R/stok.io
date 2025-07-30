@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query, where, runTransaction, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { Product, StockEntry } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp, ListChecks } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp, ListChecks, Search } from 'lucide-react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
@@ -143,6 +143,7 @@ export default function ProductsPage() {
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const { toast } = useToast();
   const { user, currentBranch, loading: authLoading } = useAuth();
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     if (authLoading || !currentBranch || !user?.organizationId) {
@@ -183,6 +184,17 @@ export default function ProductsPage() {
 
     return () => unsubscribeProducts();
   }, [currentBranch, authLoading, toast, user]);
+
+  const filteredProducts = useMemo(() => {
+    if (!searchQuery) {
+        return products;
+    }
+    return products.filter(product => 
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.category.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [products, searchQuery]);
+
 
   const handleSave = async (productData: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => {
     if (!currentBranch || !user?.organizationId) {
@@ -270,7 +282,7 @@ export default function ProductsPage() {
 
   const handleSelectAll = (checked: boolean | 'indeterminate') => {
     if (checked) {
-        setSelectedProductIds(products.map(p => p.id));
+        setSelectedProductIds(filteredProducts.map(p => p.id));
     } else {
         setSelectedProductIds([]);
     }
@@ -377,13 +389,25 @@ export default function ProductsPage() {
             </Dialog>
         </div>
       </div>
+      
+       <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Buscar por nome ou categoria..."
+            className="w-full rounded-lg bg-background pl-8"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+
 
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead className="w-[50px]">
                 <Checkbox
-                    checked={selectedProductIds.length === products.length && products.length > 0}
+                    checked={selectedProductIds.length > 0 && selectedProductIds.length === filteredProducts.length}
                     onCheckedChange={handleSelectAll}
                     aria-label="Selecionar todas as linhas"
                 />
@@ -411,8 +435,8 @@ export default function ProductsPage() {
                     <TableCell className="text-center"><Skeleton className="h-8 w-8 mx-auto rounded-full" /></TableCell>
                 </TableRow>
             ))
-          ) : products.length > 0 ? (
-            products.map((product) => (
+          ) : filteredProducts.length > 0 ? (
+            filteredProducts.map((product) => (
               <TableRow key={product.id} data-state={selectedProductIds.includes(product.id) && "selected"}>
                 <TableCell>
                     <Checkbox

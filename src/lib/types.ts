@@ -31,6 +31,15 @@ export interface User {
   customerId?: string; // Link to customer profile if role is 'customer'
 }
 
+export interface AnamnesisForm {
+    mainComplaint: string;
+    historyOfPresentIllness: string;
+    pastMedicalHistory: string;
+    familyHistory: string;
+    allergies: string;
+    currentMedications: string;
+}
+
 export interface Customer {
     id: string;
     userId?: string; // Link to User account if one exists
@@ -41,6 +50,7 @@ export interface Customer {
     address: string;
     isActive: boolean;
     organizationId: string;
+    anamnesis?: AnamnesisForm;
 }
 
 export interface Service {

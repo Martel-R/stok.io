@@ -10,8 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch, getDocs } from 'firebase/firestore';
-import type { Customer, User } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Search, Trash2, Users } from 'lucide-react';
+import type { Customer, AnamnesisForm } from '@/lib/types';
+import { MoreHorizontal, PlusCircle, Search, Users, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -19,15 +19,31 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 
 function CustomerForm({ customer, onSave, onDone }: { customer?: Customer; onSave: (data: Partial<Customer>) => void; onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<Customer>>(
-        customer || { name: '', cpfCnpj: '', email: '', phone: '', address: '', isActive: true }
+        customer || { 
+            name: '', cpfCnpj: '', email: '', phone: '', address: '', isActive: true, 
+            anamnesis: { mainComplaint: '', historyOfPresentIllness: '', pastMedicalHistory: '', familyHistory: '', allergies: '', currentMedications: '' }
+        }
     );
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleAnamnesisChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            anamnesis: {
+                ...prev.anamnesis!,
+                [name]: value
+            }
+        }));
     };
     
     const handleSubmit = (e: React.FormEvent) => {
@@ -37,40 +53,77 @@ function CustomerForm({ customer, onSave, onDone }: { customer?: Customer; onSav
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-                 <div className="space-y-2">
-                    <Label htmlFor="name">Nome Completo</Label>
-                    <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
-                </div>
-                 <div className="space-y-2">
-                    <Label htmlFor="cpfCnpj">CPF/CNPJ</Label>
-                    <Input id="cpfCnpj" name="cpfCnpj" value={formData.cpfCnpj} onChange={handleChange} required />
-                </div>
-            </div>
-             <div className="grid grid-cols-2 gap-4">
-                 <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required />
-                </div>
-                 <div className="space-y-2">
-                    <Label htmlFor="phone">Telefone</Label>
-                    <Input id="phone" name="phone" value={formData.phone} onChange={handleChange} required />
-                </div>
-            </div>
-             <div className="space-y-2">
-                <Label htmlFor="address">Endereço Completo</Label>
-                <Input id="address" name="address" value={formData.address} onChange={handleChange} required />
-            </div>
-            <div className="flex items-center space-x-2">
-                <Switch 
-                  id="isActive" 
-                  checked={formData.isActive} 
-                  onCheckedChange={(checked) => setFormData(prev => ({...prev, isActive: checked}))}
-                />
-                <Label htmlFor="isActive">Cliente Ativo</Label>
-             </div>
-            <DialogFooter>
+        <form onSubmit={handleSubmit}>
+            <Tabs defaultValue="general">
+                <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="general">Dados Gerais</TabsTrigger>
+                    <TabsTrigger value="anamnesis">Anamnese</TabsTrigger>
+                </TabsList>
+                <TabsContent value="general" className="space-y-4 py-4">
+                     <div className="grid grid-cols-2 gap-4">
+                         <div className="space-y-2">
+                            <Label htmlFor="name">Nome Completo</Label>
+                            <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
+                        </div>
+                         <div className="space-y-2">
+                            <Label htmlFor="cpfCnpj">CPF/CNPJ</Label>
+                            <Input id="cpfCnpj" name="cpfCnpj" value={formData.cpfCnpj} onChange={handleChange} required />
+                        </div>
+                    </div>
+                     <div className="grid grid-cols-2 gap-4">
+                         <div className="space-y-2">
+                            <Label htmlFor="email">Email</Label>
+                            <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required />
+                        </div>
+                         <div className="space-y-2">
+                            <Label htmlFor="phone">Telefone</Label>
+                            <Input id="phone" name="phone" value={formData.phone} onChange={handleChange} required />
+                        </div>
+                    </div>
+                     <div className="space-y-2">
+                        <Label htmlFor="address">Endereço Completo</Label>
+                        <Input id="address" name="address" value={formData.address} onChange={handleChange} required />
+                    </div>
+                    <div className="flex items-center space-x-2">
+                        <Switch 
+                          id="isActive" 
+                          checked={formData.isActive} 
+                          onCheckedChange={(checked) => setFormData(prev => ({...prev, isActive: checked}))}
+                        />
+                        <Label htmlFor="isActive">Cliente Ativo</Label>
+                     </div>
+                </TabsContent>
+                <TabsContent value="anamnesis" className="space-y-4 py-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="mainComplaint">Queixa Principal</Label>
+                        <Textarea id="mainComplaint" name="mainComplaint" value={formData.anamnesis?.mainComplaint} onChange={handleAnamnesisChange} />
+                    </div>
+                     <div className="space-y-2">
+                        <Label htmlFor="historyOfPresentIllness">Histórico da Doença Atual (HDA)</Label>
+                        <Textarea id="historyOfPresentIllness" name="historyOfPresentIllness" value={formData.anamnesis?.historyOfPresentIllness} onChange={handleAnamnesisChange} />
+                    </div>
+                     <div className="space-y-2">
+                        <Label htmlFor="pastMedicalHistory">Histórico Médico Pregresso</Label>
+                        <Textarea id="pastMedicalHistory" name="pastMedicalHistory" value={formData.anamnesis?.pastMedicalHistory} onChange={handleAnamnesisChange} />
+                    </div>
+                     <div className="space-y-2">
+                        <Label htmlFor="familyHistory">Histórico Familiar</Label>
+                        <Textarea id="familyHistory" name="familyHistory" value={formData.anamnesis?.familyHistory} onChange={handleAnamnesisChange} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                         <div className="space-y-2">
+                            <Label htmlFor="allergies">Alergias</Label>
+                            <Input id="allergies" name="allergies" value={formData.anamnesis?.allergies} onChange={handleAnamnesisChange} />
+                        </div>
+                         <div className="space-y-2">
+                            <Label htmlFor="currentMedications">Medicamentos em Uso</Label>
+                            <Input id="currentMedications" name="currentMedications" value={formData.anamnesis?.currentMedications} onChange={handleAnamnesisChange} />
+                        </div>
+                    </div>
+                </TabsContent>
+            </Tabs>
+
+            <DialogFooter className="mt-4">
                 <Button variant="ghost" type="button" onClick={onDone}>Cancelar</Button>
                 <Button type="submit">Salvar Cliente</Button>
             </DialogFooter>
@@ -211,7 +264,7 @@ export default function CustomersPage() {
                     <DialogTrigger asChild>
                         <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" />Adicionar Cliente</Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-lg">
+                    <DialogContent className="sm:max-w-2xl">
                         <DialogHeader>
                             <DialogTitle>{editingCustomer ? 'Editar Cliente' : 'Adicionar Novo Cliente'}</DialogTitle>
                         </DialogHeader>

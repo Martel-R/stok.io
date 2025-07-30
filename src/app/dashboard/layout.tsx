@@ -8,7 +8,7 @@ import { Icons } from '@/components/icons';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Home, Package, BarChart, ShoppingCart, Bot, FileText, LogOut, Loader2, Users, Settings, ChevronsUpDown, Check, Building, Gift, AlertTriangle, CreditCard, Component } from 'lucide-react';
+import { Home, Package, BarChart, ShoppingCart, Bot, FileText, LogOut, Loader2, Users, Settings, ChevronsUpDown, Check, Building, Gift, AlertTriangle, CreditCard, Component, LifeBuoy } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -31,6 +31,7 @@ function DashboardNav() {
         { href: '/dashboard/assistant', label: 'Oráculo AI', icon: Bot, roles: ['admin', 'manager'], module: 'assistant' },
         { href: '/dashboard/reports', label: 'Relatórios', icon: FileText, roles: ['admin'], module: 'reports' },
         { href: '/dashboard/settings', label: 'Ajustes', icon: Settings, roles: ['admin'], module: 'settings' },
+        { href: '/dashboard/help', label: 'Ajuda & Tutorial', icon: LifeBuoy, roles: ['admin', 'manager', 'cashier'], module: 'dashboard' },
     ];
 
     const isActive = (href: string) => {

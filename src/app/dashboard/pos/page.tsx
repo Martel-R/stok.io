@@ -756,107 +756,111 @@ export default function POSPage() {
       <div className="md:col-span-2">
         <Card className="h-full flex flex-col">
           <CardHeader>
-             <Tabs defaultValue="products">
-              <TabsList className={`grid w-full grid-cols-${enabledTabs.length}`}>
-                {enabledTabs.map(tab => (
-                    <TabsTrigger key={tab.value} value={tab.value}>
-                        <tab.icon className="mr-2 h-4 w-4"/> {tab.label}
-                    </TabsTrigger>
-                ))}
-              </TabsList>
-              <TabsContent value="products" className="mt-4">
-                 <ScrollArea className="h-[calc(100vh-18rem)]">
-                    {loading ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                        {Array.from({ length: 10 }).map((_, i) => (
-                            <Card key={i}>
-                            <CardContent className="p-2 flex flex-col items-center justify-center">
-                                <Skeleton className="h-[100px] w-[100px] rounded-md" />
-                                <Skeleton className="h-4 w-24 mt-2"/>
-                                <Skeleton className="h-3 w-16 mt-1"/>
-                            </CardContent>
-                            </Card>
-                        ))}
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                        {salableProducts.map((product) => (
-                            <Card 
-                            key={product.id} 
-                            onClick={() => addToCart(product, 'product')} 
-                            className="cursor-pointer hover:shadow-lg transition-shadow relative"
-                            >
-                            {product.stock <= 0 && <Badge variant="destructive" className="absolute top-1 right-1">Esgotado</Badge>}
-                            <CardContent className="p-2 flex flex-col items-center justify-center">
-                                <Image src={product.imageUrl} alt={product.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="product image"/>
-                                <p className="font-semibold text-sm mt-2 text-center">{product.name}</p>
-                                <p className="text-xs text-muted-foreground">R${product.price.toFixed(2).replace('.', ',')}</p>
-                            </CardContent>
-                            </Card>
-                        ))}
-                        </div>
-                    )}
-                 </ScrollArea>
-              </TabsContent>
-              {user?.enabledModules?.combos && (
-               <TabsContent value="combos" className="mt-4">
-                 <ScrollArea className="h-[calc(100vh-18rem)]">
-                    {loading ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                           {Array.from({ length: 5 }).map((_, i) => ( <Skeleton key={i} className="h-[150px] w-full" /> ))}
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                        {combos.map((combo) => (
-                            <Card 
-                            key={combo.id} 
-                            onClick={() => addToCart(combo, 'combo')} 
-                            className="cursor-pointer hover:shadow-lg transition-shadow relative"
-                            >
-                            <CardContent className="p-2 flex flex-col items-center justify-center">
-                                <Image src={combo.imageUrl} alt={combo.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="combo offer"/>
-                                <p className="font-semibold text-sm mt-2 text-center">{combo.name}</p>
-                                <p className="text-xs text-muted-foreground">R${combo.finalPrice.toFixed(2).replace('.', ',')}</p>
-                            </CardContent>
-                            </Card>
-                        ))}
-                        </div>
-                    )}
-                 </ScrollArea>
-              </TabsContent>
-              )}
-              {user?.enabledModules?.kits && (
-               <TabsContent value="kits" className="mt-4">
-                 <ScrollArea className="h-[calc(100vh-18rem)]">
-                    {loading ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                           {Array.from({ length: 5 }).map((_, i) => ( <Skeleton key={i} className="h-[150px] w-full" /> ))}
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                        {kits.map((kit) => (
-                            <Card 
-                            key={kit.id} 
-                            onClick={() => setSelectedKit(kit)} 
-                            className="cursor-pointer hover:shadow-lg transition-shadow relative"
-                            >
-                            <CardContent className="p-2 flex flex-col items-center justify-center">
-                                <Image src={kit.imageUrl} alt={kit.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="kit offer"/>
-                                <p className="font-semibold text-sm mt-2 text-center">{kit.name}</p>
-                                <p className="text-xs text-muted-foreground">Monte seu kit!</p>
-                            </CardContent>
-                            </Card>
-                        ))}
-                        </div>
-                    )}
-                 </ScrollArea>
-              </TabsContent>
-              )}
-               <TabsContent value="history" className="mt-4">
-                    <SalesHistoryTab salesHistory={salesHistory} />
-              </TabsContent>
-            </Tabs>
+              <CardTitle>Frente de Caixa</CardTitle>
+              <CardDescription>Selecione os produtos, combos ou kits para adicionar ao carrinho.</CardDescription>
           </CardHeader>
+          <CardContent className="flex-grow flex flex-col">
+            <Tabs defaultValue="products" className="flex-grow flex flex-col">
+                <TabsList className={`grid w-full grid-cols-${enabledTabs.length}`}>
+                    {enabledTabs.map(tab => (
+                        <TabsTrigger key={tab.value} value={tab.value}>
+                            <tab.icon className="mr-2 h-4 w-4"/> {tab.label}
+                        </TabsTrigger>
+                    ))}
+                </TabsList>
+                <TabsContent value="products" className="mt-4 flex-grow">
+                    <ScrollArea className="h-[calc(100vh-22rem)]">
+                        {loading ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                            {Array.from({ length: 10 }).map((_, i) => (
+                                <Card key={i}>
+                                <CardContent className="p-2 flex flex-col items-center justify-center">
+                                    <Skeleton className="h-[100px] w-[100px] rounded-md" />
+                                    <Skeleton className="h-4 w-24 mt-2"/>
+                                    <Skeleton className="h-3 w-16 mt-1"/>
+                                </CardContent>
+                                </Card>
+                            ))}
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                            {salableProducts.map((product) => (
+                                <Card 
+                                key={product.id} 
+                                onClick={() => addToCart(product, 'product')} 
+                                className="cursor-pointer hover:shadow-lg transition-shadow relative"
+                                >
+                                {product.stock <= 0 && <Badge variant="destructive" className="absolute top-1 right-1">Esgotado</Badge>}
+                                <CardContent className="p-2 flex flex-col items-center justify-center">
+                                    <Image src={product.imageUrl} alt={product.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="product image"/>
+                                    <p className="font-semibold text-sm mt-2 text-center">{product.name}</p>
+                                    <p className="text-xs text-muted-foreground">R${product.price.toFixed(2).replace('.', ',')}</p>
+                                </CardContent>
+                                </Card>
+                            ))}
+                            </div>
+                        )}
+                    </ScrollArea>
+                </TabsContent>
+                {user?.enabledModules?.combos && (
+                <TabsContent value="combos" className="mt-4 flex-grow">
+                    <ScrollArea className="h-[calc(100vh-22rem)]">
+                        {loading ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                            {Array.from({ length: 5 }).map((_, i) => ( <Skeleton key={i} className="h-[150px] w-full" /> ))}
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                            {combos.map((combo) => (
+                                <Card 
+                                key={combo.id} 
+                                onClick={() => addToCart(combo, 'combo')} 
+                                className="cursor-pointer hover:shadow-lg transition-shadow relative"
+                                >
+                                <CardContent className="p-2 flex flex-col items-center justify-center">
+                                    <Image src={combo.imageUrl} alt={combo.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="combo offer"/>
+                                    <p className="font-semibold text-sm mt-2 text-center">{combo.name}</p>
+                                    <p className="text-xs text-muted-foreground">R${combo.finalPrice.toFixed(2).replace('.', ',')}</p>
+                                </CardContent>
+                                </Card>
+                            ))}
+                            </div>
+                        )}
+                    </ScrollArea>
+                </TabsContent>
+                )}
+                {user?.enabledModules?.kits && (
+                <TabsContent value="kits" className="mt-4 flex-grow">
+                    <ScrollArea className="h-[calc(100vh-22rem)]">
+                        {loading ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                            {Array.from({ length: 5 }).map((_, i) => ( <Skeleton key={i} className="h-[150px] w-full" /> ))}
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                            {kits.map((kit) => (
+                                <Card 
+                                key={kit.id} 
+                                onClick={() => setSelectedKit(kit)} 
+                                className="cursor-pointer hover:shadow-lg transition-shadow relative"
+                                >
+                                <CardContent className="p-2 flex flex-col items-center justify-center">
+                                    <Image src={kit.imageUrl} alt={kit.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="kit offer"/>
+                                    <p className="font-semibold text-sm mt-2 text-center">{kit.name}</p>
+                                    <p className="text-xs text-muted-foreground">Monte seu kit!</p>
+                                </CardContent>
+                                </Card>
+                            ))}
+                            </div>
+                        )}
+                    </ScrollArea>
+                </TabsContent>
+                )}
+                <TabsContent value="history" className="mt-4 flex-grow">
+                        <SalesHistoryTab salesHistory={salesHistory} />
+                </TabsContent>
+            </Tabs>
+          </CardContent>
         </Card>
       </div>
       

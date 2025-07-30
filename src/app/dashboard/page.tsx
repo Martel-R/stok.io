@@ -3,14 +3,21 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart, DollarSign, Package, Users, Trophy } from 'lucide-react';
+import { BarChart, CalendarIcon, DollarSign, Package, Users, Trophy } from 'lucide-react';
 import { Bar, BarChart as RechartsBarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts';
-import { addDays, format, fromUnixTime } from 'date-fns';
+import { addDays, format, fromUnixTime, startOfDay, endOfDay, eachDayOfInterval } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Product, Sale, StockEntry } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { DateRange } from 'react-day-picker';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { cn } from '@/lib/utils';
+
 
 // Helper para converter Timestamps do Firebase
 const convertSaleDates = (sale: any): Sale => ({
@@ -20,10 +27,14 @@ const convertSaleDates = (sale: any): Sale => ({
 
 export default function DashboardPage() {
     const { user, currentBranch, loading: authLoading } = useAuth();
-    const [products, setProducts] = useState<Product[]>([]);
-    const [sales, setSales] = useState<Sale[]>([]);
-    const [stockEntries, setStockEntries] = useState<StockEntry[]>([]);
+    const [allProducts, setAllProducts] = useState<Product[]>([]);
+    const [allSales, setAllSales] = useState<Sale[]>([]);
+    const [allStockEntries, setAllStockEntries] = useState<StockEntry[]>([]);
     const [loadingData, setLoadingData] = useState(true);
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+      from: addDays(new Date(), -6),
+      to: new Date(),
+    });
 
     useEffect(() => {
         if (!currentBranch || authLoading) {
@@ -39,17 +50,17 @@ export default function DashboardPage() {
 
         const unsubscribeProducts = onSnapshot(productsQuery, (snapshot) => {
             const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-            setProducts(productsData);
+            setAllProducts(productsData);
         });
 
         const unsubscribeSales = onSnapshot(salesQuery, (snapshot) => {
             const salesData = snapshot.docs.map(doc => convertSaleDates({ id: doc.id, ...doc.data() } as Sale));
-            setSales(salesData);
+            setAllSales(salesData);
         });
 
         const unsubscribeStockEntries = onSnapshot(stockEntriesQuery, (snapshot) => {
             const entriesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockEntry));
-            setStockEntries(entriesData);
+            setAllStockEntries(entriesData);
         });
         
         // This combines listeners, might need a more robust way to handle loading state
@@ -63,29 +74,41 @@ export default function DashboardPage() {
         };
     }, [currentBranch, authLoading]);
     
-    const totalRevenue = sales.reduce((acc, sale) => acc + sale.total, 0);
-    const totalSalesCount = sales.length;
-    const totalProducts = products.length;
+    const filteredSales = useMemo(() => {
+        if (!dateRange?.from) return [];
+        const start = startOfDay(dateRange.from);
+        const end = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from);
+        return allSales.filter(s => s.date >= start && s.date <= end);
+    }, [allSales, dateRange]);
+    
+    const totalRevenue = filteredSales.reduce((acc, sale) => acc + sale.total, 0);
+    const totalSalesCount = filteredSales.length;
+    const totalProducts = allProducts.length;
 
     const totalStock = useMemo(() => {
-        return stockEntries.reduce((sum, entry) => {
-            // Ensure quantity is a valid number, default to 0 if not
+        return allStockEntries.reduce((sum, entry) => {
             const quantity = typeof entry.quantity === 'number' ? entry.quantity : 0;
             return sum + quantity;
         }, 0);
-    }, [stockEntries]);
+    }, [allStockEntries]);
 
 
-    const salesDataLast7Days = Array.from({length: 7}).map((_, i) => {
-        const date = addDays(new Date(), -i);
-        const salesOnDay = sales.filter(s => format(s.date, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'));
-        return {
-            name: format(date, 'd/MMM'),
-            Vendas: salesOnDay.reduce((acc, s) => acc + s.total, 0),
-        }
-    }).reverse();
+    const salesChartData = useMemo(() => {
+        if (!dateRange?.from) return [];
+        const start = dateRange.from;
+        const end = dateRange.to || dateRange.from;
+        const days = eachDayOfInterval({ start, end });
 
-    const salesByCashier = sales.reduce((acc, sale) => {
+        return days.map(day => {
+            const salesOnDay = filteredSales.filter(s => format(s.date, 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd'));
+            return {
+                name: format(day, 'd/MMM', { locale: ptBR }),
+                Vendas: salesOnDay.reduce((acc, s) => acc + s.total, 0),
+            };
+        });
+    }, [filteredSales, dateRange]);
+
+    const salesByCashier = filteredSales.reduce((acc, sale) => {
         const cashierName = sale.cashier || 'Desconhecido';
         if (!acc[cashierName]) {
             acc[cashierName] = 0;
@@ -102,7 +125,10 @@ export default function DashboardPage() {
     if (loadingData) {
         return (
              <div className="flex flex-col gap-8">
-                 <Skeleton className="h-9 w-1/2" />
+                 <div className="flex justify-between items-center">
+                    <Skeleton className="h-9 w-1/2" />
+                    <Skeleton className="h-10 w-64" />
+                 </div>
                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                      {Array.from({length: 4}).map((_, i) => (
                          <Card key={i}>
@@ -143,7 +169,46 @@ export default function DashboardPage() {
 
     return (
         <div className="flex flex-col gap-8">
-            <h1 className="text-3xl font-bold">Início da Filial: {currentBranch?.name}</h1>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <h1 className="text-3xl font-bold">Início da Filial: {currentBranch?.name}</h1>
+                <Popover>
+                    <PopoverTrigger asChild>
+                    <Button
+                        id="date"
+                        variant={"outline"}
+                        className={cn(
+                        "w-full sm:w-[300px] justify-start text-left font-normal",
+                        !dateRange && "text-muted-foreground"
+                        )}
+                    >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {dateRange?.from ? (
+                        dateRange.to ? (
+                            <>
+                            {format(dateRange.from, "LLL dd, y")} -{" "}
+                            {format(dateRange.to, "LLL dd, y")}
+                            </>
+                        ) : (
+                            format(dateRange.from, "LLL dd, y")
+                        )
+                        ) : (
+                        <span>Escolha um período</span>
+                        )}
+                    </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="end">
+                    <Calendar
+                        initialFocus
+                        mode="range"
+                        defaultMonth={dateRange?.from}
+                        selected={dateRange}
+                        onSelect={setDateRange}
+                        numberOfMonths={2}
+                        locale={ptBR}
+                    />
+                    </PopoverContent>
+                </Popover>
+            </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card>
@@ -171,7 +236,7 @@ export default function DashboardPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{totalProducts}</div>
-                        <p className="text-xs text-muted-foreground">em {products.map(p => p.category).filter((v,i,a)=>a.indexOf(v)===i).length} categorias</p>
+                        <p className="text-xs text-muted-foreground">em {allProducts.map(p => p.category).filter((v,i,a)=>a.indexOf(v)===i).length} categorias</p>
                     </CardContent>
                 </Card>
                  <Card>
@@ -189,11 +254,11 @@ export default function DashboardPage() {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
                 <Card className="col-span-4">
                     <CardHeader>
-                        <CardTitle>Visão Geral de Vendas (Últimos 7 Dias)</CardTitle>
+                        <CardTitle>Visão Geral de Vendas</CardTitle>
                     </CardHeader>
                     <CardContent className="pl-2">
                         <ResponsiveContainer width="100%" height={350}>
-                            <RechartsBarChart data={salesDataLast7Days}>
+                            <RechartsBarChart data={salesChartData}>
                                 <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
                                 <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `R$${value}`} />
                                 <Tooltip
@@ -231,7 +296,7 @@ export default function DashboardPage() {
                                     <div className="font-medium">R${total.toFixed(2).replace('.',',')}</div>
                                 </div>
                             )) : (
-                                <p className="text-sm text-muted-foreground text-center">Nenhuma venda registrada para ranking.</p>
+                                <p className="text-sm text-muted-foreground text-center">Nenhuma venda registrada no período para ranking.</p>
                             )}
                         </div>
                     </CardContent>

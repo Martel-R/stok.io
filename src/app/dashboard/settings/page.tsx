@@ -340,6 +340,7 @@ function BranchesSettings() {
                         ...product,
                         branchId: branchDocRef.id,
                         organizationId: currentUser.organizationId,
+                        isSalable: true,
                     };
                     batch.set(productDocRef, productWithBranchInfo);
                 });

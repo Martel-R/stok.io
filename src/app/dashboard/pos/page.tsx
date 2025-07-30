@@ -743,6 +743,13 @@ export default function POSPage() {
 
   const salableProducts = products.filter(p => p.isSalable && p.stock > 0);
 
+  const enabledTabs = [
+    { value: 'products', label: 'Produtos', icon: Package, enabled: true },
+    { value: 'combos', label: 'Combos', icon: Gift, enabled: user?.enabledModules?.combos ?? true },
+    { value: 'kits', label: 'Kits', icon: Component, enabled: user?.enabledModules?.kits ?? true },
+    { value: 'history', label: 'Histórico', icon: History, enabled: true },
+  ].filter(tab => tab.enabled);
+
   return (
     <>
     <div className="grid h-[calc(100vh-8rem)] md:grid-cols-3 gap-8">
@@ -750,11 +757,12 @@ export default function POSPage() {
         <Card className="h-full flex flex-col">
           <CardHeader>
              <Tabs defaultValue="products">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="products"><Package className="mr-2 h-4 w-4"/> Produtos</TabsTrigger>
-                <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Combos</TabsTrigger>
-                <TabsTrigger value="kits"><Component className="mr-2 h-4 w-4"/> Kits</TabsTrigger>
-                <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/> Histórico</TabsTrigger>
+              <TabsList className={`grid w-full grid-cols-${enabledTabs.length}`}>
+                {enabledTabs.map(tab => (
+                    <TabsTrigger key={tab.value} value={tab.value}>
+                        <tab.icon className="mr-2 h-4 w-4"/> {tab.label}
+                    </TabsTrigger>
+                ))}
               </TabsList>
               <TabsContent value="products" className="mt-4">
                  <ScrollArea className="h-[calc(100vh-18rem)]">
@@ -790,6 +798,7 @@ export default function POSPage() {
                     )}
                  </ScrollArea>
               </TabsContent>
+              {user?.enabledModules?.combos && (
                <TabsContent value="combos" className="mt-4">
                  <ScrollArea className="h-[calc(100vh-18rem)]">
                     {loading ? (
@@ -815,6 +824,8 @@ export default function POSPage() {
                     )}
                  </ScrollArea>
               </TabsContent>
+              )}
+              {user?.enabledModules?.kits && (
                <TabsContent value="kits" className="mt-4">
                  <ScrollArea className="h-[calc(100vh-18rem)]">
                     {loading ? (
@@ -840,6 +851,7 @@ export default function POSPage() {
                     )}
                  </ScrollArea>
               </TabsContent>
+              )}
                <TabsContent value="history" className="mt-4">
                     <SalesHistoryTab salesHistory={salesHistory} />
               </TabsContent>

@@ -10,7 +10,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, ShoppingCart, Gift, Bot, FileText, Component } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, ShoppingCart, Gift, Bot, FileText, Component, Users, Calendar, Briefcase } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -25,7 +25,7 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
     const { toast } = useToast();
     const [enabledModules, setEnabledModules] = useState<EnabledModules>(
         organization.enabledModules || {
-            dashboard: true, products: true, combos: true, inventory: true, pos: true, assistant: true, reports: true, settings: true, kits: true,
+            dashboard: true, products: true, combos: true, inventory: true, pos: true, assistant: true, reports: true, settings: true, kits: true, customers: false, appointments: false, services: false
         }
     );
 
@@ -50,6 +50,9 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
     };
 
     const moduleConfig = [
+        { key: 'customers', label: 'Clientes', icon: Users, description: 'Gerencie clientes e suas contas de acesso.' },
+        { key: 'services', label: 'Serviços', icon: Briefcase, description: 'Cadastre e gerencie os serviços oferecidos.' },
+        { key: 'appointments', label: 'Agendamentos', icon: Calendar, description: 'Permite o agendamento de serviços e consultas.' },
         { key: 'pos', label: 'Frente de Caixa (PDV)', icon: ShoppingCart, description: 'Permite o registro de vendas e pagamentos.' },
         { key: 'combos', label: 'Combos Promocionais', icon: Gift, description: 'Crie e gerencie pacotes de produtos fixos.' },
         { key: 'kits', label: 'Kits Dinâmicos', icon: Component, description: 'Crie e gerencie pacotes de produtos flexíveis.' },

@@ -2,7 +2,7 @@
 
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
+import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc } from "firebase/firestore";
@@ -40,18 +40,18 @@ interface AuthContextType {
   cancelLogin: () => void;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [currentBranch, setCurrentBranchState] = useState<Branch | null>(null);
-  const [loading, setLoading] = useState(true);
-  const loginCancelledRef = useRef(false);
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = React.useState<User | null>(null);
+  const [branches, setBranches] = React.useState<Branch[]>([]);
+  const [currentBranch, setCurrentBranchState] = React.useState<Branch | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const loginCancelledRef = React.useRef(false);
   const router = useRouter();
   const pathname = usePathname();
 
-  useEffect(() => {
+  React.useEffect(() => {
     let branchesUnsubscribe: Unsubscribe | null = null;
     let orgUnsubscribe: Unsubscribe | null = null;
 
@@ -107,6 +107,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                             reports: true,
                             settings: true,
                             kits: true,
+                            customers: true,
+                            appointments: true,
+                            services: true,
                         };
                         await updateDoc(orgDocRef, { enabledModules: modules });
                     }
@@ -194,6 +197,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             reports: true,
             settings: true,
             kits: true,
+            customers: true,
+            appointments: true,
+            services: true,
         }
       });
 
@@ -399,7 +405,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAuthenticated = !!user;
   
-  useEffect(() => {
+  React.useEffect(() => {
     if (typeof window === 'undefined') return;
 
     if (loading) return; 

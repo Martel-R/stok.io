@@ -1,6 +1,6 @@
 
 
-export type UserRole = 'admin' | 'manager' | 'cashier';
+export type UserRole = 'admin' | 'manager' | 'cashier' | 'customer' | 'professional';
 export type PaymentStatus = 'active' | 'overdue' | 'locked';
 
 export interface EnabledModules {
@@ -13,6 +13,9 @@ export interface EnabledModules {
     reports: boolean;
     settings: boolean;
     kits: boolean;
+    customers: boolean;
+    appointments: boolean;
+    services: boolean;
 }
 
 export interface User {
@@ -25,7 +28,50 @@ export interface User {
   organizationId: string;
   paymentStatus?: PaymentStatus;
   enabledModules?: EnabledModules;
+  customerId?: string; // Link to customer profile if role is 'customer'
 }
+
+export interface Customer {
+    id: string;
+    userId?: string; // Link to User account if one exists
+    name: string;
+    cpfCnpj: string;
+    email: string;
+    phone: string;
+    address: string;
+    isActive: boolean;
+    organizationId: string;
+}
+
+export interface Service {
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+    duration: number; // in minutes
+    price: number;
+    professionalIds: string[]; // IDs of users with 'professional' role
+    isActive: boolean;
+    organizationId: string;
+}
+
+export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no-show';
+
+export interface Appointment {
+    id: string;
+    customerId: string;
+    customerName: string;
+    serviceId: string;
+    serviceName: string;
+    professionalId: string;
+    professionalName: string;
+    start: Date;
+    end: Date;
+    status: AppointmentStatus;
+    notes?: string;
+    organizationId: string;
+}
+
 
 export interface Product {
   id: string;

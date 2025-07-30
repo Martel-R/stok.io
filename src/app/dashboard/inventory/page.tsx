@@ -21,7 +21,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 
 const convertDate = (dateField: any): Date => {
     if (dateField instanceof Timestamp) return dateField.toDate();
-    if (dateField && typeof dateField.seconds === 'number') return new Date(dateField.seconds * 1000);
+    if (dateField && typeof (dateField as any).seconds === 'number') return new Date((dateField as any).seconds * 1000);
     if (typeof dateField === 'string') return parseISO(dateField);
     return new Date(); // Fallback
 };
@@ -77,7 +77,7 @@ export default function InventoryPage() {
         return products.map(product => {
             const stock = allStockEntries
                 .filter(e => e.productId === product.id)
-                .reduce((sum, e) => sum + e.quantity, 0);
+                .reduce((sum, e) => sum + (Number(e.quantity) || 0), 0);
             return { ...product, stock };
         });
     }, [products, allStockEntries]);
@@ -324,3 +324,5 @@ export default function InventoryPage() {
         </div>
     );
 }
+
+    

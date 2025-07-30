@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch, getDocs } from 'firebase/firestore';
 import type { Customer, User } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Search, Trash2 } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Search, Trash2, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -295,4 +295,3 @@ export default function CustomersPage() {
         </div>
     );
 }
-

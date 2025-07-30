@@ -2,7 +2,7 @@
 
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
@@ -10,8 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query, where, runTransaction, serverTimestamp, Timestamp } from 'firebase/firestore';
-import type { Product, StockEntry } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp, ListChecks, Search } from 'lucide-react';
+import type { Product, StockEntry, Branch } from '@/lib/types';
+import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp, ListChecks, Search, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
@@ -28,6 +28,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { StockMovementForm } from '@/components/stock-movement-form';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 
 type ProductWithStock = Product & { stock: number };
@@ -142,8 +143,16 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const { toast } = useToast();
-  const { user, currentBranch, loading: authLoading } = useAuth();
+  const { user, currentBranch, branches, loading: authLoading } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
+  
+  // States for new bulk actions
+  const [isChangeCategoryDialogOpen, setIsChangeCategoryDialogOpen] = useState(false);
+  const [newCategory, setNewCategory] = useState("");
+  const [isCopyProductsDialogOpen, setIsCopyProductsDialogOpen] = useState(false);
+  const [branchesToCopyTo, setBranchesToCopyTo] = useState<string[]>([]);
+  const [isProcessingBulkAction, setIsProcessingBulkAction] = useState(false);
+
 
   useEffect(() => {
     if (authLoading || !currentBranch || !user?.organizationId) {
@@ -221,7 +230,6 @@ export default function ProductsPage() {
   };
 
   const handleDelete = async (productId: string) => {
-    // We should also check if there are stock entries or sales to prevent orphans
     try {
       await deleteDoc(doc(db, "products", productId));
       toast({ title: 'Produto excluído com sucesso!', variant: 'destructive' });
@@ -287,27 +295,104 @@ export default function ProductsPage() {
         setSelectedProductIds([]);
     }
   };
+  
+    const handleBulkDelete = async () => {
+        if (selectedProductIds.length === 0) return;
+        setIsProcessingBulkAction(true);
+        const batch = writeBatch(db);
+        selectedProductIds.forEach(id => {
+            batch.delete(doc(db, 'products', id));
+        });
+        try {
+            await batch.commit();
+            toast({ title: 'Produtos selecionados foram excluídos!' });
+            setSelectedProductIds([]);
+        } catch (error) {
+            toast({ title: 'Erro ao excluir produtos', variant: 'destructive' });
+        } finally {
+            setIsProcessingBulkAction(false);
+        }
+    };
+    
+    const handleBulkChangeCategory = async () => {
+        if (selectedProductIds.length === 0 || !newCategory.trim()) {
+            toast({ title: 'Nenhuma categoria ou produto selecionado', variant: 'destructive' });
+            return;
+        }
+        setIsProcessingBulkAction(true);
+        const batch = writeBatch(db);
+        selectedProductIds.forEach(id => {
+            batch.update(doc(db, 'products', id), { category: newCategory });
+        });
+        try {
+            await batch.commit();
+            toast({ title: 'Categorias atualizadas com sucesso!' });
+            setSelectedProductIds([]);
+            setNewCategory("");
+            setIsChangeCategoryDialogOpen(false);
+        } catch (error) {
+            toast({ title: 'Erro ao atualizar categorias', variant: 'destructive' });
+        } finally {
+            setIsProcessingBulkAction(false);
+        }
+    };
 
-  const handleBulkUpdateSalable = async (isSalable: boolean) => {
-    if (selectedProductIds.length === 0) {
-        toast({ title: 'Nenhum produto selecionado', variant: 'destructive' });
-        return;
-    }
+    const handleBulkCopy = async () => {
+        if (selectedProductIds.length === 0 || branchesToCopyTo.length === 0) {
+            toast({ title: 'Nenhum produto ou filial de destino selecionado', variant: 'destructive' });
+            return;
+        }
+        setIsProcessingBulkAction(true);
+        const batch = writeBatch(db);
+        const productsToCopy = products.filter(p => selectedProductIds.includes(p.id));
 
-    const batch = writeBatch(db);
-    selectedProductIds.forEach(id => {
-        const productRef = doc(db, 'products', id);
-        batch.update(productRef, { isSalable });
-    });
+        branchesToCopyTo.forEach(branchId => {
+            productsToCopy.forEach(p => {
+                const { id, stock, branchId: sourceBranchId, ...productData } = p;
+                const newProductRef = doc(collection(db, 'products'));
+                batch.set(newProductRef, {
+                    ...productData,
+                    branchId: branchId,
+                    organizationId: user?.organizationId
+                });
+            });
+        });
 
-    try {
-        await batch.commit();
-        toast({ title: `${selectedProductIds.length} produtos atualizados com sucesso!` });
-        setSelectedProductIds([]);
-    } catch (error) {
-        toast({ title: 'Erro ao atualizar produtos', variant: 'destructive' });
-    }
-  };
+        try {
+            await batch.commit();
+            toast({ title: 'Produtos copiados com sucesso!' });
+            setSelectedProductIds([]);
+            setBranchesToCopyTo([]);
+            setIsCopyProductsDialogOpen(false);
+        } catch (error) {
+            toast({ title: 'Erro ao copiar produtos', variant: 'destructive' });
+        } finally {
+            setIsProcessingBulkAction(false);
+        }
+    };
+  
+    const handleBulkUpdateSalable = async (isSalable: boolean) => {
+        if (selectedProductIds.length === 0) {
+            toast({ title: 'Nenhum produto selecionado', variant: 'destructive' });
+            return;
+        }
+        setIsProcessingBulkAction(true);
+        const batch = writeBatch(db);
+        selectedProductIds.forEach(id => {
+            const productRef = doc(db, 'products', id);
+            batch.update(productRef, { isSalable });
+        });
+
+        try {
+            await batch.commit();
+            toast({ title: `${selectedProductIds.length} produtos atualizados com sucesso!` });
+            setSelectedProductIds([]);
+        } catch (error) {
+            toast({ title: 'Erro ao atualizar produtos', variant: 'destructive' });
+        } finally {
+            setIsProcessingBulkAction(false);
+        }
+    };
 
 
   if (!currentBranch && !authLoading) {
@@ -330,22 +415,51 @@ export default function ProductsPage() {
         <h1 className="text-3xl font-bold">Produtos</h1>
         <div className="flex gap-2">
             {selectedProductIds.length > 0 && (
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="outline">
-                            <ListChecks className="mr-2" />
-                            Ações em Lote ({selectedProductIds.length})
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                        <DropdownMenuItem onClick={() => handleBulkUpdateSalable(true)}>
-                            Marcar como Comerciável
-                        </DropdownMenuItem>
-                         <DropdownMenuItem onClick={() => handleBulkUpdateSalable(false)}>
-                            Marcar como Não Comerciável
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                 <AlertDialog>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline">
+                                <ListChecks className="mr-2" />
+                                Ações em Lote ({selectedProductIds.length})
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                            <DropdownMenuItem onClick={() => handleBulkUpdateSalable(true)}>
+                                Marcar como Comerciável
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleBulkUpdateSalable(false)}>
+                                Marcar como Não Comerciável
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setIsChangeCategoryDialogOpen(true)}>
+                                Alterar Categoria
+                            </DropdownMenuItem>
+                             <DropdownMenuItem onClick={() => setIsCopyProductsDialogOpen(true)}>
+                                Copiar para Filial(is)
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                             <AlertDialogTrigger asChild>
+                                 <DropdownMenuItem className="text-destructive focus:text-destructive">
+                                    <Trash2 className="mr-2" /> Excluir Selecionados
+                                </DropdownMenuItem>
+                            </AlertDialogTrigger>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Excluir Produtos</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                Tem certeza que deseja excluir os {selectedProductIds.length} produtos selecionados? Esta ação é irreversível.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleBulkDelete} disabled={isProcessingBulkAction} className={buttonVariants({variant: 'destructive'})}>
+                                {isProcessingBulkAction && <Loader2 className="mr-2 animate-spin"/>}
+                                Excluir
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             )}
 
             <ImportProductsDialog
@@ -407,7 +521,7 @@ export default function ProductsPage() {
           <TableRow>
             <TableHead className="w-[50px]">
                 <Checkbox
-                    checked={selectedProductIds.length > 0 && selectedProductIds.length === filteredProducts.length}
+                    checked={filteredProducts.length > 0 && selectedProductIds.length === filteredProducts.length}
                     onCheckedChange={handleSelectAll}
                     aria-label="Selecionar todas as linhas"
                 />
@@ -486,6 +600,78 @@ export default function ProductsPage() {
           )}
         </TableBody>
       </Table>
+      
+       {/* Dialog for Changing Category */}
+        <Dialog open={isChangeCategoryDialogOpen} onOpenChange={setIsChangeCategoryDialogOpen}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Alterar Categoria em Lote</DialogTitle>
+                </DialogHeader>
+                <div className="py-4">
+                    <Label htmlFor="newCategory">Nova Categoria</Label>
+                    <Input
+                        id="newCategory"
+                        value={newCategory}
+                        onChange={(e) => setNewCategory(e.target.value)}
+                        placeholder="Digite a nova categoria"
+                    />
+                </div>
+                <DialogFooter>
+                    <Button variant="ghost" onClick={() => setIsChangeCategoryDialogOpen(false)}>Cancelar</Button>
+                    <Button onClick={handleBulkChangeCategory} disabled={isProcessingBulkAction}>
+                        {isProcessingBulkAction && <Loader2 className="mr-2 animate-spin"/>}
+                        Alterar Categoria
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+        
+        {/* Dialog for Copying Products */}
+        <Dialog open={isCopyProductsDialogOpen} onOpenChange={setIsCopyProductsDialogOpen}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Copiar Produtos para Outras Filiais</DialogTitle>
+                </DialogHeader>
+                <div className="py-4 space-y-2">
+                    <Label>Filiais de Destino</Label>
+                    <Command>
+                       <CommandInput placeholder="Buscar filial..." />
+                       <CommandList>
+                            <CommandEmpty>Nenhuma filial encontrada.</CommandEmpty>
+                            <CommandGroup>
+                                {branches.filter(b => b.id !== currentBranch?.id).map((branch) => (
+                                    <CommandItem
+                                        key={branch.id}
+                                        value={branch.name}
+                                        onSelect={() => {
+                                            setBranchesToCopyTo(prev => 
+                                                prev.includes(branch.id) 
+                                                    ? prev.filter(id => id !== branch.id) 
+                                                    : [...prev, branch.id]
+                                            );
+                                        }}
+                                    >
+                                        <Checkbox
+                                            className="mr-2"
+                                            checked={branchesToCopyTo.includes(branch.id)}
+                                        />
+                                        {branch.name}
+                                    </CommandItem>
+                                ))}
+                            </CommandGroup>
+                        </CommandList>
+                    </Command>
+                </div>
+                <DialogFooter>
+                    <Button variant="ghost" onClick={() => setIsCopyProductsDialogOpen(false)}>Cancelar</Button>
+                    <Button onClick={handleBulkCopy} disabled={isProcessingBulkAction || branchesToCopyTo.length === 0}>
+                         {isProcessingBulkAction && <Loader2 className="mr-2 animate-spin"/>}
+                        Copiar Produtos
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
     </div>
   );
 }

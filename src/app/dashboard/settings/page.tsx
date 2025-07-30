@@ -99,7 +99,8 @@ function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partia
                 </div>
             )}
             <div>
-                <Label htmlFor="role">Função</Label>                 <Select value={formData.role} onValueChange={handleRoleChange}>
+                <Label htmlFor="role">Função</Label>
+                 <Select value={formData.role} onValueChange={handleRoleChange}>
                     <SelectTrigger id="role">
                         <SelectValue placeholder="Selecione uma função" />
                     </SelectTrigger>
@@ -107,6 +108,8 @@ function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partia
                         <SelectItem value="admin">Admin</SelectItem>
                         <SelectItem value="manager">Gerente</SelectItem>
                         <SelectItem value="cashier">Caixa</SelectItem>
+                        <SelectItem value="professional">Profissional</SelectItem>
+                        <SelectItem value="customer">Cliente</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -143,14 +146,12 @@ function UsersTable() {
 
     const getRoleBadge = (role: string) => {
         switch (role) {
-            case 'admin':
-                return <Badge variant="destructive">Admin</Badge>;
-            case 'manager':
-                return <Badge variant="secondary">Gerente</Badge>;
-            case 'cashier':
-                return <Badge>Caixa</Badge>;
-            default:
-                return <Badge variant="outline">{role}</Badge>;
+            case 'admin': return <Badge variant="destructive">Admin</Badge>;
+            case 'manager': return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Gerente</Badge>;
+            case 'cashier': return <Badge className="bg-green-100 text-green-800">Caixa</Badge>;
+            case 'professional': return <Badge className="bg-purple-100 text-purple-800">Profissional</Badge>;
+            case 'customer': return <Badge className="bg-gray-100 text-gray-800">Cliente</Badge>;
+            default: return <Badge variant="outline">{role}</Badge>;
         }
     }
     

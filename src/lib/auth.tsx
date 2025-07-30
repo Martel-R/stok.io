@@ -29,7 +29,7 @@ interface AuthContextType {
   login: (email: string, pass: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<boolean>;
   signup: (email: string, pass: string, name: string) => Promise<{ success: boolean; error?: string, isFirstUser?: boolean }>;
-  createUser: (email: string, pass: string, name: string, role: UserRole, organizationId: string) => Promise<{ success: boolean; error?: string }>;
+  createUser: (email: string, pass: string, name: string, role: UserRole, organizationId: string, customerId?: string) => Promise<{ success: boolean; error?: string, userId?: string }>;
   updateUserProfile: (data: Partial<User>) => Promise<{ success: boolean; error?: string }>;
   changeUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean, error?: string }>;
   sendPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
@@ -220,7 +220,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const createUser = async (email: string, pass: string, name: string, role: UserRole, organizationId: string): Promise<{ success: boolean; error?: string }> => {
+  const createUser = async (email: string, pass: string, name: string, role: UserRole, organizationId: string, customerId?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
     try {
         const { getApp, initializeApp, deleteApp } = await import('firebase/app');
         const { getAuth: getAuth_local } = await import('firebase/auth');
@@ -240,6 +240,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             role,
             avatar: getRandomAvatar(),
             organizationId: organizationId,
+            ...(customerId && { customerId: customerId }),
         };
         
         await setDoc(doc(db, "users", firebaseUser.uid), newUser);
@@ -247,7 +248,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await signOut(tempAuthInstance);
         await deleteApp(tempApp);
 
-        return { success: true };
+        return { success: true, userId: firebaseUser.uid };
     } catch (error: any) {
         console.error("Admin Create User Error:", error);
         let errorMessage = "Ocorreu um erro desconhecido.";

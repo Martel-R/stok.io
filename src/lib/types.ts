@@ -18,6 +18,27 @@ export interface EnabledModules {
     services: boolean;
 }
 
+export interface TimeSlot {
+    start: string; // "HH:mm"
+    end: string;   // "HH:mm"
+}
+
+export interface DayAvailability {
+    enabled: boolean;
+    slots: TimeSlot[];
+}
+
+export interface Availability {
+    sunday: DayAvailability;
+    monday: DayAvailability;
+    tuesday: DayAvailability;
+    wednesday: DayAvailability;
+    thursday: DayAvailability;
+    friday: DayAvailability;
+    saturday: DayAvailability;
+}
+
+
 export interface User {
   id: string;
   name: string;
@@ -29,6 +50,7 @@ export interface User {
   paymentStatus?: PaymentStatus;
   enabledModules?: EnabledModules;
   customerId?: string; // Link to customer profile if role is 'customer'
+  availability?: Availability;
 }
 
 export type AnamnesisQuestionType = 'text' | 'boolean' | 'boolean_with_text' | 'integer' | 'decimal';

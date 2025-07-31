@@ -3,14 +3,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType, StockEntry, Kit, Attendance, AttendanceItem } from '@/lib/types';
+import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType, StockEntry, Kit, Attendance, AttendanceItem, Customer } from '@/lib/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History, Minus, Component, DollarSign, UserCheck } from 'lucide-react';
+import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History, Minus, Component, DollarSign, UserCheck, Search, UserPlus } from 'lucide-react';
 import Image from 'next/image';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -23,6 +23,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Check, ChevronsUpDown } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 
 type CartItem = 
@@ -33,6 +37,52 @@ type CartItem =
 
 type ProductWithStock = Product & { stock: number };
 
+function CustomerSelector({ onSelect }: { onSelect: (customer: Customer) => void }) {
+    const { user } = useAuth();
+    const [customers, setCustomers] = useState<Customer[]>([]);
+    const [open, setOpen] = useState(false);
+
+    useEffect(() => {
+        if (!user?.organizationId) return;
+        const q = query(collection(db, 'customers'), where('organizationId', '==', user.organizationId), where('isActive', '==', true));
+        const unsub = onSnapshot(q, snap => {
+            setCustomers(snap.docs.map(d => ({id: d.id, ...d.data()} as Customer)));
+        });
+        return () => unsub();
+    }, [user]);
+
+    const handleSelect = (customer: Customer) => {
+        onSelect(customer);
+        setOpen(false);
+    };
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button variant="outline" className="w-full justify-start">
+                    <UserPlus className="mr-2"/> Adicionar Cliente à Venda
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[300px] p-0">
+                <Command>
+                    <CommandInput placeholder="Buscar cliente..." />
+                    <CommandList>
+                        <CommandEmpty>Nenhum cliente encontrado.</CommandEmpty>
+                        <CommandGroup>
+                            {customers.map((customer) => (
+                                <CommandItem key={customer.id} onSelect={() => handleSelect(customer)}>
+                                    {customer.name}
+                                </CommandItem>
+                            ))}
+                        </CommandGroup>
+                    </CommandList>
+                </Command>
+            </PopoverContent>
+        </Popover>
+    );
+}
+
+
 function CheckoutModal({
   isOpen,
   onOpenChange,
@@ -41,14 +91,16 @@ function CheckoutModal({
   onCheckout,
   paymentConditions,
   attendanceId,
+  customerId,
 }: {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   cart: CartItem[];
   grandTotal: number;
-  onCheckout: (payments: PaymentDetail[], attendanceId?: string) => Promise<void>;
+  onCheckout: (payments: PaymentDetail[], attendanceId?: string, customerId?: string) => Promise<void>;
   paymentConditions: PaymentCondition[];
   attendanceId?: string;
+  customerId?: string;
 }) {
   const [payments, setPayments] = useState<PaymentDetail[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -117,7 +169,7 @@ function CheckoutModal({
       return;
     }
     setIsProcessing(true);
-    await onCheckout(payments, attendanceId);
+    await onCheckout(payments, attendanceId, customerId);
     setIsProcessing(false);
     onOpenChange(false);
   };
@@ -520,6 +572,7 @@ export default function POSPage() {
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
   const [selectedKit, setSelectedKit] = useState<Kit | null>(null);
   const [currentAttendanceId, setCurrentAttendanceId] = useState<string | undefined>(undefined);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const { toast } = useToast();
   const { user, currentBranch, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -705,7 +758,7 @@ export default function POSPage() {
   const tax = subtotal * ((currentBranch?.taxRate || 0) / 100);
   const grandTotal = subtotal + tax;
   
-  const handleCheckout = async (payments: PaymentDetail[], attendanceId?: string) => {
+  const handleCheckout = async (payments: PaymentDetail[], attendanceId?: string, customerId?: string) => {
       if (cart.length === 0) {
           toast({ title: 'Carrinho Vazio', description: 'Adicione itens ao carrinho antes de finalizar.', variant: 'destructive'});
           return;
@@ -780,6 +833,7 @@ export default function POSPage() {
             organizationId: user.organizationId,
             payments: payments,
             ...(attendanceId && { attendanceId: attendanceId }),
+            ...(customerId && { customerId: customerId }),
         };
         batch.set(saleRef, { ...saleData, date: saleDate }); // Use server timestamp for sale as well
         
@@ -792,9 +846,7 @@ export default function POSPage() {
         await batch.commit();
 
         toast({ title: 'Compra finalizada com sucesso!', description: `Total: R$${grandTotal.toFixed(2).replace('.', ',')}`});
-        setCart([]);
-        setCurrentAttendanceId(undefined);
-
+        handleClearCart();
 
       } catch (error) {
           console.error("Checkout error: ", error);
@@ -828,6 +880,7 @@ export default function POSPage() {
   const handleClearCart = () => {
     setCart([]);
     setCurrentAttendanceId(undefined);
+    setSelectedCustomer(null);
   };
 
   if (!currentBranch && !authLoading) {
@@ -978,11 +1031,19 @@ export default function POSPage() {
                  {cart.length > 0 && <Button variant="ghost" size="sm" onClick={handleClearCart}>Limpar</Button>}
              </div>
              {currentAttendanceId && <CardDescription>Pagamento para atendimento</CardDescription>}
+             {selectedCustomer && !currentAttendanceId && (
+                <CardDescription className="flex items-center gap-1">
+                    Venda para: <span className="font-medium">{selectedCustomer.name}</span>
+                </CardDescription>
+             )}
           </CardHeader>
           <CardContent className="flex-grow">
             <ScrollArea className="h-[calc(100vh-25rem)]">
                 {cart.length === 0 ? (
-                    <p className="text-muted-foreground text-center">O carrinho está vazio</p>
+                    <div className="text-muted-foreground text-center space-y-4">
+                        <p>O carrinho está vazio</p>
+                        {!currentAttendanceId && <CustomerSelector onSelect={setSelectedCustomer} />}
+                    </div>
                 ) : (
                     <div className="space-y-4">
                         {cart.map((item, index) => (
@@ -1060,6 +1121,7 @@ export default function POSPage() {
       onCheckout={handleCheckout}
       paymentConditions={paymentConditions}
       attendanceId={currentAttendanceId}
+      customerId={selectedCustomer?.id}
     />
     </>
   );

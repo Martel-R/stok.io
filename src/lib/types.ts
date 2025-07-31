@@ -188,6 +188,7 @@ export interface Sale {
   organizationId: string;
   payments: PaymentDetail[];
   attendanceId?: string; // Link to the attendance if sale came from one
+  customerId?: string; // Link to customer for direct sales
 }
 
 export interface Branch {

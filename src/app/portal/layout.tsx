@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Calendar, LayoutDashboard, LogOut, Loader2, User } from 'lucide-react';
+import { Calendar, LayoutDashboard, LogOut, Loader2, User, History } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -19,6 +19,7 @@ function PortalNav() {
     const navItems = [
         { href: '/portal', label: 'Início', icon: LayoutDashboard },
         { href: '/portal/appointments', label: 'Meus Agendamentos', icon: Calendar },
+        { href: '/portal/history', label: 'Meu Histórico', icon: History },
         { href: '/portal/profile', label: 'Meu Perfil', icon: User },
     ];
 

@@ -1,3 +1,4 @@
+
 {
   "indexes": [
     {
@@ -58,7 +59,7 @@
     },
     {
       "collectionGroup": "anamnesisQuestions",
-      "queryScope": "COLLECTION",
+      "queryScope": "COLLECTION_GROUP",
       "fields": [
         {
           "fieldPath": "organizationId",

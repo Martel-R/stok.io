@@ -240,9 +240,11 @@ export default function CustomersPage() {
             setLoading(false);
         });
 
-        const questionsQuery = query(collection(db, 'anamnesisQuestions'), where("organizationId", "==", user.organizationId), orderBy('order'));
+        const questionsQuery = query(collection(db, 'anamnesisQuestions'), where("organizationId", "==", user.organizationId));
         const questionsUnsub = onSnapshot(questionsQuery, (snapshot) => {
-             setAnamnesisQuestions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AnamnesisQuestion)));
+             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AnamnesisQuestion));
+             data.sort((a,b) => (a.order || 0) - (b.order || 0));
+             setAnamnesisQuestions(data);
         }, (error) => {
             console.error("Error fetching anamnesis questions:", error);
         });
@@ -444,3 +446,5 @@ export default function CustomersPage() {
         </div>
     );
 }
+
+    

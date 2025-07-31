@@ -14,7 +14,7 @@ const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availa
 export const MOCK_USERS: User[] = [
   { id: '1', name: 'Usuário Admin', email: 'admin@instock.ai', password: 'password', role: 'admin', avatar: getRandomAvatar(), organizationId: 'org1' },
   { id: '2', name: 'Usuário Gerente', email: 'manager@instock.ai', password: 'password', role: 'manager', avatar: getRandomAvatar(), organizationId: 'org1' },
-  { id: '3', name: 'Usuário Caixa', email: 'cashier@instock.ai', password: 'password', role: 'cashier', avatar: getRandomAvatar(), organizationId: 'org1' },
+  { id: '3', name: 'Usuário Atendimento', email: 'atendimento@instock.ai', password: 'password', role: 'atendimento', avatar: getRandomAvatar(), organizationId: 'org1' },
 ];
 
 // Mock products no longer need a static branchId, it will be assigned on creation.
@@ -35,7 +35,7 @@ export const MOCK_SALES: Omit<Sale, 'id' | 'branchId' | 'organizationId'>[] = Ar
     quantity,
     total: product.price * quantity,
     date: new Date(Date.now() - Math.floor(Math.random() * 30) * 24 * 60 * 60 * 1000), // a date in the last 30 days
-    cashier: MOCK_USERS.find(u => u.role === 'cashier')?.name ?? 'Caixa',
+    cashier: MOCK_USERS.find(u => u.role === 'atendimento')?.name ?? 'Atendimento',
     payments: [],
   }
 });

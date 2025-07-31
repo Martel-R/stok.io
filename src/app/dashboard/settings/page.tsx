@@ -45,7 +45,7 @@ const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availa
 
 function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partial<User>) => void; onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<User>>(
-        user || { name: '', email: '', role: 'cashier', avatar: getRandomAvatar(), password: '' }
+        user || { name: '', email: '', role: 'atendimento', avatar: getRandomAvatar(), password: '' }
     );
     const [showPassword, setShowPassword] = useState(false);
 
@@ -109,7 +109,7 @@ function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partia
                     <SelectContent>
                         <SelectItem value="admin">Admin</SelectItem>
                         <SelectItem value="manager">Gerente</SelectItem>
-                        <SelectItem value="cashier">Caixa</SelectItem>
+                        <SelectItem value="atendimento">Atendimento</SelectItem>
                         <SelectItem value="professional">Profissional</SelectItem>
                         <SelectItem value="customer">Cliente</SelectItem>
                     </SelectContent>
@@ -150,7 +150,7 @@ function UsersTable() {
         switch (role) {
             case 'admin': return <Badge variant="destructive">Admin</Badge>;
             case 'manager': return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Gerente</Badge>;
-            case 'cashier': return <Badge className="bg-green-100 text-green-800">Caixa</Badge>;
+            case 'atendimento': return <Badge className="bg-green-100 text-green-800">Atendimento</Badge>;
             case 'professional': return <Badge className="bg-purple-100 text-purple-800">Profissional</Badge>;
             case 'customer': return <Badge className="bg-gray-100 text-gray-800">Cliente</Badge>;
             default: return <Badge variant="outline">{role}</Badge>;
@@ -187,7 +187,7 @@ function UsersTable() {
                      userToSave.email, 
                      userToSave.password, 
                      userToSave.name, 
-                     userToSave.role || 'cashier', 
+                     userToSave.role || 'atendimento', 
                      adminUser.organizationId
                  );
                  if (success) {

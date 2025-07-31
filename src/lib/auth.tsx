@@ -421,12 +421,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
      if (isAuthenticated) {
         if(isAuthPage) {
-            if (user.role === 'cashier') {
+            if (user.role === 'atendimento') {
                 router.push('/dashboard/pos');
             } else {
                 router.push('/dashboard');
             }
-        } else if (user.role === 'cashier' && pathname !== '/dashboard/pos' && pathname !== '/dashboard/profile') {
+        } else if (user.role === 'atendimento' && pathname !== '/dashboard/pos' && pathname !== '/dashboard/profile') {
             router.push('/dashboard/pos');
         }
     }

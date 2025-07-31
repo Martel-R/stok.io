@@ -31,11 +31,11 @@ function DashboardNav() {
         { href: '/dashboard/combos', label: 'Combos', icon: Gift, roles: ['admin', 'manager'], module: 'combos' },
         { href: '/dashboard/kits', label: 'Kits', icon: Component, roles: ['admin', 'manager'], module: 'kits' },
         { href: '/dashboard/inventory', label: 'Movimentação', icon: BarChart, roles: ['admin', 'manager'], module: 'inventory' },
-        { href: '/dashboard/pos', label: 'Frente de Caixa', icon: ShoppingCart, roles: ['admin', 'manager', 'cashier'], module: 'pos' },
+        { href: '/dashboard/pos', label: 'Frente de Caixa', icon: ShoppingCart, roles: ['admin', 'manager', 'atendimento'], module: 'pos' },
         { href: '/dashboard/assistant', label: 'Oráculo AI', icon: Bot, roles: ['admin', 'manager'], module: 'assistant' },
         { href: '/dashboard/reports', label: 'Relatórios', icon: FileText, roles: ['admin'], module: 'reports' },
         { href: '/dashboard/settings', label: 'Ajustes', icon: Settings, roles: ['admin'], module: 'settings' },
-        { href: '/dashboard/help', label: 'Ajuda & Tutorial', icon: LifeBuoy, roles: ['admin', 'manager', 'cashier', 'professional'], module: 'dashboard' },
+        { href: '/dashboard/help', label: 'Ajuda & Tutorial', icon: LifeBuoy, roles: ['admin', 'manager', 'atendimento', 'professional'], module: 'dashboard' },
     ];
 
     const isActive = (href: string) => {

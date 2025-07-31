@@ -1,6 +1,6 @@
 
 
-export type UserRole = 'admin' | 'manager' | 'cashier' | 'customer' | 'professional';
+export type UserRole = 'admin' | 'manager' | 'atendimento' | 'customer' | 'professional';
 export type PaymentStatus = 'active' | 'overdue' | 'locked';
 
 export interface EnabledModules {

@@ -16,7 +16,7 @@ import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType, Pr
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils';
 import { useSearchParams } from 'next/navigation';
 import { Separator } from '@/components/ui/separator';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
+import { ImportAnamnesisQuestionsDialog } from '@/components/import-anamnesis-dialog';
 
 
 const availableAvatars = [
@@ -741,6 +742,7 @@ function AnamnesisSettings() {
     const [loading, setLoading] = useState(true);
     const { user } = useAuth();
     const [newQuestion, setNewQuestion] = useState({ label: '', type: 'text' as AnamnesisQuestionType });
+    const [isImportOpen, setIsImportOpen] = useState(false);
     const { toast } = useToast();
 
     useEffect(() => {
@@ -794,6 +796,31 @@ function AnamnesisSettings() {
             toast({ title: 'Erro ao remover pergunta', variant: 'destructive' });
         }
     };
+
+    const handleImport = async (importedQuestions: Omit<AnamnesisQuestion, 'id' | 'organizationId' | 'order'>[]) => {
+      if (!user?.organizationId) {
+          toast({ title: 'Organização não encontrada', variant: 'destructive' });
+          return;
+      }
+      const batch = writeBatch(db);
+      const baseOrder = questions.length;
+      importedQuestions.forEach((q, index) => {
+          const questionRef = doc(collection(db, "anamnesisQuestions"));
+          batch.set(questionRef, {
+              ...q,
+              organizationId: user.organizationId,
+              order: baseOrder + index,
+          });
+      });
+      try {
+          await batch.commit();
+          toast({ title: `${importedQuestions.length} perguntas importadas com sucesso!` });
+          setIsImportOpen(false);
+      } catch (error) {
+          console.error("Error importing questions:", error);
+          toast({ title: 'Erro ao importar perguntas', variant: 'destructive' });
+      }
+    };
     
     const typeNames: Record<AnamnesisQuestionType, string> = {
         text: 'Discursiva',
@@ -806,8 +833,22 @@ function AnamnesisSettings() {
     return (
          <Card>
             <CardHeader>
-                <CardTitle>Perguntas da Anamnese</CardTitle>
-                <CardDescription>Configure as perguntas que aparecerão no formulário de anamnese dos clientes.</CardDescription>
+                <div className="flex justify-between items-center">
+                    <div>
+                        <CardTitle>Perguntas da Anamnese</CardTitle>
+                        <CardDescription>Configure as perguntas que aparecerão no formulário de anamnese dos clientes.</CardDescription>
+                    </div>
+                     <ImportAnamnesisQuestionsDialog
+                        isOpen={isImportOpen}
+                        onOpenChange={setIsImportOpen}
+                        onImport={handleImport}
+                    >
+                         <Button variant="outline">
+                            <FileUp className="mr-2" />
+                            Importar Perguntas
+                        </Button>
+                    </ImportAnamnesisQuestionsDialog>
+                </div>
             </CardHeader>
             <CardContent>
                 <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg">
@@ -948,6 +989,7 @@ function TestDataSettings() {
 function SettingsPageContent() {
     const searchParams = useSearchParams();
     const tab = searchParams.get('tab') || 'users';
+    const { user } = useAuth();
 
     return (
         <div className="space-y-6">
@@ -960,7 +1002,9 @@ function SettingsPageContent() {
                     <TabsTrigger value="users">Usuários</TabsTrigger>
                     <TabsTrigger value="branches">Filiais</TabsTrigger>
                     <TabsTrigger value="payments">Pagamentos</TabsTrigger>
-                    <TabsTrigger value="anamnesis">Anamnese</TabsTrigger>
+                    {user?.enabledModules?.customers && (
+                        <TabsTrigger value="anamnesis">Anamnese</TabsTrigger>
+                    )}
                 </TabsList>
                 <TabsContent value="users">
                    <UsersTable />
@@ -971,9 +1015,11 @@ function SettingsPageContent() {
                 <TabsContent value="payments">
                     <PaymentConditions />
                 </TabsContent>
-                 <TabsContent value="anamnesis">
-                    <AnamnesisSettings />
-                </TabsContent>
+                 {user?.enabledModules?.customers && (
+                    <TabsContent value="anamnesis">
+                        <AnamnesisSettings />
+                    </TabsContent>
+                 )}
             </Tabs>
              <Separator />
             <TestDataSettings />

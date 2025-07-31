@@ -413,19 +413,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/signup') || pathname.startsWith('/forgot-password');
     const isDashboardPage = pathname.startsWith('/dashboard');
+    const isPortalPage = pathname.startsWith('/portal');
 
-    if (!isAuthenticated && isDashboardPage) {
-        router.push('/login');
+    if (!isAuthenticated) {
+        if (isDashboardPage || isPortalPage) {
+            router.push('/login');
+        }
         return;
     }
 
-     if (isAuthenticated) {
+    if (isAuthenticated) {
         if(isAuthPage) {
-            if (user.role === 'atendimento') {
+            if (user.role === 'customer') {
+                router.push('/portal');
+            } else if (user.role === 'atendimento') {
                 router.push('/dashboard/pos');
             } else {
                 router.push('/dashboard');
             }
+        } else if (user.role === 'customer' && isDashboardPage) {
+            router.push('/portal');
+        } else if (user.role !== 'customer' && isPortalPage) {
+            router.push('/dashboard');
         } else if (user.role === 'atendimento' && pathname !== '/dashboard/pos' && pathname !== '/dashboard/profile') {
             router.push('/dashboard/pos');
         }

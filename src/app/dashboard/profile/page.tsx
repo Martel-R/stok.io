@@ -193,7 +193,25 @@ export default function ProfilePage() {
     }
     
     const isProfessional = user.role === 'professional';
+    // Redirect customers to their own portal profile page
+    const isCustomer = user.role === 'customer';
     const defaultTab = isProfessional ? 'availability' : 'general';
+
+    if (isCustomer) {
+        // This page is for internal users. Customers have their own profile page.
+        // The auth provider should ideally redirect, but this is a fallback.
+        return (
+            <Card>
+                <CardHeader>
+                    <CardTitle>Acesso ao Perfil</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <p>Para editar seu perfil, por favor acesse o <a href="/portal/profile" className="underline">Portal do Cliente</a>.</p>
+                </CardContent>
+            </Card>
+        );
+    }
+
 
     return (
         <div className="space-y-6">

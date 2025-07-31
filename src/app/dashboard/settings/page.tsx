@@ -760,11 +760,12 @@ function AnamnesisSettings() {
         };
         const q = query(
             collection(db, 'anamnesisQuestions'), 
-            where('organizationId', '==', user.organizationId),
-            orderBy('order', 'asc')
+            where('organizationId', '==', user.organizationId)
         );
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AnamnesisQuestion));
+            // Sort client-side
+            data.sort((a,b) => (a.order || 0) - (b.order || 0));
             setQuestions(data);
             setLoading(false);
         });

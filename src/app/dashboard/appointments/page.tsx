@@ -5,13 +5,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, Timestamp } from 'firebase/firestore';
 import type { Appointment, Customer, Service, User, AppointmentStatus } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Calendar, Users, Briefcase, Check, ChevronsUpDown, Clock } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Calendar, Users, Briefcase, Check, ChevronsUpDown, Clock, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -35,7 +35,7 @@ function AppointmentForm({
     onDone,
     initialDate 
 }: { 
-    appointment?: Appointment; 
+    appointment?: Partial<Appointment>; 
     customers: Customer[];
     services: Service[];
     professionals: User[];
@@ -180,6 +180,7 @@ function AppointmentForm({
                         <SelectItem value="scheduled">Agendado</SelectItem>
                         <SelectItem value="completed">Concluído</SelectItem>
                         <SelectItem value="cancelled">Cancelado</SelectItem>
+                        <SelectItem value="rescheduled">Reagendado</SelectItem>
                         <SelectItem value="no-show">Não Compareceu</SelectItem>
                      </SelectContent>
                  </Select>
@@ -207,7 +208,7 @@ export default function AppointmentsPage() {
     
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingAppointment, setEditingAppointment] = useState<Appointment | undefined>(undefined);
+    const [editingAppointment, setEditingAppointment] = useState<Partial<Appointment> | undefined>(undefined);
     const [selectedDay, setSelectedDay] = useState<Date>(new Date());
 
     const { toast } = useToast();
@@ -275,6 +276,15 @@ export default function AppointmentsPage() {
         }
     };
     
+    const handleStatusChange = async (appointmentId: string, status: AppointmentStatus) => {
+        try {
+            await updateDoc(doc(db, "appointments", appointmentId), { status });
+            toast({ title: 'Status atualizado!' });
+        } catch (error) {
+            toast({ title: 'Erro ao atualizar status', variant: 'destructive' });
+        }
+    };
+    
     const handleDelete = async (id: string) => {
         try {
             await deleteDoc(doc(db, "appointments", id));
@@ -293,12 +303,23 @@ export default function AppointmentsPage() {
         setEditingAppointment(undefined);
         setIsFormOpen(true);
     };
+    
+    const handleReschedule = (app: Appointment) => {
+        handleStatusChange(app.id, 'rescheduled');
+        setEditingAppointment({
+            customerId: app.customerId,
+            serviceId: app.serviceId,
+            professionalId: app.professionalId,
+        });
+        setIsFormOpen(true);
+    }
 
     const getStatusBadge = (status: AppointmentStatus) => {
         switch (status) {
             case 'scheduled': return <Badge variant="secondary">Agendado</Badge>;
             case 'completed': return <Badge className="bg-green-100 text-green-800">Concluído</Badge>;
             case 'cancelled': return <Badge variant="outline">Cancelado</Badge>;
+            case 'rescheduled': return <Badge className="bg-blue-100 text-blue-800">Reagendado</Badge>;
             case 'no-show': return <Badge variant="destructive">Não Compareceu</Badge>;
             default: return <Badge>{status}</Badge>;
         }
@@ -371,8 +392,31 @@ export default function AppointmentsPage() {
                                                     {getStatusBadge(app.status)}
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
-                                                        <DropdownMenuContent>
+                                                        <DropdownMenuContent align="end">
+                                                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                                                            <DropdownMenuSeparator />
                                                             <DropdownMenuItem onClick={() => openEditDialog(app)}>Editar</DropdownMenuItem>
+                                                            <DropdownMenuItem onClick={() => handleReschedule(app)}>
+                                                                <RefreshCw className="mr-2 h-4 w-4" />
+                                                                Reagendar
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuSeparator />
+                                                            <div className="p-2">
+                                                                <Label>Mudar Status</Label>
+                                                                <Select value={app.status} onValueChange={(status: AppointmentStatus) => handleStatusChange(app.id, status)}>
+                                                                    <SelectTrigger className="mt-1">
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="scheduled">Agendado</SelectItem>
+                                                                        <SelectItem value="completed">Concluído</SelectItem>
+                                                                        <SelectItem value="cancelled">Cancelado</SelectItem>
+                                                                        <SelectItem value="rescheduled">Reagendado</SelectItem>
+                                                                        <SelectItem value="no-show">Não Compareceu</SelectItem>
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </div>
+                                                            <DropdownMenuSeparator />
                                                             <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDelete(app.id)}>Excluir</DropdownMenuItem>
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>

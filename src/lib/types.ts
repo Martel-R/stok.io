@@ -73,7 +73,7 @@ export interface Service {
     organizationId: string;
 }
 
-export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no-show';
+export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no-show' | 'rescheduled';
 
 export interface Appointment {
     id: string;

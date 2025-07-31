@@ -59,7 +59,7 @@
     },
     {
       "collectionGroup": "anamnesisQuestions",
-      "queryScope": "COLLECTION_GROUP",
+      "queryScope": "COLLECTION",
       "fields": [
         {
           "fieldPath": "organizationId",

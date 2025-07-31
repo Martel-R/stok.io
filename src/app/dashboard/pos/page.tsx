@@ -742,13 +742,6 @@ export default function POSPage() {
 
   const salableProducts = products.filter(p => p.isSalable && p.stock > 0);
 
-  const enabledTabs = [
-    { value: 'products', label: 'Produtos', icon: Package, enabled: true },
-    { value: 'combos', label: 'Combos', icon: Gift, enabled: user?.enabledModules?.combos ?? true },
-    { value: 'kits', label: 'Kits', icon: Component, enabled: user?.enabledModules?.kits ?? true },
-    { value: 'history', label: 'Histórico', icon: History, enabled: true },
-  ].filter(tab => tab.enabled);
-
   return (
     <>
     <div className="grid h-[calc(100vh-8rem)] md:grid-cols-3 gap-8">
@@ -760,13 +753,13 @@ export default function POSPage() {
           </CardHeader>
           <CardContent className="flex-grow flex flex-col">
             <Tabs defaultValue="products" className="flex-grow flex flex-col">
-                <TabsList className={`grid w-full grid-cols-${enabledTabs.length}`}>
-                    {enabledTabs.map(tab => (
-                        <TabsTrigger key={tab.value} value={tab.value}>
-                            <tab.icon className="mr-2 h-4 w-4"/> {tab.label}
-                        </TabsTrigger>
-                    ))}
+                 <TabsList className="grid w-full grid-flow-col auto-cols-fr">
+                    <TabsTrigger value="products"><Package className="mr-2 h-4 w-4"/> Produtos</TabsTrigger>
+                    {user?.enabledModules?.combos && <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Combos</TabsTrigger>}
+                    {user?.enabledModules?.kits && <TabsTrigger value="kits"><Component className="mr-2 h-4 w-4"/> Kits</TabsTrigger>}
+                    <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/> Histórico</TabsTrigger>
                 </TabsList>
+
                 <TabsContent value="products" className="mt-4 flex-grow">
                     <ScrollArea className="h-[calc(100vh-22rem)]">
                         {loading ? (
@@ -944,5 +937,3 @@ export default function POSPage() {
     </>
   );
 }
-
-    

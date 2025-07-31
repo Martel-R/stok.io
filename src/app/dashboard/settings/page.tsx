@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -15,7 +14,7 @@ import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, que
 import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -738,21 +737,82 @@ function PaymentConditions() {
     );
 }
 
+const typeNames: Record<AnamnesisQuestionType, string> = {
+    text: 'Discursiva',
+    boolean: 'Sim/Não',
+    boolean_with_text: 'Sim/Não com Texto',
+    integer: 'Número Inteiro',
+    decimal: 'Número Decimal',
+};
+
+function AnamnesisQuestionForm({ 
+    question, 
+    onSave, 
+    onDone 
+}: { 
+    question?: AnamnesisQuestion; 
+    onSave: (data: Partial<AnamnesisQuestion>) => void; 
+    onDone: () => void 
+}) {
+    const [formData, setFormData] = useState<Partial<AnamnesisQuestion>>(question || { label: '', type: 'text' });
+    
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setFormData(prev => ({ ...prev, label: e.target.value }));
+    };
+
+    const handleTypeChange = (value: AnamnesisQuestionType) => {
+        setFormData(prev => ({ ...prev, type: value }));
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData);
+        onDone();
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+             <div className="space-y-2">
+                <Label htmlFor="questionLabel">Texto da Pergunta</Label>
+                <Input 
+                    id="questionLabel"
+                    value={formData.label} 
+                    onChange={handleInputChange}
+                    placeholder="Ex: Você possui alguma alergia?"
+                    required
+                />
+            </div>
+            <div className="space-y-2">
+                <Label>Tipo de Resposta</Label>
+                <Select value={formData.type} onValueChange={handleTypeChange}>
+                    <SelectTrigger>
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {Object.entries(typeNames).map(([key, name]) => (
+                            <SelectItem key={key} value={key}>{name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+             <DialogFooter>
+                <Button variant="ghost" type="button" onClick={onDone}>Cancelar</Button>
+                <Button type="submit">Salvar Pergunta</Button>
+            </DialogFooter>
+        </form>
+    );
+}
+
+
 function AnamnesisSettings() {
     const [questions, setQuestions] = useState<AnamnesisQuestion[]>([]);
     const [loading, setLoading] = useState(true);
     const { user } = useAuth();
-    const [newQuestion, setNewQuestion] = useState({ label: '', type: 'text' as AnamnesisQuestionType });
     const [isImportOpen, setIsImportOpen] = useState(false);
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [editingQuestion, setEditingQuestion] = useState<AnamnesisQuestion | undefined>(undefined);
     const { toast } = useToast();
     
-    // States for bulk actions
-    const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
-    const [isProcessing, setIsProcessing] = useState(false);
-    const [isChangeTypeDialogOpen, setIsChangeTypeDialogOpen] = useState(false);
-    const [newBulkType, setNewBulkType] = useState<AnamnesisQuestionType>('text');
-
-
     useEffect(() => {
         if (!user?.organizationId) {
             setLoading(false);
@@ -772,84 +832,47 @@ function AnamnesisSettings() {
         return () => unsubscribe();
     }, [user]);
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setNewQuestion(prev => ({ ...prev, label: e.target.value }));
-    };
-
-    const handleTypeChange = (value: AnamnesisQuestionType) => {
-        setNewQuestion(prev => ({ ...prev, type: value }));
-    };
-
-    const handleAdd = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newQuestion.label.trim() || !user?.organizationId) {
-            toast({ title: 'O texto da pergunta é obrigatório.', variant: 'destructive' });
+    const handleSave = async (data: Partial<AnamnesisQuestion>) => {
+        if (!user?.organizationId) {
+            toast({ title: 'Organização não encontrada.', variant: 'destructive' });
             return;
         }
         try {
-            await addDoc(collection(db, 'anamnesisQuestions'), {
-                ...newQuestion,
-                organizationId: user.organizationId,
-                order: questions.length, // Simple ordering
-            });
-            setNewQuestion({ label: '', type: 'text' });
-            toast({ title: 'Pergunta adicionada!' });
+            if (editingQuestion?.id) {
+                await updateDoc(doc(db, 'anamnesisQuestions', editingQuestion.id), data);
+                toast({ title: 'Pergunta atualizada!' });
+            } else {
+                await addDoc(collection(db, 'anamnesisQuestions'), {
+                    ...data,
+                    organizationId: user.organizationId,
+                    order: questions.length, // Simple ordering
+                });
+                toast({ title: 'Pergunta adicionada!' });
+            }
+            setIsFormOpen(false);
         } catch (error) {
-            toast({ title: 'Erro ao adicionar pergunta', variant: 'destructive' });
+            toast({ title: 'Erro ao salvar pergunta', variant: 'destructive' });
         }
-    };
-    
-    const handleSelectQuestion = (questionId: string, checked: boolean | 'indeterminate') => {
-        setSelectedQuestionIds(prev => 
-            checked ? [...prev, questionId] : prev.filter(id => id !== questionId)
-        );
     };
 
-    const handleSelectAll = (checked: boolean | 'indeterminate') => {
-        if (checked) {
-            setSelectedQuestionIds(questions.map(q => q.id));
-        } else {
-            setSelectedQuestionIds([]);
-        }
-    };
-    
-    const handleBulkDelete = async () => {
-        if (selectedQuestionIds.length === 0) return;
-        setIsProcessing(true);
-        const batch = writeBatch(db);
-        selectedQuestionIds.forEach(id => {
-            batch.delete(doc(db, 'anamnesisQuestions', id));
-        });
+    const handleDelete = async (id: string) => {
         try {
-            await batch.commit();
-            toast({ title: 'Perguntas selecionadas foram excluídas!' });
-            setSelectedQuestionIds([]);
+            await deleteDoc(doc(db, 'anamnesisQuestions', id));
+            toast({ title: 'Pergunta excluída!', variant: 'destructive' });
         } catch (error) {
-            toast({ title: 'Erro ao excluir perguntas', variant: 'destructive' });
-        } finally {
-            setIsProcessing(false);
+            toast({ title: 'Erro ao excluir pergunta', variant: 'destructive' });
         }
     };
 
-    const handleBulkChangeType = async () => {
-        if (selectedQuestionIds.length === 0) return;
-        setIsProcessing(true);
-        const batch = writeBatch(db);
-        selectedQuestionIds.forEach(id => {
-            batch.update(doc(db, 'anamnesisQuestions', id), { type: newBulkType });
-        });
-        try {
-            await batch.commit();
-            toast({ title: 'Tipos de pergunta atualizados com sucesso!' });
-            setSelectedQuestionIds([]);
-            setIsChangeTypeDialogOpen(false);
-        } catch (error) {
-            toast({ title: 'Erro ao atualizar tipos', variant: 'destructive' });
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
+    const openEditDialog = (question: AnamnesisQuestion) => {
+        setEditingQuestion(question);
+        setIsFormOpen(true);
+    }
+    
+    const openNewDialog = () => {
+        setEditingQuestion(undefined);
+        setIsFormOpen(true);
+    }
 
     const handleImport = async (importedQuestions: Omit<AnamnesisQuestion, 'id' | 'organizationId' | 'order'>[]) => {
       if (!user?.organizationId) {
@@ -876,14 +899,6 @@ function AnamnesisSettings() {
       }
     };
     
-    const typeNames: Record<AnamnesisQuestionType, string> = {
-        text: 'Discursiva',
-        boolean: 'Sim/Não',
-        boolean_with_text: 'Sim/Não com Texto',
-        integer: 'Número Inteiro',
-        decimal: 'Número Decimal',
-    };
-
     return (
          <Card>
             <CardHeader>
@@ -893,44 +908,6 @@ function AnamnesisSettings() {
                         <CardDescription>Configure as perguntas que aparecerão no formulário de anamnese dos clientes.</CardDescription>
                     </div>
                      <div className="flex gap-2">
-                        {selectedQuestionIds.length > 0 && (
-                             <AlertDialog>
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button variant="outline">
-                                            <ListChecks className="mr-2" />
-                                            Ações em Lote ({selectedQuestionIds.length})
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent>
-                                        <DropdownMenuItem onClick={() => setIsChangeTypeDialogOpen(true)}>
-                                            Alterar Tipo
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                        <AlertDialogTrigger asChild>
-                                            <DropdownMenuItem className="text-destructive focus:text-destructive">
-                                                <Trash2 className="mr-2" /> Excluir Selecionadas
-                                            </DropdownMenuItem>
-                                        </AlertDialogTrigger>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>Excluir Perguntas</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            Tem certeza que deseja excluir as {selectedQuestionIds.length} perguntas selecionadas?
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                        <AlertDialogAction onClick={handleBulkDelete} disabled={isProcessing} className={buttonVariants({variant: 'destructive'})}>
-                                            {isProcessing && <Loader2 className="mr-2 animate-spin"/>}
-                                            Excluir
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                        )}
                         <ImportAnamnesisQuestionsDialog
                             isOpen={isImportOpen}
                             onOpenChange={setIsImportOpen}
@@ -941,46 +918,28 @@ function AnamnesisSettings() {
                                 Importar
                             </Button>
                         </ImportAnamnesisQuestionsDialog>
+                        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                            <DialogTrigger asChild>
+                                 <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Pergunta</Button>
+                            </DialogTrigger>
+                             <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>{editingQuestion ? 'Editar Pergunta' : 'Adicionar Pergunta'}</DialogTitle>
+                                </DialogHeader>
+                                <AnamnesisQuestionForm
+                                    question={editingQuestion}
+                                    onSave={handleSave}
+                                    onDone={() => setIsFormOpen(false)}
+                                />
+                            </DialogContent>
+                        </Dialog>
                     </div>
                 </div>
             </CardHeader>
             <CardContent>
-                <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg">
-                    <div className="space-y-2 col-span-3 md:col-span-2">
-                        <Label htmlFor="questionLabel">Texto da Pergunta</Label>
-                        <Input 
-                            id="questionLabel"
-                            value={newQuestion.label} 
-                            onChange={handleInputChange}
-                            placeholder="Ex: Você possui alguma alergia?"
-                        />
-                    </div>
-                     <div className="space-y-2 col-span-3 md:col-span-1">
-                        <Label>Tipo de Resposta</Label>
-                         <Select value={newQuestion.type} onValueChange={handleTypeChange}>
-                            <SelectTrigger>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {Object.entries(typeNames).map(([key, name]) => (
-                                    <SelectItem key={key} value={key}>{name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="col-span-3 flex items-end">
-                       <Button type="submit" className="w-full md:w-auto"><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Pergunta</Button>
-                    </div>
-                </form>
                  <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead className="w-[50px]">
-                                <Checkbox
-                                    checked={questions.length > 0 && selectedQuestionIds.length === questions.length}
-                                    onCheckedChange={handleSelectAll}
-                                />
-                            </TableHead>
                             <TableHead>Pergunta</TableHead>
                             <TableHead>Tipo</TableHead>
                             <TableHead className="text-right">Ações</TableHead>
@@ -989,17 +948,11 @@ function AnamnesisSettings() {
                     <TableBody>
                          {loading ? (
                             Array.from({length: 3}).map((_, i) => (
-                                <TableRow key={i}><TableCell colSpan={4}><Skeleton className="h-5 w-full" /></TableCell></TableRow>
+                                <TableRow key={i}><TableCell colSpan={3}><Skeleton className="h-5 w-full" /></TableCell></TableRow>
                             ))
                         ) : questions.length > 0 ? (
                             questions.map(q => (
-                                <TableRow key={q.id} data-state={selectedQuestionIds.includes(q.id) && "selected"}>
-                                    <TableCell>
-                                        <Checkbox
-                                            checked={selectedQuestionIds.includes(q.id)}
-                                            onCheckedChange={(checked) => handleSelectQuestion(q.id, checked)}
-                                        />
-                                    </TableCell>
+                                <TableRow key={q.id}>
                                     <TableCell className="font-medium">{q.label}</TableCell>
                                     <TableCell>
                                         <Badge variant="outline">
@@ -1007,55 +960,51 @@ function AnamnesisSettings() {
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        <Button variant="ghost" size="icon" onClick={() => {
-                                            if (window.confirm('Tem certeza que deseja excluir esta pergunta?')) {
-                                                const batch = writeBatch(db);
-                                                batch.delete(doc(db, 'anamnesisQuestions', q.id));
-                                                batch.commit();
-                                            }
-                                        }}>
-                                            <Trash2 className="h-4 w-4 text-destructive" />
-                                        </Button>
+                                        <AlertDialog>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" className="h-8 w-8 p-0">
+                                                        <MoreHorizontal className="h-4 w-4" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuItem onSelect={() => openEditDialog(q)}>
+                                                        Editar
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuSeparator/>
+                                                     <AlertDialogTrigger asChild>
+                                                        <DropdownMenuItem className="text-destructive focus:text-destructive">
+                                                            Excluir
+                                                        </DropdownMenuItem>
+                                                     </AlertDialogTrigger>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Excluir Pergunta?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        Essa ação é irreversível.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={() => handleDelete(q.id)} className={buttonVariants({variant: 'destructive'})}>
+                                                        Sim, excluir
+                                                    </AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
                                     </TableCell>
                                 </TableRow>
                             ))
                         ) : (
                              <TableRow>
-                                <TableCell colSpan={4} className="h-24 text-center">Nenhuma pergunta encontrada.</TableCell>
+                                <TableCell colSpan={3} className="h-24 text-center">Nenhuma pergunta encontrada.</TableCell>
                              </TableRow>
                         )}
                     </TableBody>
                 </Table>
             </CardContent>
-            
-             <Dialog open={isChangeTypeDialogOpen} onOpenChange={setIsChangeTypeDialogOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Alterar Tipo de Pergunta em Lote</DialogTitle>
-                    </DialogHeader>
-                    <div className="py-4">
-                        <Label htmlFor="newBulkType">Novo Tipo</Label>
-                        <Select value={newBulkType} onValueChange={(val: AnamnesisQuestionType) => setNewBulkType(val)}>
-                            <SelectTrigger id="newBulkType">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {Object.entries(typeNames).map(([key, name]) => (
-                                    <SelectItem key={key} value={key}>{name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="ghost" onClick={() => setIsChangeTypeDialogOpen(false)}>Cancelar</Button>
-                        <Button onClick={handleBulkChangeType} disabled={isProcessing}>
-                            {isProcessing && <Loader2 className="mr-2 animate-spin"/>}
-                            Alterar Tipo
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
         </Card>
     );
 }

@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Calendar, LayoutDashboard, LogOut, Loader2, User, History } from 'lucide-react';
+import { Calendar, LayoutDashboard, LogOut, Loader2, User, History, FileText, CheckSquare } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -18,24 +18,26 @@ function PortalNav() {
     const pathname = usePathname();
     const navItems = [
         { href: '/portal', label: 'Início', icon: LayoutDashboard },
-        { href: '/portal/appointments', label: 'Meus Agendamentos', icon: Calendar },
-        { href: '/portal/history', label: 'Meu Histórico', icon: History },
+        { href: '/portal/request-appointment', label: 'Solicitar Agendamento', icon: Calendar },
+        { href: '/portal/appointments', label: 'Meus Agendamentos', icon: History },
+        { href: '/portal/anamnesis', label: 'Anamnese', icon: FileText },
         { href: '/portal/profile', label: 'Meu Perfil', icon: User },
     ];
 
     return (
-        <nav className="flex items-center space-x-4 lg:space-x-6">
+        <nav className="grid items-start gap-2">
             {navItems.map((item) => (
                  <Link
                     key={item.href}
                     href={item.href}
-                    className={cn(
-                        "text-sm font-medium transition-colors hover:text-primary",
-                        pathname === item.href ? "text-primary" : "text-muted-foreground"
-                    )}
                  >
-                    <item.icon className="mr-2 inline-block h-4 w-4" />
-                    {item.label}
+                    <span className={cn(
+                        "group flex items-center rounded-md px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground",
+                        pathname === item.href ? "bg-accent" : "transparent"
+                    )}>
+                         <item.icon className="mr-2 h-4 w-4" />
+                         <span>{item.label}</span>
+                    </span>
                  </Link>
             ))}
         </nav>
@@ -87,31 +89,32 @@ function PortalLayoutContent({ children }: { children: React.ReactNode }) {
     }
 
     return (
-        <div className="flex min-h-screen flex-col">
-            <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                <div className="container flex h-16 items-center">
-                    <div className="mr-4 flex items-center">
-                        <Icons.logo className="mr-2 h-6 w-6 text-primary"/>
-                        <span className="font-bold">Portal do Cliente</span>
+        <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
+            <div className="hidden border-r bg-muted/40 md:block">
+                <div className="flex h-full max-h-screen flex-col gap-2">
+                    <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
+                        <Link href="/portal" className="flex items-center gap-2 font-semibold">
+                             <Icons.logo className="mr-2 h-6 w-6 text-primary"/>
+                            <span className="">Portal do Cliente</span>
+                        </Link>
                     </div>
-                    <PortalNav />
-                    <div className="flex flex-1 items-center justify-end space-x-4">
-                        <UserNav />
+                    <div className="flex-1">
+                        <PortalNav />
                     </div>
                 </div>
-            </header>
-            <main className="flex-1">
-                <div className="container p-4 md:p-6 lg:p-8">
-                    {children}
-                </div>
-            </main>
-             <footer className="py-6 md:px-8 md:py-0 bg-muted">
-                <div className="container flex flex-col items-center justify-between gap-4 md:h-24 md:flex-row">
-                    <p className="text-center text-sm leading-loose text-muted-foreground md:text-left">
-                       Stokio &copy; {new Date().getFullYear()}
-                    </p>
-                </div>
-            </footer>
+            </div>
+            <div className="flex flex-col">
+                 <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6">
+                    {/* Mobile nav can be added here if needed */}
+                    <div className="w-full flex-1">
+                        {/* Can add search or other header items */}
+                    </div>
+                    <UserNav />
+                </header>
+                <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
+                     {children}
+                </main>
+            </div>
         </div>
     )
 }

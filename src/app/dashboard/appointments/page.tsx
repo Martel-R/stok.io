@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, Timestamp, writeBatch, serverTimestamp } from 'firebase/firestore';
 import type { Appointment, Customer, Service, User, AppointmentStatus, Attendance, AnamnesisAnswer } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Calendar, Users, Briefcase, Check, ChevronsUpDown, Clock, RefreshCw, PlayCircle, AlertTriangle } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Calendar, Users, Briefcase, Check, ChevronsUpDown, Clock, RefreshCw, PlayCircle, AlertTriangle, HelpCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -185,6 +185,7 @@ function AppointmentForm({
                  <Select value={formData.status} onValueChange={(val: AppointmentStatus) => setFormData(prev => ({...prev, status: val}))}>
                      <SelectTrigger><SelectValue /></SelectTrigger>
                      <SelectContent>
+                        <SelectItem value="pending-confirmation">Pendente</SelectItem>
                         <SelectItem value="scheduled">Agendado</SelectItem>
                         <SelectItem value="completed">Concluído</SelectItem>
                         <SelectItem value="cancelled">Cancelado</SelectItem>
@@ -378,6 +379,7 @@ export default function AppointmentsPage() {
             case 'cancelled': return <Badge variant="outline">Cancelado</Badge>;
             case 'rescheduled': return <Badge className="bg-blue-100 text-blue-800">Reagendado</Badge>;
             case 'no-show': return <Badge variant="destructive">Não Compareceu</Badge>;
+            case 'pending-confirmation': return <Badge variant="destructive" className="bg-orange-100 text-orange-800">Pendente</Badge>;
             default: return <Badge>{status}</Badge>;
         }
     };
@@ -455,7 +457,7 @@ export default function AppointmentsPage() {
                                         const anamnesisDone = isAnamnesisComplete(customer);
 
                                         return (
-                                            <Card key={app.id} className="p-4">
+                                            <Card key={app.id} className={cn("p-4", app.status === 'pending-confirmation' && "bg-orange-50 border-orange-200")}>
                                                 <div className="flex justify-between items-start gap-4">
                                                     <div className="space-y-1 flex-grow">
                                                         <CardTitle className="text-lg">{app.serviceName}</CardTitle>
@@ -481,15 +483,22 @@ export default function AppointmentsPage() {
                                                     <div className="flex flex-col items-end gap-2 shrink-0">
                                                         {getStatusBadge(app.status)}
                                                         <div className="flex items-center gap-1">
-                                                            <Button
-                                                                size="sm"
-                                                                variant={app.attendanceId ? "outline" : "default"}
-                                                                onClick={() => handleStartAttendance(app)}
-                                                                disabled={app.status !== 'scheduled'}
-                                                            >
-                                                                <PlayCircle className="mr-2" />
-                                                                {app.attendanceId ? 'Ver' : 'Iniciar'}
-                                                            </Button>
+                                                            {app.status === 'pending-confirmation' ? (
+                                                                <Button size="sm" onClick={() => openEditDialog(app)}>
+                                                                    <Check className="mr-2" />
+                                                                    Confirmar
+                                                                </Button>
+                                                            ) : (
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant={app.attendanceId ? "outline" : "default"}
+                                                                    onClick={() => handleStartAttendance(app)}
+                                                                    disabled={app.status !== 'scheduled'}
+                                                                >
+                                                                    <PlayCircle className="mr-2" />
+                                                                    {app.attendanceId ? 'Ver' : 'Iniciar'}
+                                                                </Button>
+                                                            )}
                                                             <DropdownMenu>
                                                                 <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
                                                                 <DropdownMenuContent align="end">
@@ -508,6 +517,7 @@ export default function AppointmentsPage() {
                                                                                 <SelectValue />
                                                                             </SelectTrigger>
                                                                             <SelectContent>
+                                                                                <SelectItem value="pending-confirmation">Pendente</SelectItem>
                                                                                 <SelectItem value="scheduled">Agendado</SelectItem>
                                                                                 <SelectItem value="completed">Concluído</SelectItem>
                                                                                 <SelectItem value="cancelled">Cancelado</SelectItem>

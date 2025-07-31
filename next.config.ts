@@ -3,6 +3,7 @@ import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
   output: 'export',
+  dynamicParams: false, // Adicionado para lidar com rotas dinâmicas na exportação estática
   /* config options here */
   typescript: {
     ignoreBuildErrors: true,

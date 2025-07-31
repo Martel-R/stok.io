@@ -11,8 +11,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
-import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules } from '@/lib/types';
+import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, query, where, writeBatch, orderBy } from 'firebase/firestore';
+import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -737,6 +737,134 @@ function PaymentConditions() {
     );
 }
 
+function AnamnesisSettings() {
+    const [questions, setQuestions] = useState<AnamnesisQuestion[]>([]);
+    const [loading, setLoading] = useState(true);
+    const { user } = useAuth();
+    const [newQuestion, setNewQuestion] = useState({ label: '', type: 'text' as AnamnesisQuestionType });
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (!user?.organizationId) return;
+        const q = query(
+            collection(db, 'anamnesisQuestions'), 
+            where('organizationId', '==', user.organizationId),
+            orderBy('order', 'asc')
+        );
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AnamnesisQuestion));
+            setQuestions(data);
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, [user]);
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setNewQuestion(prev => ({ ...prev, label: e.target.value }));
+    };
+
+    const handleTypeChange = (value: AnamnesisQuestionType) => {
+        setNewQuestion(prev => ({ ...prev, type: value }));
+    };
+
+    const handleAdd = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newQuestion.label.trim() || !user?.organizationId) {
+            toast({ title: 'O texto da pergunta é obrigatório.', variant: 'destructive' });
+            return;
+        }
+        try {
+            await addDoc(collection(db, 'anamnesisQuestions'), {
+                ...newQuestion,
+                organizationId: user.organizationId,
+                order: questions.length, // Simple ordering
+            });
+            setNewQuestion({ label: '', type: 'text' });
+            toast({ title: 'Pergunta adicionada!' });
+        } catch (error) {
+            toast({ title: 'Erro ao adicionar pergunta', variant: 'destructive' });
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        try {
+            await deleteDoc(doc(db, 'anamnesisQuestions', id));
+            // Note: Re-ordering is complex. For now, we accept gaps in the order.
+            toast({ title: 'Pergunta removida!', variant: 'destructive' });
+        } catch (error) {
+            toast({ title: 'Erro ao remover pergunta', variant: 'destructive' });
+        }
+    };
+
+    return (
+         <Card>
+            <CardHeader>
+                <CardTitle>Perguntas da Anamnese</CardTitle>
+                <CardDescription>Configure as perguntas que aparecerão no formulário de anamnese dos clientes.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg">
+                    <div className="space-y-2 col-span-3 md:col-span-2">
+                        <Label htmlFor="questionLabel">Texto da Pergunta</Label>
+                        <Input 
+                            id="questionLabel"
+                            value={newQuestion.label} 
+                            onChange={handleInputChange}
+                            placeholder="Ex: Você possui alguma alergia?"
+                        />
+                    </div>
+                     <div className="space-y-2 col-span-3 md:col-span-1">
+                        <Label>Tipo de Resposta</Label>
+                         <Select value={newQuestion.type} onValueChange={handleTypeChange}>
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="text">Discursiva (Texto)</SelectItem>
+                                <SelectItem value="boolean">Sim / Não</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="col-span-3 flex items-end">
+                       <Button type="submit" className="w-full md:w-auto"><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Pergunta</Button>
+                    </div>
+                </form>
+                 <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Pergunta</TableHead>
+                            <TableHead>Tipo</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                         {loading ? (
+                            <TableRow><TableCell colSpan={3}><Skeleton className="h-5 w-full" /></TableCell></TableRow>
+                        ) : (
+                            questions.map(q => (
+                                <TableRow key={q.id}>
+                                    <TableCell className="font-medium">{q.label}</TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline">
+                                            {q.type === 'text' ? 'Discursiva' : 'Sim/Não'}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="icon" onClick={() => handleDelete(q.id)}>
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        )}
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+    );
+}
+
+
 function TestDataSettings() {
     const { deleteTestData, user } = useAuth();
     const { toast } = useToast();
@@ -822,6 +950,7 @@ function SettingsPageContent() {
                     <TabsTrigger value="users">Usuários</TabsTrigger>
                     <TabsTrigger value="branches">Filiais</TabsTrigger>
                     <TabsTrigger value="payments">Pagamentos</TabsTrigger>
+                    <TabsTrigger value="anamnesis">Anamnese</TabsTrigger>
                 </TabsList>
                 <TabsContent value="users">
                    <UsersTable />
@@ -831,6 +960,9 @@ function SettingsPageContent() {
                 </TabsContent>
                 <TabsContent value="payments">
                     <PaymentConditions />
+                </TabsContent>
+                 <TabsContent value="anamnesis">
+                    <AnamnesisSettings />
                 </TabsContent>
             </Tabs>
              <Separator />

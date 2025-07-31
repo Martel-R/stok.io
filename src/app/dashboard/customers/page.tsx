@@ -9,8 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch, getDocs } from 'firebase/firestore';
-import type { Customer, AnamnesisForm } from '@/lib/types';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch, getDocs, orderBy } from 'firebase/firestore';
+import type { Customer, AnamnesisQuestion, AnamnesisAnswer } from '@/lib/types';
 import { MoreHorizontal, PlusCircle, Search, Users, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -21,29 +21,48 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
-function CustomerForm({ customer, onSave, onDone }: { customer?: Customer; onSave: (data: Partial<Customer>) => void; onDone: () => void }) {
-    const [formData, setFormData] = useState<Partial<Customer>>(
-        customer || { 
+function CustomerForm({ 
+    customer, 
+    anamnesisQuestions, 
+    onSave, 
+    onDone 
+}: { 
+    customer?: Customer; 
+    anamnesisQuestions: AnamnesisQuestion[];
+    onSave: (data: Partial<Customer>) => void; 
+    onDone: () => void 
+}) {
+    const [formData, setFormData] = useState<Partial<Customer>>(() => {
+        const initialData = customer || { 
             name: '', cpfCnpj: '', email: '', phone: '', address: '', isActive: true, 
-            anamnesis: { mainComplaint: '', historyOfPresentIllness: '', pastMedicalHistory: '', familyHistory: '', allergies: '', currentMedications: '' }
-        }
-    );
+            anamnesisAnswers: [] 
+        };
+        // Ensure every question has a corresponding answer placeholder
+        const existingAnswers = new Map(initialData.anamnesisAnswers?.map(a => [a.questionId, a]));
+        const fullAnswers = anamnesisQuestions.map(q => {
+            return existingAnswers.get(q.id) || {
+                questionId: q.id,
+                questionLabel: q.label,
+                answer: q.type === 'boolean' ? '' : '' // Default empty state
+            };
+        });
+        return { ...initialData, anamnesisAnswers: fullAnswers as AnamnesisAnswer[] };
+    });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleAnamnesisChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            anamnesis: {
-                ...prev.anamnesis!,
-                [name]: value
-            }
-        }));
+    const handleAnamnesisChange = (questionId: string, answer: string | boolean) => {
+        setFormData(prev => {
+            const newAnswers = prev.anamnesisAnswers?.map(a => 
+                a.questionId === questionId ? { ...a, answer } : a
+            ) || [];
+            return { ...prev, anamnesisAnswers: newAnswers };
+        });
     };
     
     const handleSubmit = (e: React.FormEvent) => {
@@ -57,9 +76,9 @@ function CustomerForm({ customer, onSave, onDone }: { customer?: Customer; onSav
             <Tabs defaultValue="general">
                 <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="general">Dados Gerais</TabsTrigger>
-                    <TabsTrigger value="anamnesis">Anamnese</TabsTrigger>
+                    <TabsTrigger value="anamnesis" disabled={anamnesisQuestions.length === 0}>Anamnese</TabsTrigger>
                 </TabsList>
-                <TabsContent value="general" className="space-y-4 py-4">
+                <TabsContent value="general" className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
                      <div className="grid grid-cols-2 gap-4">
                          <div className="space-y-2">
                             <Label htmlFor="name">Nome Completo</Label>
@@ -93,33 +112,37 @@ function CustomerForm({ customer, onSave, onDone }: { customer?: Customer; onSav
                         <Label htmlFor="isActive">Cliente Ativo</Label>
                      </div>
                 </TabsContent>
-                <TabsContent value="anamnesis" className="space-y-4 py-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="mainComplaint">Queixa Principal</Label>
-                        <Textarea id="mainComplaint" name="mainComplaint" value={formData.anamnesis?.mainComplaint} onChange={handleAnamnesisChange} />
-                    </div>
-                     <div className="space-y-2">
-                        <Label htmlFor="historyOfPresentIllness">Histórico da Doença Atual (HDA)</Label>
-                        <Textarea id="historyOfPresentIllness" name="historyOfPresentIllness" value={formData.anamnesis?.historyOfPresentIllness} onChange={handleAnamnesisChange} />
-                    </div>
-                     <div className="space-y-2">
-                        <Label htmlFor="pastMedicalHistory">Histórico Médico Pregresso</Label>
-                        <Textarea id="pastMedicalHistory" name="pastMedicalHistory" value={formData.anamnesis?.pastMedicalHistory} onChange={handleAnamnesisChange} />
-                    </div>
-                     <div className="space-y-2">
-                        <Label htmlFor="familyHistory">Histórico Familiar</Label>
-                        <Textarea id="familyHistory" name="familyHistory" value={formData.anamnesis?.familyHistory} onChange={handleAnamnesisChange} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                         <div className="space-y-2">
-                            <Label htmlFor="allergies">Alergias</Label>
-                            <Input id="allergies" name="allergies" value={formData.anamnesis?.allergies} onChange={handleAnamnesisChange} />
-                        </div>
-                         <div className="space-y-2">
-                            <Label htmlFor="currentMedications">Medicamentos em Uso</Label>
-                            <Input id="currentMedications" name="currentMedications" value={formData.anamnesis?.currentMedications} onChange={handleAnamnesisChange} />
-                        </div>
-                    </div>
+                <TabsContent value="anamnesis" className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
+                   {anamnesisQuestions.map(question => {
+                        const answer = formData.anamnesisAnswers?.find(a => a.questionId === question.id);
+                        return (
+                            <div key={question.id} className="space-y-2">
+                                <Label>{question.label}</Label>
+                                {question.type === 'text' && (
+                                    <Textarea 
+                                        value={typeof answer?.answer === 'string' ? answer.answer : ''}
+                                        onChange={(e) => handleAnamnesisChange(question.id, e.target.value)}
+                                    />
+                                )}
+                                {question.type === 'boolean' && (
+                                    <RadioGroup
+                                        value={answer?.answer === true ? 'sim' : answer?.answer === false ? 'nao' : ''}
+                                        onValueChange={(val) => handleAnamnesisChange(question.id, val === 'sim' ? true : false)}
+                                        className="flex space-x-4"
+                                    >
+                                        <div className="flex items-center space-x-2">
+                                            <RadioGroupItem value="sim" id={`${question.id}-sim`} />
+                                            <Label htmlFor={`${question.id}-sim`}>Sim</Label>
+                                        </div>
+                                         <div className="flex items-center space-x-2">
+                                            <RadioGroupItem value="nao" id={`${question.id}-nao`} />
+                                            <Label htmlFor={`${question.id}-nao`}>Não</Label>
+                                        </div>
+                                    </RadioGroup>
+                                )}
+                            </div>
+                        )
+                   })}
                 </TabsContent>
             </Tabs>
 
@@ -133,6 +156,7 @@ function CustomerForm({ customer, onSave, onDone }: { customer?: Customer; onSav
 
 export default function CustomersPage() {
     const [customers, setCustomers] = useState<Customer[]>([]);
+    const [anamnesisQuestions, setAnamnesisQuestions] = useState<AnamnesisQuestion[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState<Customer | undefined>(undefined);
@@ -146,8 +170,8 @@ export default function CustomersPage() {
             return;
         }
 
-        const q = query(collection(db, 'customers'), where("organizationId", "==", user.organizationId));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const customersQuery = query(collection(db, 'customers'), where("organizationId", "==", user.organizationId));
+        const customersUnsub = onSnapshot(customersQuery, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
             setCustomers(data.sort((a,b) => a.name.localeCompare(b.name)));
             setLoading(false);
@@ -157,7 +181,16 @@ export default function CustomersPage() {
             setLoading(false);
         });
 
-        return () => unsubscribe();
+        const questionsQuery = query(collection(db, 'anamnesisQuestions'), where("organizationId", "==", user.organizationId), orderBy('order'));
+        const questionsUnsub = onSnapshot(questionsQuery, (snapshot) => {
+             setAnamnesisQuestions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AnamnesisQuestion)));
+        });
+
+
+        return () => {
+            customersUnsub();
+            questionsUnsub();
+        }
     }, [user, toast]);
 
     const filteredCustomers = useMemo(() => {
@@ -209,6 +242,7 @@ export default function CustomersPage() {
 
                 await batch.commit();
             }
+             setIsFormOpen(false);
         } catch (error) {
             console.error("Error saving customer: ", error);
             toast({ title: 'Erro ao salvar cliente', variant: 'destructive' });
@@ -270,6 +304,7 @@ export default function CustomersPage() {
                         </DialogHeader>
                         <CustomerForm
                             customer={editingCustomer}
+                            anamnesisQuestions={anamnesisQuestions}
                             onSave={handleSave}
                             onDone={() => setIsFormOpen(false)}
                         />

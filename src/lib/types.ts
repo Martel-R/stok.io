@@ -31,14 +31,22 @@ export interface User {
   customerId?: string; // Link to customer profile if role is 'customer'
 }
 
-export interface AnamnesisForm {
-    mainComplaint: string;
-    historyOfPresentIllness: string;
-    pastMedicalHistory: string;
-    familyHistory: string;
-    allergies: string;
-    currentMedications: string;
+export type AnamnesisQuestionType = 'text' | 'boolean';
+
+export interface AnamnesisQuestion {
+    id: string;
+    organizationId: string;
+    label: string;
+    type: AnamnesisQuestionType;
+    order: number;
 }
+
+export interface AnamnesisAnswer {
+    questionId: string;
+    questionLabel: string;
+    answer: string | boolean;
+}
+
 
 export interface Customer {
     id: string;
@@ -50,7 +58,7 @@ export interface Customer {
     address: string;
     isActive: boolean;
     organizationId: string;
-    anamnesis?: AnamnesisForm;
+    anamnesisAnswers?: AnamnesisAnswer[];
 }
 
 export interface Service {

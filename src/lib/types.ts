@@ -262,6 +262,10 @@ export interface Kit {
   organizationId: string;
 }
 
+export interface BrandingSettings {
+    logoUrl?: string;
+    primaryColor?: string; // HSL format string e.g. "240 10% 3.9%"
+}
 
 export interface Organization {
     id: string;
@@ -269,4 +273,5 @@ export interface Organization {
     ownerId: string;
     paymentStatus: PaymentStatus;
     enabledModules: EnabledModules;
+    branding?: BrandingSettings;
 }

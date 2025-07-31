@@ -6,7 +6,7 @@ import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc } from "firebase/firestore";
-import type { User, UserRole, Branch, Product, Organization, EnabledModules } from '@/lib/types';
+import type { User, UserRole, Branch, Product, Organization, EnabledModules, BrandingSettings } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
 
@@ -19,10 +19,13 @@ const availableAvatars = [
 ];
 const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availableAvatars.length)];
 
+interface UserWithOrg extends User {
+    organization?: Organization;
+}
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  user: User | null;
+  user: UserWithOrg | null;
   branches: Branch[];
   currentBranch: Branch | null;
   setCurrentBranch: (branch: Branch) => void;
@@ -35,6 +38,7 @@ interface AuthContextType {
   sendPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
   deleteTestData: (organizationId: string) => Promise<void>;
   updateOrganizationModules: (modules: EnabledModules) => Promise<void>;
+  updateOrganizationBranding: (branding: BrandingSettings) => Promise<void>;
   logout: () => void;
   loading: boolean;
   cancelLogin: () => void;
@@ -43,7 +47,7 @@ interface AuthContextType {
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = React.useState<User | null>(null);
+  const [user, setUser] = React.useState<UserWithOrg | null>(null);
   const [branches, setBranches] = React.useState<Branch[]>([]);
   const [currentBranch, setCurrentBranchState] = React.useState<Branch | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -67,7 +71,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         let currentUser: User;
         if (userDocSnap.exists()) {
             currentUser = userDocSnap.data() as User;
-            setUser(currentUser);
         } else {
              const usersSnapshot = await getDocs(collection(db, "users"));
              const isFirstUser = usersSnapshot.empty;
@@ -86,8 +89,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                  await setDoc(doc(db, "organizations", organizationId), { ownerId: newUser.id, name: `${newUser.name}'s Organization`, paymentStatus: 'active' });
             }
             currentUser = newUser;
-            setUser(currentUser);
         }
+        
+        setUser(currentUser);
 
         if (currentUser.organizationId) {
             const orgDocRef = doc(db, "organizations", currentUser.organizationId);
@@ -113,8 +117,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         };
                         await updateDoc(orgDocRef, { enabledModules: modules });
                     }
-
-                    setUser(prevUser => prevUser ? { ...prevUser, paymentStatus: orgData.paymentStatus, enabledModules: modules } : null);
+                    
+                    setUser(prevUser => prevUser ? { 
+                        ...prevUser, 
+                        paymentStatus: orgData.paymentStatus, 
+                        enabledModules: modules,
+                        organization: orgData,
+                    } : null);
                 }
             });
 
@@ -403,6 +412,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const orgRef = doc(db, 'organizations', user.organizationId);
     await updateDoc(orgRef, { enabledModules: modules });
   };
+  
+  const updateOrganizationBranding = async (branding: BrandingSettings) => {
+    if (!user?.organizationId) {
+        throw new Error("Organização não encontrada.");
+    }
+    const orgRef = doc(db, 'organizations', user.organizationId);
+    await updateDoc(orgRef, { branding: branding });
+  };
 
   const isAuthenticated = !!user;
   
@@ -442,7 +459,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, loading, pathname, router, user]);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, deleteTestData, updateOrganizationModules }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, deleteTestData, updateOrganizationModules, updateOrganizationBranding }}>
       {children}
     </AuthContext.Provider>
   );

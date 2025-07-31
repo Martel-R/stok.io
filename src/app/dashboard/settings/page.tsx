@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -11,11 +12,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, query, where, writeBatch, orderBy } from 'firebase/firestore';
-import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType } from '@/lib/types';
+import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType, BrandingSettings } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -31,6 +32,7 @@ import { Separator } from '@/components/ui/separator';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
 import { ImportAnamnesisQuestionsDialog } from '@/components/import-anamnesis-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import Image from 'next/image';
 
 
 const availableAvatars = [
@@ -316,6 +318,7 @@ function BranchesSettings() {
 
     const openNewDialog = () => {
         setEditingBranch(undefined);
+        setIsFormOpen(true);
     }
 
     const handleSave = async (branchData: Omit<Branch, 'id' | 'organizationId'>) => {
@@ -357,6 +360,7 @@ function BranchesSettings() {
             console.error("Error saving branch: ", error);
             toast({ title: 'Erro ao salvar filial', variant: 'destructive' });
         }
+        setIsFormOpen(false);
     };
 
     const handleDelete = async (id: string) => {
@@ -1009,6 +1013,120 @@ function AnamnesisSettings() {
     );
 }
 
+function BrandingSettings() {
+    const { user, updateOrganizationBranding } = useAuth();
+    const [branding, setBranding] = useState<BrandingSettings>({
+        logoUrl: user?.organization?.branding?.logoUrl || '',
+        primaryColor: user?.organization?.branding?.primaryColor || '',
+    });
+    const [isUploading, setIsUploading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        setBranding({
+            logoUrl: user?.organization?.branding?.logoUrl || '',
+            primaryColor: user?.organization?.branding?.primaryColor || '',
+        })
+    }, [user?.organization?.branding]);
+
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setIsUploading(true);
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setBranding((prev) => ({ ...prev, logoUrl: reader.result as string }));
+                setIsUploading(false);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { value } = e.target;
+        // Basic HSL validation
+        if (/^\d{1,3}\s\d{1,3}%\s\d{1,3}%$/.test(value)) {
+            setBranding(prev => ({...prev, primaryColor: value}));
+        } else {
+             setBranding(prev => ({...prev, primaryColor: value}));
+        }
+    }
+    
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSaving(true);
+        try {
+            await updateOrganizationBranding(branding);
+            toast({title: "Branding atualizado com sucesso!"});
+        } catch (error) {
+            console.error(error);
+            toast({title: "Erro ao atualizar o branding", variant: 'destructive'});
+        } finally {
+            setIsSaving(false);
+        }
+    }
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Branding da Organização</CardTitle>
+                <CardDescription>Personalize a aparência do sistema com a identidade visual da sua marca.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <Tabs defaultValue="logo" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="logo"><Upload className="mr-2 h-4 w-4" /> Logo</TabsTrigger>
+                            <TabsTrigger value="colors"><Palette className="mr-2 h-4 w-4" /> Cores</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="logo" className="pt-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="logoUrl">URL do Logo</Label>
+                                <Input 
+                                    id="logoUrl" 
+                                    name="logoUrl" 
+                                    value={branding.logoUrl} 
+                                    onChange={(e) => setBranding(prev => ({...prev, logoUrl: e.target.value}))} 
+                                    placeholder="https://exemplo.com/logo.png" 
+                                />
+                            </div>
+                        </TabsContent>
+                        <TabsContent value="colors" className="pt-4">
+                             <div className="space-y-2">
+                                <Label htmlFor="primaryColor">Cor Primária (HSL)</Label>
+                                <Input 
+                                    id="primaryColor" 
+                                    name="primaryColor" 
+                                    value={branding.primaryColor} 
+                                    onChange={handleColorChange}
+                                    placeholder="Ex: 231 48% 48%"
+                                />
+                                <p className="text-sm text-muted-foreground">Insira o valor no formato HSL sem vírgulas. Ex: `231 48% 48%`</p>
+                            </div>
+                        </TabsContent>
+                    </Tabs>
+
+                    {branding.logoUrl && (
+                        <div>
+                            <Label>Pré-visualização do Logo</Label>
+                            <div className="mt-2 rounded-md border p-2 flex justify-center items-center h-24 w-24">
+                                <Image src={branding.logoUrl} alt="Pré-visualização do logo" width={80} height={80} className="object-contain h-full w-full" data-ai-hint="company logo" />
+                            </div>
+                        </div>
+                    )}
+                    
+                    <Button type="submit" disabled={isSaving}>
+                        {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Salvar Branding
+                    </Button>
+                </form>
+            </CardContent>
+        </Card>
+    );
+}
+
+
 
 function TestDataSettings() {
     const { deleteTestData, user } = useAuth();
@@ -1096,6 +1214,7 @@ function SettingsPageContent() {
                     <TabsTrigger value="users">Usuários</TabsTrigger>
                     <TabsTrigger value="branches">Filiais</TabsTrigger>
                     <TabsTrigger value="payments">Pagamentos</TabsTrigger>
+                    <TabsTrigger value="branding">Branding</TabsTrigger>
                     {user?.enabledModules?.customers && (
                         <TabsTrigger value="anamnesis">Anamnese</TabsTrigger>
                     )}
@@ -1108,6 +1227,9 @@ function SettingsPageContent() {
                 </TabsContent>
                 <TabsContent value="payments">
                     <PaymentConditions />
+                </TabsContent>
+                <TabsContent value="branding">
+                    <BrandingSettings />
                 </TabsContent>
                  {user?.enabledModules?.customers && (
                     <TabsContent value="anamnesis">

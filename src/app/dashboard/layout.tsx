@@ -15,8 +15,9 @@ import { usePathname } from 'next/navigation';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import Image from 'next/image';
 
 function DashboardNav() {
     const pathname = usePathname();
@@ -219,6 +220,21 @@ function SystemLockedScreen() {
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
     const { user } = useAuth();
 
+    useEffect(() => {
+        if(user?.organization?.branding?.primaryColor) {
+            document.documentElement.style.setProperty('--primary', user.organization.branding.primaryColor);
+        } else {
+             document.documentElement.style.removeProperty('--primary');
+        }
+        
+        if (user?.organization?.name) {
+             document.title = `Stokio - ${user.organization.name}`;
+        } else {
+             document.title = 'Stokio';
+        }
+
+    }, [user?.organization]);
+
     if(user?.paymentStatus === 'locked') {
         return <SystemLockedScreen />;
     }
@@ -228,8 +244,14 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
             <Sidebar>
                 <SidebarHeader>
                     <div className="flex items-center gap-2">
-                        <Icons.logo className="h-8 w-8 text-primary" />
-                        <span className="text-xl font-semibold">Stokio</span>
+                        <Icons.logo className="h-8 w-8 text-primary shrink-0" />
+                        {user?.organization?.branding?.logoUrl && (
+                             <>
+                                <div className="h-6 w-px bg-border"></div>
+                                <Image src={user.organization.branding.logoUrl} alt="Logo da Organização" width={32} height={32} className="h-8 w-8 object-contain"/>
+                             </>
+                        )}
+                        <span className="text-xl font-semibold truncate">{user?.organization?.name || 'Stokio'}</span>
                     </div>
                 </SidebarHeader>
                 <SidebarContent className="p-2">

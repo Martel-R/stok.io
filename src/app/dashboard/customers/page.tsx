@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch, getDocs, orderBy } from 'firebase/firestore';
 import type { Customer, AnamnesisQuestion, AnamnesisAnswer } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Search, Users, FileText } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Search, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -42,10 +42,30 @@ function CustomerForm({
         // Ensure every question has a corresponding answer placeholder
         const existingAnswers = new Map(initialData.anamnesisAnswers?.map(a => [a.questionId, a]));
         const fullAnswers = anamnesisQuestions.map(q => {
-            return existingAnswers.get(q.id) || {
+            const existing = existingAnswers.get(q.id);
+            if (existing) return existing;
+
+            let defaultAnswer: any;
+            switch(q.type) {
+                case 'boolean':
+                    defaultAnswer = ''; // Not answered yet
+                    break;
+                case 'boolean_with_text':
+                    defaultAnswer = { choice: '', details: ''}; // Not answered yet
+                    break;
+                case 'integer':
+                case 'decimal':
+                    defaultAnswer = ''; // Empty string for controlled input
+                    break;
+                case 'text':
+                default:
+                    defaultAnswer = '';
+                    break;
+            }
+            return {
                 questionId: q.id,
                 questionLabel: q.label,
-                answer: q.type === 'boolean' ? '' : '' // Default empty state
+                answer: defaultAnswer
             };
         });
         return { ...initialData, anamnesisAnswers: fullAnswers as AnamnesisAnswer[] };
@@ -56,10 +76,10 @@ function CustomerForm({
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleAnamnesisChange = (questionId: string, answer: string | boolean) => {
+    const handleAnamnesisChange = (questionId: string, value: any) => {
         setFormData(prev => {
             const newAnswers = prev.anamnesisAnswers?.map(a => 
-                a.questionId === questionId ? { ...a, answer } : a
+                a.questionId === questionId ? { ...a, answer: value } : a
             ) || [];
             return { ...prev, anamnesisAnswers: newAnswers };
         });
@@ -116,11 +136,11 @@ function CustomerForm({
                    {anamnesisQuestions.map(question => {
                         const answer = formData.anamnesisAnswers?.find(a => a.questionId === question.id);
                         return (
-                            <div key={question.id} className="space-y-2">
+                            <div key={question.id} className="space-y-2 border-b pb-4">
                                 <Label>{question.label}</Label>
                                 {question.type === 'text' && (
                                     <Textarea 
-                                        value={typeof answer?.answer === 'string' ? answer.answer : ''}
+                                        value={answer?.answer || ''}
                                         onChange={(e) => handleAnamnesisChange(question.id, e.target.value)}
                                     />
                                 )}
@@ -139,6 +159,39 @@ function CustomerForm({
                                             <Label htmlFor={`${question.id}-nao`}>Não</Label>
                                         </div>
                                     </RadioGroup>
+                                )}
+                                 {question.type === 'boolean_with_text' && (
+                                    <div className="space-y-2">
+                                        <RadioGroup
+                                            value={answer?.answer?.choice === true ? 'sim' : answer?.answer?.choice === false ? 'nao' : ''}
+                                            onValueChange={(val) => handleAnamnesisChange(question.id, { ...answer?.answer, choice: val === 'sim' })}
+                                            className="flex space-x-4"
+                                        >
+                                            <div className="flex items-center space-x-2">
+                                                <RadioGroupItem value="sim" id={`${question.id}-sim`} />
+                                                <Label htmlFor={`${question.id}-sim`}>Sim</Label>
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                                <RadioGroupItem value="nao" id={`${question.id}-nao`} />
+                                                <Label htmlFor={`${question.id}-nao`}>Não</Label>
+                                            </div>
+                                        </RadioGroup>
+                                        {answer?.answer?.choice === true && (
+                                            <Textarea 
+                                                value={answer.answer.details || ''}
+                                                onChange={(e) => handleAnamnesisChange(question.id, { ...answer.answer, details: e.target.value })}
+                                                placeholder="Se sim, especifique..."
+                                            />
+                                        )}
+                                    </div>
+                                )}
+                                 {(question.type === 'integer' || question.type === 'decimal') && (
+                                    <Input 
+                                        type="number"
+                                        step={question.type === 'decimal' ? '0.01' : '1'}
+                                        value={answer?.answer || ''}
+                                        onChange={(e) => handleAnamnesisChange(question.id, question.type === 'decimal' ? parseFloat(e.target.value) : parseInt(e.target.value, 10))}
+                                    />
                                 )}
                             </div>
                         )
@@ -286,7 +339,7 @@ export default function CustomersPage() {
         <div className="space-y-6">
             <div className="flex justify-between items-center gap-4">
                 <div className="flex items-center gap-4">
-                    <Users className="h-10 w-10 text-primary" />
+                    <FileText className="h-10 w-10 text-primary" />
                     <div>
                         <h1 className="text-3xl font-bold">Clientes</h1>
                         <p className="text-muted-foreground">

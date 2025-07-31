@@ -31,7 +31,7 @@ export interface User {
   customerId?: string; // Link to customer profile if role is 'customer'
 }
 
-export type AnamnesisQuestionType = 'text' | 'boolean';
+export type AnamnesisQuestionType = 'text' | 'boolean' | 'boolean_with_text' | 'integer' | 'decimal';
 
 export interface AnamnesisQuestion {
     id: string;
@@ -44,7 +44,7 @@ export interface AnamnesisQuestion {
 export interface AnamnesisAnswer {
     questionId: string;
     questionLabel: string;
-    answer: string | boolean;
+    answer: any; // Can be string, boolean, number, or object for boolean_with_text
 }
 
 

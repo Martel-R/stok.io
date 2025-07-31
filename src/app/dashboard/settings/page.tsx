@@ -315,7 +315,6 @@ function BranchesSettings() {
 
     const openNewDialog = () => {
         setEditingBranch(undefined);
-        setIsFormOpen(true);
     }
 
     const handleSave = async (branchData: Omit<Branch, 'id' | 'organizationId'>) => {
@@ -795,6 +794,14 @@ function AnamnesisSettings() {
             toast({ title: 'Erro ao remover pergunta', variant: 'destructive' });
         }
     };
+    
+    const typeNames: Record<AnamnesisQuestionType, string> = {
+        text: 'Discursiva',
+        boolean: 'Sim/Não',
+        boolean_with_text: 'Sim/Não com Texto',
+        integer: 'Número Inteiro',
+        decimal: 'Número Decimal',
+    };
 
     return (
          <Card>
@@ -820,8 +827,11 @@ function AnamnesisSettings() {
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="text">Discursiva (Texto)</SelectItem>
+                                <SelectItem value="text">Discursiva</SelectItem>
                                 <SelectItem value="boolean">Sim / Não</SelectItem>
+                                <SelectItem value="boolean_with_text">Sim / Não com Texto</SelectItem>
+                                <SelectItem value="integer">Número Inteiro</SelectItem>
+                                <SelectItem value="decimal">Número Decimal</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -846,7 +856,7 @@ function AnamnesisSettings() {
                                     <TableCell className="font-medium">{q.label}</TableCell>
                                     <TableCell>
                                         <Badge variant="outline">
-                                            {q.type === 'text' ? 'Discursiva' : 'Sim/Não'}
+                                            {typeNames[q.type] || 'Desconhecido'}
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-right">

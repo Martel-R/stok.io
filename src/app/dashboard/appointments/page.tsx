@@ -9,9 +9,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, Timestamp } from 'firebase/firestore';
-import type { Appointment, Customer, Service, User, AppointmentStatus } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Calendar, Users, Briefcase, Check, ChevronsUpDown, Clock, RefreshCw } from 'lucide-react';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, Timestamp, writeBatch, serverTimestamp } from 'firebase/firestore';
+import type { Appointment, Customer, Service, User, AppointmentStatus, Attendance } from '@/lib/types';
+import { MoreHorizontal, PlusCircle, Calendar, Users, Briefcase, Check, ChevronsUpDown, Clock, RefreshCw, PlayCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -25,6 +25,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useRouter } from 'next/navigation';
+
 
 function AppointmentForm({ 
     appointment, 
@@ -55,6 +57,12 @@ function AppointmentForm({
         appointment ? services.find(s => s.id === appointment.serviceId) || null : null
     );
 
+    useEffect(() => {
+        if (formData.serviceId) {
+            setSelectedService(services.find(s => s.id === formData.serviceId) || null);
+        }
+    }, [formData.serviceId, services]);
+
     const availableProfessionals = useMemo(() => {
         if (!selectedService) return [];
         return professionals.filter(p => selectedService.professionalIds.includes(p.id));
@@ -82,8 +90,8 @@ function AppointmentForm({
                 serviceId: service.id, 
                 serviceName: service.name,
                 // Reset professional if they can't perform the new service
-                professionalId: availableProfessionals.find(p => p.id === prev.professionalId) ? prev.professionalId : undefined,
-                professionalName: availableProfessionals.find(p => p.id === prev.professionalId) ? prev.professionalName : undefined,
+                professionalId: undefined,
+                professionalName: undefined,
             }));
         }
     }
@@ -213,6 +221,7 @@ export default function AppointmentsPage() {
 
     const { toast } = useToast();
     const { user, currentBranch } = useAuth();
+    const router = useRouter();
     
     const convertAppointmentDate = (docData: any): Appointment => {
         const convert = (field: any) => field instanceof Timestamp ? field.toDate() : new Date();
@@ -291,6 +300,54 @@ export default function AppointmentsPage() {
             toast({ title: 'Agendamento excluído!', variant: 'destructive' });
         } catch (error) {
             toast({ title: 'Erro ao excluir', variant: 'destructive' });
+        }
+    };
+
+    const handleStartAttendance = async (app: Appointment) => {
+        if (!user || !currentBranch) return;
+
+        if (app.attendanceId) {
+            router.push(`/dashboard/attendance/${app.attendanceId}`);
+            return;
+        }
+
+        const batch = writeBatch(db);
+        const attendanceRef = doc(collection(db, 'attendances'));
+        const appointmentRef = doc(db, 'appointments', app.id);
+        const service = services.find(s => s.id === app.serviceId);
+
+        const newAttendance: Omit<Attendance, 'id'> = {
+            organizationId: user.organizationId,
+            branchId: currentBranch.id,
+            appointmentId: app.id,
+            customerId: app.customerId,
+            customerName: app.customerName,
+            professionalId: app.professionalId,
+            professionalName: app.professionalName,
+            date: serverTimestamp(),
+            items: service ? [{
+                id: service.id,
+                name: service.name,
+                type: 'service',
+                quantity: 1,
+                price: service.price,
+                total: service.price
+            }] : [],
+            photos: [],
+            status: 'in-progress',
+            paymentStatus: 'pending',
+            total: service?.price || 0,
+        };
+
+        batch.set(attendanceRef, newAttendance);
+        batch.update(appointmentRef, { attendanceId: attendanceRef.id });
+
+        try {
+            await batch.commit();
+            router.push(`/dashboard/attendance/${attendanceRef.id}`);
+        } catch (error) {
+            console.error("Failed to start attendance:", error);
+            toast({ title: 'Erro ao iniciar atendimento', variant: 'destructive' });
         }
     };
     
@@ -381,45 +438,56 @@ export default function AppointmentsPage() {
                                 <div className="space-y-4">
                                     {appointmentsForSelectedDay.map(app => (
                                         <Card key={app.id} className="p-4">
-                                             <div className="flex justify-between items-start">
-                                                <div className="space-y-1">
+                                             <div className="flex justify-between items-start gap-4">
+                                                <div className="space-y-1 flex-grow">
                                                     <CardTitle className="text-lg">{app.serviceName}</CardTitle>
                                                     <CardDescription className="flex items-center gap-2"><Users className="h-4 w-4" />{app.customerName}</CardDescription>
                                                     <CardDescription className="flex items-center gap-2"><Briefcase className="h-4 w-4" />{app.professionalName}</CardDescription>
                                                     <CardDescription className="flex items-center gap-2"><Clock className="h-4 w-4" />{format(app.start, 'HH:mm')} - {format(app.end, 'HH:mm')}</CardDescription>
                                                 </div>
-                                                <div className="flex flex-col items-end gap-2">
+                                                <div className="flex flex-col items-end gap-2 shrink-0">
                                                     {getStatusBadge(app.status)}
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                                            <DropdownMenuSeparator />
-                                                            <DropdownMenuItem onClick={() => openEditDialog(app)}>Editar</DropdownMenuItem>
-                                                            <DropdownMenuItem onClick={() => handleReschedule(app)}>
-                                                                <RefreshCw className="mr-2 h-4 w-4" />
-                                                                Reagendar
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuSeparator />
-                                                            <div className="p-2">
-                                                                <Label>Mudar Status</Label>
-                                                                <Select value={app.status} onValueChange={(status: AppointmentStatus) => handleStatusChange(app.id, status)}>
-                                                                    <SelectTrigger className="mt-1">
-                                                                        <SelectValue />
-                                                                    </SelectTrigger>
-                                                                    <SelectContent>
-                                                                        <SelectItem value="scheduled">Agendado</SelectItem>
-                                                                        <SelectItem value="completed">Concluído</SelectItem>
-                                                                        <SelectItem value="cancelled">Cancelado</SelectItem>
-                                                                        <SelectItem value="rescheduled">Reagendado</SelectItem>
-                                                                        <SelectItem value="no-show">Não Compareceu</SelectItem>
-                                                                    </SelectContent>
-                                                                </Select>
-                                                            </div>
-                                                            <DropdownMenuSeparator />
-                                                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDelete(app.id)}>Excluir</DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
+                                                    <div className="flex items-center gap-1">
+                                                        <Button 
+                                                            size="sm" 
+                                                            variant={app.attendanceId ? "outline" : "default"}
+                                                            onClick={() => handleStartAttendance(app)}
+                                                            disabled={app.status !== 'scheduled'}
+                                                        >
+                                                            <PlayCircle className="mr-2" />
+                                                            {app.attendanceId ? 'Ver' : 'Iniciar'}
+                                                        </Button>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end">
+                                                                <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                                                                <DropdownMenuSeparator />
+                                                                <DropdownMenuItem onClick={() => openEditDialog(app)}>Editar</DropdownMenuItem>
+                                                                <DropdownMenuItem onClick={() => handleReschedule(app)}>
+                                                                    <RefreshCw className="mr-2 h-4 w-4" />
+                                                                    Reagendar
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuSeparator />
+                                                                <div className="p-2">
+                                                                    <Label>Mudar Status</Label>
+                                                                    <Select value={app.status} onValueChange={(status: AppointmentStatus) => handleStatusChange(app.id, status)}>
+                                                                        <SelectTrigger className="mt-1">
+                                                                            <SelectValue />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="scheduled">Agendado</SelectItem>
+                                                                            <SelectItem value="completed">Concluído</SelectItem>
+                                                                            <SelectItem value="cancelled">Cancelado</SelectItem>
+                                                                            <SelectItem value="rescheduled">Reagendado</SelectItem>
+                                                                            <SelectItem value="no-show">Não Compareceu</SelectItem>
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                </div>
+                                                                <DropdownMenuSeparator />
+                                                                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDelete(app.id)}>Excluir</DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </div>
                                                 </div>
                                             </div>
                                             {app.notes && <p className="text-sm text-muted-foreground mt-2 pt-2 border-t">{app.notes}</p>}

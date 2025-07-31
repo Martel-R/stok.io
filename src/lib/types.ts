@@ -111,6 +111,37 @@ export interface Appointment {
     notes?: string;
     organizationId: string;
     branchId: string;
+    attendanceId?: string;
+}
+
+export interface AttendanceItem {
+    id: string; // Can be product or service ID
+    name: string;
+    type: 'product' | 'service';
+    quantity: number;
+    price: number;
+    total: number;
+}
+
+export type AttendanceStatus = 'pending' | 'in-progress' | 'completed';
+export type AttendancePaymentStatus = 'pending' | 'paid';
+
+export interface Attendance {
+    id: string;
+    organizationId: string;
+    branchId: string;
+    appointmentId: string;
+    customerId: string;
+    customerName: string;
+    professionalId: string;
+    professionalName: string;
+    date: any; // server timestamp
+    items: AttendanceItem[];
+    notes?: string;
+    photos: string[];
+    status: AttendanceStatus;
+    paymentStatus: AttendancePaymentStatus;
+    total: number;
 }
 
 
@@ -156,6 +187,7 @@ export interface Sale {
   branchId: string;
   organizationId: string;
   payments: PaymentDetail[];
+  attendanceId?: string; // Link to the attendance if sale came from one
 }
 
 export interface Branch {

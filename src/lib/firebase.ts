@@ -1,9 +1,11 @@
 
+
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { initializeFirestore, CACHE_SIZE_UNLIMITED } from "firebase/firestore";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
+import { getStorage } from "firebase/storage";
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
@@ -24,6 +26,7 @@ const db = initializeFirestore(app, {
   ignoreUndefinedProperties: true,
   cacheSizeBytes: CACHE_SIZE_UNLIMITED,
 });
+const storage = getStorage(app);
 
 
 // Initialize App Check
@@ -39,4 +42,4 @@ if (typeof window !== 'undefined') {
 }
 
 
-export { app, auth, db };
+export { app, auth, db, storage };

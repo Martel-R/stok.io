@@ -37,15 +37,17 @@ function CustomerForm({
     const [formData, setFormData] = useState<Partial<Customer>>({});
     
     useEffect(() => {
-        const initialData = customer || { 
+        const initialData: Partial<Customer> = customer || { 
             name: '', cpfCnpj: '', email: '', phone: '', address: '', isActive: true, 
             anamnesisAnswers: [] 
         };
 
         const existingAnswers = new Map(initialData.anamnesisAnswers?.map(a => [a.questionId, a]));
+        
         const fullAnswers = anamnesisQuestions.map(q => {
-            const existing = existingAnswers.get(q.id);
-            if (existing) return existing;
+            if (existingAnswers.has(q.id)) {
+                return existingAnswers.get(q.id)!;
+            }
 
             let defaultAnswer: any;
             switch(q.type) {
@@ -57,7 +59,7 @@ function CustomerForm({
                     break;
                 case 'integer':
                 case 'decimal':
-                    defaultAnswer = ''; // Empty string for controlled input
+                    defaultAnswer = null; 
                     break;
                 case 'text':
                 default:
@@ -70,6 +72,7 @@ function CustomerForm({
                 answer: defaultAnswer
             };
         });
+
         setFormData({ ...initialData, anamnesisAnswers: fullAnswers as AnamnesisAnswer[] });
     }, [customer, anamnesisQuestions]);
 
@@ -240,6 +243,8 @@ export default function CustomersPage() {
         const questionsQuery = query(collection(db, 'anamnesisQuestions'), where("organizationId", "==", user.organizationId), orderBy('order'));
         const questionsUnsub = onSnapshot(questionsQuery, (snapshot) => {
              setAnamnesisQuestions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AnamnesisQuestion)));
+        }, (error) => {
+            console.error("Error fetching anamnesis questions:", error);
         });
 
 

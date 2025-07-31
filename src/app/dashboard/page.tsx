@@ -86,11 +86,14 @@ export default function DashboardPage() {
     const totalProducts = allProducts.length;
 
     const totalStock = useMemo(() => {
-        return allStockEntries.reduce((sum, entry) => {
-            const quantity = typeof entry.quantity === 'number' ? entry.quantity : 0;
-            return sum + quantity;
-        }, 0);
-    }, [allStockEntries]);
+        const salableProductIds = new Set(allProducts.filter(p => p.isSalable).map(p => p.id));
+        return allStockEntries
+            .filter(entry => salableProductIds.has(entry.productId))
+            .reduce((sum, entry) => {
+                const quantity = typeof entry.quantity === 'number' ? entry.quantity : 0;
+                return sum + quantity;
+            }, 0);
+    }, [allStockEntries, allProducts]);
 
 
     const salesChartData = useMemo(() => {
@@ -232,7 +235,7 @@ export default function DashboardPage() {
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Total de Produtos</CardTitle>
-                        <Package className="h-4 w-4 text-muted-foreground" />
+                        <Users className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{totalProducts}</div>
@@ -241,12 +244,12 @@ export default function DashboardPage() {
                 </Card>
                  <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Estoque Total</CardTitle>
-                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <CardTitle className="text-sm font-medium">Estoque Comerciável</CardTitle>
+                        <Package className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{totalStock.toLocaleString('pt-BR')}</div>
-                        <p className="text-xs text-muted-foreground">em todos os produtos</p>
+                        <p className="text-xs text-muted-foreground">Unidades de produtos para venda</p>
                     </CardContent>
                 </Card>
             </div>

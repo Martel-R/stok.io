@@ -88,6 +88,7 @@ export interface Appointment {
     status: AppointmentStatus;
     notes?: string;
     organizationId: string;
+    branchId: string;
 }
 
 

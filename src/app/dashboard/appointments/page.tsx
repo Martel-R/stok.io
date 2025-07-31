@@ -10,8 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, Timestamp, writeBatch, serverTimestamp } from 'firebase/firestore';
-import type { Appointment, Customer, Service, User, AppointmentStatus, Attendance } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Calendar, Users, Briefcase, Check, ChevronsUpDown, Clock, RefreshCw, PlayCircle } from 'lucide-react';
+import type { Appointment, Customer, Service, User, AppointmentStatus, Attendance, AnamnesisAnswer } from '@/lib/types';
+import { MoreHorizontal, PlusCircle, Calendar, Users, Briefcase, Check, ChevronsUpDown, Clock, RefreshCw, PlayCircle, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -382,6 +382,20 @@ export default function AppointmentsPage() {
         }
     };
 
+    const isAnamnesisComplete = (customer: Customer | undefined): boolean => {
+        if (!customer || !customer.anamnesisAnswers || customer.anamnesisAnswers.length === 0) {
+            return false;
+        }
+        return customer.anamnesisAnswers.every(item => {
+            if (item.answer === null || item.answer === '') {
+                return false;
+            }
+            if (typeof item.answer === 'object' && item.answer.choice === null) {
+                return false;
+            }
+            return true;
+        });
+    }
 
     return (
         <div className="space-y-6">
@@ -436,63 +450,83 @@ export default function AppointmentsPage() {
                                 <Skeleton className="h-full w-full" />
                             ) : appointmentsForSelectedDay.length > 0 ? (
                                 <div className="space-y-4">
-                                    {appointmentsForSelectedDay.map(app => (
-                                        <Card key={app.id} className="p-4">
-                                             <div className="flex justify-between items-start gap-4">
-                                                <div className="space-y-1 flex-grow">
-                                                    <CardTitle className="text-lg">{app.serviceName}</CardTitle>
-                                                    <CardDescription className="flex items-center gap-2"><Users className="h-4 w-4" />{app.customerName}</CardDescription>
-                                                    <CardDescription className="flex items-center gap-2"><Briefcase className="h-4 w-4" />{app.professionalName}</CardDescription>
-                                                    <CardDescription className="flex items-center gap-2"><Clock className="h-4 w-4" />{format(app.start, 'HH:mm')} - {format(app.end, 'HH:mm')}</CardDescription>
-                                                </div>
-                                                <div className="flex flex-col items-end gap-2 shrink-0">
-                                                    {getStatusBadge(app.status)}
-                                                    <div className="flex items-center gap-1">
-                                                        <Button 
-                                                            size="sm" 
-                                                            variant={app.attendanceId ? "outline" : "default"}
-                                                            onClick={() => handleStartAttendance(app)}
-                                                            disabled={app.status !== 'scheduled'}
-                                                        >
-                                                            <PlayCircle className="mr-2" />
-                                                            {app.attendanceId ? 'Ver' : 'Iniciar'}
-                                                        </Button>
-                                                        <DropdownMenu>
-                                                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
-                                                            <DropdownMenuContent align="end">
-                                                                <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                                                <DropdownMenuSeparator />
-                                                                <DropdownMenuItem onClick={() => openEditDialog(app)}>Editar</DropdownMenuItem>
-                                                                <DropdownMenuItem onClick={() => handleReschedule(app)}>
-                                                                    <RefreshCw className="mr-2 h-4 w-4" />
-                                                                    Reagendar
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuSeparator />
-                                                                <div className="p-2">
-                                                                    <Label>Mudar Status</Label>
-                                                                    <Select value={app.status} onValueChange={(status: AppointmentStatus) => handleStatusChange(app.id, status)}>
-                                                                        <SelectTrigger className="mt-1">
-                                                                            <SelectValue />
-                                                                        </SelectTrigger>
-                                                                        <SelectContent>
-                                                                            <SelectItem value="scheduled">Agendado</SelectItem>
-                                                                            <SelectItem value="completed">Concluído</SelectItem>
-                                                                            <SelectItem value="cancelled">Cancelado</SelectItem>
-                                                                            <SelectItem value="rescheduled">Reagendado</SelectItem>
-                                                                            <SelectItem value="no-show">Não Compareceu</SelectItem>
-                                                                        </SelectContent>
-                                                                    </Select>
-                                                                </div>
-                                                                <DropdownMenuSeparator />
-                                                                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDelete(app.id)}>Excluir</DropdownMenuItem>
-                                                            </DropdownMenuContent>
-                                                        </DropdownMenu>
+                                    {appointmentsForSelectedDay.map(app => {
+                                        const customer = customers.find(c => c.id === app.customerId);
+                                        const anamnesisDone = isAnamnesisComplete(customer);
+
+                                        return (
+                                            <Card key={app.id} className="p-4">
+                                                <div className="flex justify-between items-start gap-4">
+                                                    <div className="space-y-1 flex-grow">
+                                                        <CardTitle className="text-lg">{app.serviceName}</CardTitle>
+                                                        <div className="flex items-center gap-2">
+                                                            <Users className="h-4 w-4 text-muted-foreground" />
+                                                            <CardDescription>{app.customerName}</CardDescription>
+                                                        </div>
+                                                        {!anamnesisDone && (
+                                                            <div className="flex items-center gap-2 text-yellow-600">
+                                                                <AlertTriangle className="h-4 w-4"/>
+                                                                <span className="text-sm font-semibold">Anamnese pendente</span>
+                                                            </div>
+                                                        )}
+                                                        <div className="flex items-center gap-2">
+                                                            <Briefcase className="h-4 w-4 text-muted-foreground" />
+                                                            <CardDescription>{app.professionalName}</CardDescription>
+                                                        </div>
+                                                         <div className="flex items-center gap-2">
+                                                            <Clock className="h-4 w-4 text-muted-foreground" />
+                                                            <CardDescription>{format(app.start, 'HH:mm')} - {format(app.end, 'HH:mm')}</CardDescription>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-col items-end gap-2 shrink-0">
+                                                        {getStatusBadge(app.status)}
+                                                        <div className="flex items-center gap-1">
+                                                            <Button
+                                                                size="sm"
+                                                                variant={app.attendanceId ? "outline" : "default"}
+                                                                onClick={() => handleStartAttendance(app)}
+                                                                disabled={app.status !== 'scheduled'}
+                                                            >
+                                                                <PlayCircle className="mr-2" />
+                                                                {app.attendanceId ? 'Ver' : 'Iniciar'}
+                                                            </Button>
+                                                            <DropdownMenu>
+                                                                <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
+                                                                <DropdownMenuContent align="end">
+                                                                    <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                                                                    <DropdownMenuSeparator />
+                                                                    <DropdownMenuItem onClick={() => openEditDialog(app)}>Editar</DropdownMenuItem>
+                                                                    <DropdownMenuItem onClick={() => handleReschedule(app)}>
+                                                                        <RefreshCw className="mr-2 h-4 w-4" />
+                                                                        Reagendar
+                                                                    </DropdownMenuItem>
+                                                                    <DropdownMenuSeparator />
+                                                                    <div className="p-2">
+                                                                        <Label>Mudar Status</Label>
+                                                                        <Select value={app.status} onValueChange={(status: AppointmentStatus) => handleStatusChange(app.id, status)}>
+                                                                            <SelectTrigger className="mt-1">
+                                                                                <SelectValue />
+                                                                            </SelectTrigger>
+                                                                            <SelectContent>
+                                                                                <SelectItem value="scheduled">Agendado</SelectItem>
+                                                                                <SelectItem value="completed">Concluído</SelectItem>
+                                                                                <SelectItem value="cancelled">Cancelado</SelectItem>
+                                                                                <SelectItem value="rescheduled">Reagendado</SelectItem>
+                                                                                <SelectItem value="no-show">Não Compareceu</SelectItem>
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    </div>
+                                                                    <DropdownMenuSeparator />
+                                                                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDelete(app.id)}>Excluir</DropdownMenuItem>
+                                                                </DropdownMenuContent>
+                                                            </DropdownMenu>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            {app.notes && <p className="text-sm text-muted-foreground mt-2 pt-2 border-t">{app.notes}</p>}
-                                        </Card>
-                                    ))}
+                                                {app.notes && <p className="text-sm text-muted-foreground mt-2 pt-2 border-t">{app.notes}</p>}
+                                            </Card>
+                                        )
+                                    })}
                                 </div>
                             ) : (
                                 <div className="flex items-center justify-center h-full text-muted-foreground">

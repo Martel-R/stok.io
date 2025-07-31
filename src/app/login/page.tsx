@@ -18,8 +18,8 @@ import { Separator } from '@/components/ui/separator';
 export default function LoginPage() {
   const { login, loginWithGoogle, loading, cancelLogin } = useAuth();
   const { toast } = useToast();
-  const [email, setEmail] = useState('admin@instock.ai');
-  const [password, setPassword] = useState('password');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const loginCancelledRef = useRef(false);
 

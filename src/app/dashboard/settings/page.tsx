@@ -1178,5 +1178,3 @@ export default function SettingsPage() {
         </React.Suspense>
     )
 }
-
-    

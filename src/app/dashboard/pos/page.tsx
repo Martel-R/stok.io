@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType, StockEntry, Kit, Attendance } from '@/lib/types';
+import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType, StockEntry, Kit, Attendance, AttendanceItem } from '@/lib/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,12 +22,14 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format } from 'date-fns';
+import { useRouter } from 'next/navigation';
 
 
 type CartItem = 
     | (ProductWithStock & { itemType: 'product'; quantity: number }) 
     | (Combo & { itemType: 'combo'; quantity: number })
-    | ({ kit: Kit; chosenProducts: Product[] } & { id: string; name: string; itemType: 'kit'; quantity: number; total: number });
+    | ({ kit: Kit; chosenProducts: Product[] } & { id: string; name: string; itemType: 'kit'; quantity: number; total: number })
+    | (AttendanceItem & { itemType: 'service' | 'product' });
 
 type ProductWithStock = Product & { stock: number };
 
@@ -262,7 +264,7 @@ function PendingAttendancesTab({ onSelect }: { onSelect: (attendance: Attendance
                                     Profissional: {att.professionalName}
                                 </p>
                                  <p className="text-sm text-muted-foreground">
-                                    Data: {format(att.date.toDate(), 'dd/MM/yyyy')}
+                                    Data: {att.date && att.date.toDate ? format(att.date.toDate(), 'dd/MM/yyyy') : '...'}
                                 </p>
                             </div>
                             <div className="text-right">
@@ -520,6 +522,7 @@ export default function POSPage() {
   const [currentAttendanceId, setCurrentAttendanceId] = useState<string | undefined>(undefined);
   const { toast } = useToast();
   const { user, currentBranch, loading: authLoading } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
     if (authLoading || !currentBranch || !user?.organizationId) {
@@ -661,7 +664,7 @@ export default function POSPage() {
     }
   };
   
-  const removeFromCart = (itemId: string, itemType: 'product' | 'combo' | 'kit') => {
+  const removeFromCart = (itemId: string, itemType: CartItem['itemType']) => {
       setCart(cart => cart.filter(item => !(item.id === itemId && item.itemType === itemType)));
   }
 
@@ -672,7 +675,8 @@ export default function POSPage() {
             let itemOriginalTotal;
 
             if (item.itemType === 'product') {
-                itemTotal = item.price * item.quantity;
+                const price = (item as ProductWithStock).price || (item as AttendanceItem).price || 0;
+                itemTotal = price * item.quantity;
                 itemOriginalTotal = itemTotal;
             } else if (item.itemType === 'combo') {
                 itemTotal = item.finalPrice * item.quantity;
@@ -681,7 +685,11 @@ export default function POSPage() {
                 const originalPrice = item.chosenProducts.reduce((sum, p) => sum + p.price, 0);
                 itemTotal = item.total * item.quantity;
                 itemOriginalTotal = originalPrice * item.quantity;
-            } else {
+            } else if (item.itemType === 'service') {
+                itemTotal = item.total;
+                itemOriginalTotal = itemTotal;
+            }
+            else {
                 itemTotal = 0;
                 itemOriginalTotal = 0;
             }
@@ -711,7 +719,7 @@ export default function POSPage() {
         const batch = writeBatch(db);
         const saleDate = serverTimestamp();
         
-        // Create stock entries first
+        // Create stock entries first for products, combos, and kits
         for (const item of cart) {
             if (item.itemType === 'product') {
                  const entry: Omit<StockEntry, 'id'> = {
@@ -764,7 +772,7 @@ export default function POSPage() {
         // Create one consolidated sale document
         const saleRef = doc(collection(db, "sales"));
         const saleData: Omit<Sale, 'id'> = {
-            items: cart.map(item => ({ id: item.id, name: item.name, quantity: item.quantity, type: item.itemType })),
+            items: cart.map(item => ({ id: item.id, name: item.name, quantity: item.quantity, type: item.itemType, price: item.itemType === 'service' ? item.price : undefined })),
             total: grandTotal,
             date: new Date(),
             cashier: user.name,
@@ -808,8 +816,10 @@ export default function POSPage() {
                 quantity: item.quantity
             } as CartItem;
         }
-        // For now, services are just for pricing, not stock items
-        return item as unknown as CartItem;
+        return {
+            ...item,
+            itemType: 'service'
+        } as CartItem
     });
     setCart(attendanceCartItems);
     setCurrentAttendanceId(attendance.id);
@@ -835,6 +845,16 @@ export default function POSPage() {
   }
 
   const salableProducts = products.filter(p => p.isSalable && p.stock > 0);
+
+  const getCartItemPrice = (item: CartItem) => {
+      switch (item.itemType) {
+          case 'product': return (item as ProductWithStock).price;
+          case 'combo': return (item as Combo).finalPrice;
+          case 'kit': return item.total;
+          case 'service': return item.price;
+          default: return 0;
+      }
+  }
 
   return (
     <>
@@ -970,12 +990,14 @@ export default function POSPage() {
                                 <div>
                                     <p className="font-medium flex items-center gap-2">
                                         {item.name}
-                                        {(item.itemType === 'combo' || item.itemType === 'kit') && <Badge variant="secondary">{item.itemType === 'combo' ? 'Combo' : 'Kit'}</Badge>}
+                                        {(item.itemType === 'combo' || item.itemType === 'kit' || item.itemType === 'service') && <Badge variant="secondary">{item.itemType}</Badge>}
                                     </p>
                                     <p className="text-sm text-muted-foreground">
                                         {item.itemType === 'kit' 
                                             ? `Total do Kit: R$${item.total.toFixed(2).replace('.', ',')}`
-                                            : `R$${(item.itemType === 'product' ? item.price : (item as Combo).finalPrice).toFixed(2).replace('.', ',')} x ${item.quantity}`
+                                            : item.itemType === 'service'
+                                            ? `Serviço: R$${item.price.toFixed(2).replace('.', ',')}`
+                                            : `R$${getCartItemPrice(item).toFixed(2).replace('.', ',')} x ${item.quantity}`
                                         }
                                     </p>
                                     {item.itemType === 'kit' && (
@@ -986,7 +1008,7 @@ export default function POSPage() {
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <p className="font-semibold">
-                                        R${((item.itemType === 'product' ? item.price : (item.itemType === 'combo' ? (item as Combo).finalPrice : item.total)) * item.quantity).toFixed(2).replace('.', ',')}
+                                        R$${(getCartItemPrice(item) * item.quantity).toFixed(2).replace('.', ',')}
                                     </p>
                                     {!currentAttendanceId && (
                                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFromCart(item.id, item.itemType)}>

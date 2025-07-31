@@ -1,5 +1,4 @@
 
-
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp, serverTimestamp } from 'firebase/firestore';
@@ -802,7 +801,6 @@ export default function POSPage() {
                         )}
                     </ScrollArea>
                 </TabsContent>
-                {user?.enabledModules?.combos && (
                 <TabsContent value="combos" className="mt-4 flex-grow">
                     <ScrollArea className="h-[calc(100vh-22rem)]">
                         {loading ? (
@@ -828,8 +826,6 @@ export default function POSPage() {
                         )}
                     </ScrollArea>
                 </TabsContent>
-                )}
-                {user?.enabledModules?.kits && (
                 <TabsContent value="kits" className="mt-4 flex-grow">
                     <ScrollArea className="h-[calc(100vh-22rem)]">
                         {loading ? (
@@ -855,7 +851,6 @@ export default function POSPage() {
                         )}
                     </ScrollArea>
                 </TabsContent>
-                )}
                 <TabsContent value="history" className="mt-4 flex-grow">
                         <SalesHistoryTab salesHistory={salesHistory} />
                 </TabsContent>
@@ -949,6 +944,5 @@ export default function POSPage() {
     </>
   );
 }
-
 
     

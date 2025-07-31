@@ -1,7 +1,7 @@
 // src/app/dashboard/attendance/[id]/attendance-client-page.tsx
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { db, storage } from '@/lib/firebase';
@@ -15,13 +15,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, PlusCircle, Trash2, ArrowLeft, Camera, User, Save, CheckCircle, Clock, Calendar } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, ArrowLeft, Camera, User, Save, CheckCircle, Clock, Calendar, Upload } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { format } from 'date-fns';
 import { Briefcase } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { cn } from '@/lib/utils';
 
 function ItemSelector({ 
     onSelect, 
@@ -98,6 +100,11 @@ export default function AttendanceClientPage({ id }: { id: string }) {
     const [isSaving, setIsSaving] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
 
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [hasCameraPermission, setHasCameraPermission] = useState(true);
+
+
     useEffect(() => {
         if (!id) return;
         const unsub = onSnapshot(doc(db, 'attendances', id as string), (doc) => {
@@ -112,6 +119,37 @@ export default function AttendanceClientPage({ id }: { id: string }) {
         });
         return () => unsub();
     }, [id, router, toast]);
+
+    useEffect(() => {
+        const getCameraPermission = async () => {
+          try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                setHasCameraPermission(false);
+                return;
+            }
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            setHasCameraPermission(true);
+
+            if (videoRef.current) {
+              videoRef.current.srcObject = stream;
+            }
+          } catch (error) {
+            console.error('Erro ao acessar a câmera:', error);
+            setHasCameraPermission(false);
+          }
+        };
+
+        getCameraPermission();
+        
+        return () => {
+            if (videoRef.current && videoRef.current.srcObject) {
+                 const stream = videoRef.current.srcObject as MediaStream;
+                 if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                 }
+            }
+        };
+    }, []);
 
     useEffect(() => {
         if (!currentBranch || !user) return;
@@ -140,7 +178,6 @@ export default function AttendanceClientPage({ id }: { id: string }) {
                     existingItem.quantity += 1;
                     existingItem.total = existingItem.price * existingItem.quantity;
                 } else {
-                    // Don't increase quantity for services, add as new item if needed or block
                     toast({title: 'Serviço já adicionado', variant: 'destructive'});
                     return prev;
                 }
@@ -167,10 +204,9 @@ export default function AttendanceClientPage({ id }: { id: string }) {
         setAttendance(prev => prev ? { ...prev, notes: e.target.value } : null);
     };
 
-    const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files || e.target.files.length === 0 || !attendance) return;
+    const uploadFile = async (file: File) => {
+        if (!attendance) return;
         setIsUploading(true);
-        const file = e.target.files[0];
         const filePath = `attendances/${attendance.id}/${Date.now()}_${file.name}`;
         const storageRef = ref(storage, filePath);
 
@@ -184,6 +220,35 @@ export default function AttendanceClientPage({ id }: { id: string }) {
         } finally {
             setIsUploading(false);
         }
+    };
+
+    const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0) return;
+        const file = e.target.files[0];
+        uploadFile(file);
+    };
+
+    const handleCapturePhoto = () => {
+        if (!videoRef.current || !canvasRef.current || !attendance) return;
+
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const context = canvas.getContext('2d');
+        if (!context) {
+            toast({ title: 'Erro ao capturar', variant: 'destructive'});
+            return;
+        };
+
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        canvas.toBlob((blob) => {
+            if (blob) {
+                const file = new File([blob], `capture-${Date.now()}.jpg`, { type: 'image/jpeg' });
+                uploadFile(file);
+            }
+        }, 'image/jpeg', 0.95);
     };
     
     const handleSave = async (status: AttendanceStatus) => {
@@ -258,30 +323,61 @@ export default function AttendanceClientPage({ id }: { id: string }) {
                         </CardContent>
                     </Card>
 
-                     <Card>
-                        <CardHeader>
-                            <CardTitle>Galeria de Fotos</CardTitle>
-                            <CardDescription>Adicione fotos do atendimento (ex: antes e depois).</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                                {attendance.photos.map(url => (
-                                    <div key={url} className="relative aspect-square">
-                                        <Image src={url} alt="Foto do atendimento" layout="fill" className="rounded-md object-cover"/>
-                                    </div>
-                                ))}
-                            </div>
-                            <div>
-                                <Label htmlFor="photo-upload" className={('w-full', isUploading && 'opacity-50 cursor-not-allowed')}>
-                                    <div className="flex items-center justify-center w-full p-4 border-2 border-dashed rounded-md cursor-pointer hover:bg-muted">
-                                        {isUploading ? <Loader2 className="mr-2 animate-spin"/> : <Camera className="mr-2"/>}
-                                        <span>Adicionar Foto</span>
-                                    </div>
-                                </Label>
-                                <Input id="photo-upload" type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} disabled={isUploading}/>
-                            </div>
-                        </CardContent>
-                    </Card>
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Câmera ao Vivo</CardTitle>
+                                <CardDescription>Capture fotos do atendimento.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="bg-muted rounded-md p-2">
+                                    <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted playsInline />
+                                    <canvas ref={canvasRef} className="hidden" />
+                                </div>
+                                
+                                {!hasCameraPermission && (
+                                    <Alert variant="destructive">
+                                        <Camera className="h-4 w-4"/>
+                                        <AlertTitle>Acesso à Câmera Necessário</AlertTitle>
+                                        <AlertDescription>
+                                            Por favor, habilite a permissão para usar a câmera nas configurações do seu navegador.
+                                        </AlertDescription>
+                                    </Alert>
+                                )}
+
+                                <Button onClick={handleCapturePhoto} disabled={!hasCameraPermission || isUploading} className="w-full">
+                                    {isUploading && <Loader2 className="mr-2 animate-spin" />}
+                                    <Camera className="mr-2" />
+                                    Capturar Foto
+                                </Button>
+                            </CardContent>
+                        </Card>
+                         <Card>
+                            <CardHeader>
+                                <CardTitle>Galeria de Fotos</CardTitle>
+                                <CardDescription>Fotos do atendimento.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="flex flex-col h-full">
+                                <div className="grid grid-cols-2 gap-4 mb-4 flex-grow">
+                                    {attendance.photos.map(url => (
+                                        <div key={url} className="relative aspect-square">
+                                            <Image src={url} alt="Foto do atendimento" layout="fill" className="rounded-md object-cover"/>
+                                        </div>
+                                    ))}
+                                    {isUploading && <div className="relative aspect-square flex items-center justify-center rounded-md border"><Loader2 className="animate-spin"/></div>}
+                                </div>
+                                <div className="mt-auto">
+                                    <Label htmlFor="photo-upload" className={cn('w-full', isUploading && 'opacity-50 cursor-not-allowed')}>
+                                        <div className="flex items-center justify-center w-full p-4 border-2 border-dashed rounded-md cursor-pointer hover:bg-muted">
+                                            <Upload className="mr-2"/>
+                                            <span>Enviar Arquivo</span>
+                                        </div>
+                                    </Label>
+                                    <Input id="photo-upload" type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} disabled={isUploading}/>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
                 </div>
 
                 {/* Right Column */}

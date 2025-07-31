@@ -1,17 +1,49 @@
 
 
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Lock } from 'lucide-react';
+import { Lock, Printer, FileDown } from 'lucide-react';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Sale, Product, Branch, StockEntry } from '@/lib/types';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+
+// --- Report Actions ---
+interface ReportActionsProps {
+  reportId: string;
+  title: string;
+  data: any[];
+  headers: string[];
+  onExportCSV: () => void;
+  onExportExcel: () => void;
+  onExportPDF: () => void;
+}
+function ReportActions({ onExportCSV, onExportExcel, onExportPDF }: ReportActionsProps) {
+  return (
+    <div className="flex gap-2">
+      <Button variant="outline" size="sm" onClick={() => window.print()}>
+        <Printer className="mr-2" /> Imprimir
+      </Button>
+      <Button variant="outline" size="sm" onClick={onExportCSV}>
+        <FileDown className="mr-2" /> CSV
+      </Button>
+      <Button variant="outline" size="sm" onClick={onExportExcel}>
+        <FileDown className="mr-2" /> Excel
+      </Button>
+      <Button variant="outline" size="sm" onClick={onExportPDF}>
+        <FileDown className="mr-2" /> PDF
+      </Button>
+    </div>
+  );
+}
 
 // --- Sales Performance By Branch ---
 interface BranchPerformance {
@@ -37,11 +69,51 @@ function SalesPerformanceReport({ branches, sales }: { branches: Branch[], sales
         };
     });
 
+    const headers = ["Filial", "Receita Total", "Nº de Vendas", "Ticket Médio"];
+    const dataForExport = performanceData.map(p => [
+        p.name,
+        `R$ ${p.totalRevenue.toFixed(2)}`,
+        p.salesCount,
+        `R$ ${p.averageTicket.toFixed(2)}`
+    ]);
+
+    const exportToCSV = () => {
+        const csvContent = [headers.join(','), ...dataForExport.map(row => row.join(','))].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute('download', 'desempenho_vendas.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const exportToExcel = () => {
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...dataForExport]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Desempenho');
+        XLSX.writeFile(wb, 'desempenho_vendas.xlsx');
+    };
+    
+    const exportToPDF = () => {
+        const doc = new jsPDF();
+        doc.text("Desempenho de Vendas por Filial", 14, 16);
+        autoTable(doc, {
+            head: [headers],
+            body: dataForExport,
+            startY: 20
+        });
+        doc.save('desempenho_vendas.pdf');
+    };
+
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Desempenho de Vendas por Filial</CardTitle>
-                <CardDescription>Compare a receita, o número de vendas e o ticket médio entre as filiais.</CardDescription>
+        <Card id="sales-performance-report">
+            <CardHeader className="flex flex-row justify-between items-start">
+                <div>
+                    <CardTitle>Desempenho de Vendas por Filial</CardTitle>
+                    <CardDescription>Compare a receita, o número de vendas e o ticket médio entre as filiais.</CardDescription>
+                </div>
+                <ReportActions onExportCSV={exportToCSV} onExportExcel={exportToExcel} onExportPDF={exportToPDF} reportId="sales-performance" title="Desempenho de Vendas" data={performanceData} headers={headers} />
             </CardHeader>
             <CardContent>
                 <Table>
@@ -80,31 +152,73 @@ interface ProductSalesInfo {
 function BestSellingProductsReport({ branches, products, stockEntries }: { branches: Branch[], products: Product[], stockEntries: StockEntry[] }) {
     const [selectedBranchId, setSelectedBranchId] = useState<string>(branches[0]?.id || '');
 
-    const productsSold = stockEntries
-        .filter(s => s.branchId === selectedBranchId && s.type === 'sale')
-        .reduce((acc, saleEntry) => {
-            acc[saleEntry.productId] = (acc[saleEntry.productId] || 0) + Math.abs(saleEntry.quantity);
-            return acc;
-        }, {} as Record<string, number>);
+    const bestSellers = (() => {
+         const productsSold = stockEntries
+            .filter(s => s.branchId === selectedBranchId && s.type === 'sale')
+            .reduce((acc, saleEntry) => {
+                acc[saleEntry.productId] = (acc[saleEntry.productId] || 0) + Math.abs(saleEntry.quantity);
+                return acc;
+            }, {} as Record<string, number>);
 
-    const bestSellers: ProductSalesInfo[] = Object.entries(productsSold)
-        .map(([productId, quantitySold]) => {
-            const product = products.find(p => p.id === productId)!;
-            return {
-                id: productId,
-                name: product.name,
-                category: product.category,
-                quantitySold,
-            };
-        })
-        .sort((a, b) => b.quantitySold - a.quantitySold)
-        .slice(0, 10); // Top 10
+        return Object.entries(productsSold)
+            .map(([productId, quantitySold]) => {
+                const product = products.find(p => p.id === productId);
+                if (!product) return null;
+                return {
+                    id: productId,
+                    name: product.name,
+                    category: product.category,
+                    quantitySold,
+                };
+            })
+            .filter((p): p is ProductSalesInfo => p !== null)
+            .sort((a, b) => b.quantitySold - a.quantitySold)
+            .slice(0, 10);
+    })();
+    
+    const headers = ["Produto", "Categoria", "Quantidade Vendida"];
+    const dataForExport = bestSellers.map(p => [p.name, p.category, p.quantitySold]);
+
+    const exportToCSV = () => {
+        const csvContent = [headers.join(','), ...dataForExport.map(row => row.join(','))].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute('download', 'produtos_mais_vendidos.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const exportToExcel = () => {
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...dataForExport]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Mais Vendidos');
+        XLSX.writeFile(wb, 'produtos_mais_vendidos.xlsx');
+    };
+    
+    const exportToPDF = () => {
+        const doc = new jsPDF();
+        const branchName = branches.find(b => b.id === selectedBranchId)?.name || '';
+        doc.text(`Produtos Mais Vendidos - ${branchName}`, 14, 16);
+        autoTable(doc, {
+            head: [headers],
+            body: dataForExport,
+            startY: 20
+        });
+        doc.save('produtos_mais_vendidos.pdf');
+    };
 
     return (
-        <Card>
+        <Card id="best-selling-report">
             <CardHeader>
-                <CardTitle>Produtos Mais Vendidos</CardTitle>
-                <CardDescription>Identifique os produtos com maior volume de vendas em uma filial específica.</CardDescription>
+                <div className="flex flex-row justify-between items-start">
+                    <div>
+                        <CardTitle>Produtos Mais Vendidos</CardTitle>
+                        <CardDescription>Identifique os produtos com maior volume de vendas em uma filial específica.</CardDescription>
+                    </div>
+                     <ReportActions onExportCSV={exportToCSV} onExportExcel={exportToExcel} onExportPDF={exportToPDF} reportId="best-selling" title="Mais Vendidos" data={bestSellers} headers={headers} />
+                </div>
                 <div className="pt-2">
                     <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
                         <SelectTrigger className="w-[280px]">
@@ -146,25 +260,73 @@ interface LowStockProduct {
     name: string;
     stock: number;
     threshold: number;
+    branchName: string;
 }
 
 function LowStockReport({ branches, products, stockEntries }: { branches: Branch[], products: Product[], stockEntries: StockEntry[] }) {
     
+    const allLowStockProducts: LowStockProduct[] = [];
     const productsWithStock = products.map(product => {
         const stock = stockEntries
             .filter(e => e.productId === product.id)
             .reduce((sum, e) => sum + e.quantity, 0);
-        return {
-            ...product,
-            stock: stock
-        };
+        return { ...product, stock };
     });
     
+    branches.forEach(branch => {
+        const lowStockProducts = productsWithStock
+            .filter(p => p.branchId === branch.id && p.stock <= p.lowStockThreshold)
+            .map(p => ({
+                id: p.id,
+                name: p.name,
+                stock: p.stock,
+                threshold: p.lowStockThreshold,
+                branchName: branch.name,
+            }));
+        allLowStockProducts.push(...lowStockProducts);
+    });
+
+    const headers = ["Filial", "Produto", "Estoque Atual", "Limite"];
+    const dataForExport = allLowStockProducts.map(p => [p.branchName, p.name, p.stock, p.threshold]);
+    
+    const exportToCSV = () => {
+        const csvContent = [headers.join(','), ...dataForExport.map(row => row.join(','))].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute('download', 'estoque_baixo.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const exportToExcel = () => {
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...dataForExport]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Estoque Baixo');
+        XLSX.writeFile(wb, 'estoque_baixo.xlsx');
+    };
+    
+    const exportToPDF = () => {
+        const doc = new jsPDF();
+        doc.text("Análise de Estoque Baixo", 14, 16);
+        autoTable(doc, {
+            head: [headers],
+            body: dataForExport,
+            startY: 20
+        });
+        doc.save('estoque_baixo.pdf');
+    };
+
+
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Análise de Estoque Baixo</CardTitle>
-                <CardDescription>Liste todos os produtos que atingiram o limite de estoque baixo em cada filial.</CardDescription>
+        <Card id="low-stock-report">
+            <CardHeader className="flex flex-row justify-between items-start">
+                <div>
+                    <CardTitle>Análise de Estoque Baixo</CardTitle>
+                    <CardDescription>Liste todos os produtos que atingiram o limite de estoque baixo em cada filial.</CardDescription>
+                </div>
+                <ReportActions onExportCSV={exportToCSV} onExportExcel={exportToExcel} onExportPDF={exportToPDF} reportId="low-stock" title="Estoque Baixo" data={allLowStockProducts} headers={headers} />
             </CardHeader>
             <CardContent className="space-y-4">
                 {branches.map(branch => {
@@ -286,7 +448,7 @@ export default function ReportsPage() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 printable-area">
             <div>
                 <h1 className="text-3xl font-bold">Relatórios Gerenciais</h1>
                 <p className="text-muted-foreground">Analise o desempenho geral do seu negócio com dados consolidados.</p>
@@ -297,6 +459,27 @@ export default function ReportsPage() {
                 <BestSellingProductsReport branches={branches} products={products} stockEntries={stockEntries} />
                 <LowStockReport branches={branches} products={products} stockEntries={stockEntries} />
             </div>
+
+            <style jsx global>{`
+                @media print {
+                    body * {
+                        visibility: hidden;
+                    }
+                    .printable-area, .printable-area * {
+                        visibility: visible;
+                    }
+                    .printable-area {
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                        width: 100%;
+                    }
+                     .flex.gap-2, .pt-2 {
+                        display: none;
+                    }
+                }
+            `}</style>
         </div>
     );
 }
+

@@ -15,8 +15,8 @@ import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, que
 import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -31,6 +31,7 @@ import { useSearchParams } from 'next/navigation';
 import { Separator } from '@/components/ui/separator';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
 import { ImportAnamnesisQuestionsDialog } from '@/components/import-anamnesis-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 
 
 const availableAvatars = [
@@ -744,6 +745,13 @@ function AnamnesisSettings() {
     const [newQuestion, setNewQuestion] = useState({ label: '', type: 'text' as AnamnesisQuestionType });
     const [isImportOpen, setIsImportOpen] = useState(false);
     const { toast } = useToast();
+    
+    // States for bulk actions
+    const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [isChangeTypeDialogOpen, setIsChangeTypeDialogOpen] = useState(false);
+    const [newBulkType, setNewBulkType] = useState<AnamnesisQuestionType>('text');
+
 
     useEffect(() => {
         if (!user?.organizationId) return;
@@ -786,16 +794,58 @@ function AnamnesisSettings() {
             toast({ title: 'Erro ao adicionar pergunta', variant: 'destructive' });
         }
     };
+    
+    const handleSelectQuestion = (questionId: string, checked: boolean | 'indeterminate') => {
+        setSelectedQuestionIds(prev => 
+            checked ? [...prev, questionId] : prev.filter(id => id !== questionId)
+        );
+    };
 
-    const handleDelete = async (id: string) => {
-        try {
-            await deleteDoc(doc(db, 'anamnesisQuestions', id));
-            // Note: Re-ordering is complex. For now, we accept gaps in the order.
-            toast({ title: 'Pergunta removida!', variant: 'destructive' });
-        } catch (error) {
-            toast({ title: 'Erro ao remover pergunta', variant: 'destructive' });
+    const handleSelectAll = (checked: boolean | 'indeterminate') => {
+        if (checked) {
+            setSelectedQuestionIds(questions.map(q => q.id));
+        } else {
+            setSelectedQuestionIds([]);
         }
     };
+    
+    const handleBulkDelete = async () => {
+        if (selectedQuestionIds.length === 0) return;
+        setIsProcessing(true);
+        const batch = writeBatch(db);
+        selectedQuestionIds.forEach(id => {
+            batch.delete(doc(db, 'anamnesisQuestions', id));
+        });
+        try {
+            await batch.commit();
+            toast({ title: 'Perguntas selecionadas foram excluídas!' });
+            setSelectedQuestionIds([]);
+        } catch (error) {
+            toast({ title: 'Erro ao excluir perguntas', variant: 'destructive' });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleBulkChangeType = async () => {
+        if (selectedQuestionIds.length === 0) return;
+        setIsProcessing(true);
+        const batch = writeBatch(db);
+        selectedQuestionIds.forEach(id => {
+            batch.update(doc(db, 'anamnesisQuestions', id), { type: newBulkType });
+        });
+        try {
+            await batch.commit();
+            toast({ title: 'Tipos de pergunta atualizados com sucesso!' });
+            setSelectedQuestionIds([]);
+            setIsChangeTypeDialogOpen(false);
+        } catch (error) {
+            toast({ title: 'Erro ao atualizar tipos', variant: 'destructive' });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
 
     const handleImport = async (importedQuestions: Omit<AnamnesisQuestion, 'id' | 'organizationId' | 'order'>[]) => {
       if (!user?.organizationId) {
@@ -833,21 +883,61 @@ function AnamnesisSettings() {
     return (
          <Card>
             <CardHeader>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center flex-wrap gap-2">
                     <div>
                         <CardTitle>Perguntas da Anamnese</CardTitle>
                         <CardDescription>Configure as perguntas que aparecerão no formulário de anamnese dos clientes.</CardDescription>
                     </div>
-                     <ImportAnamnesisQuestionsDialog
-                        isOpen={isImportOpen}
-                        onOpenChange={setIsImportOpen}
-                        onImport={handleImport}
-                    >
-                         <Button variant="outline">
-                            <FileUp className="mr-2" />
-                            Importar Perguntas
-                        </Button>
-                    </ImportAnamnesisQuestionsDialog>
+                     <div className="flex gap-2">
+                        {selectedQuestionIds.length > 0 && (
+                             <AlertDialog>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="outline">
+                                            <ListChecks className="mr-2" />
+                                            Ações em Lote ({selectedQuestionIds.length})
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent>
+                                        <DropdownMenuItem onClick={() => setIsChangeTypeDialogOpen(true)}>
+                                            Alterar Tipo
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <AlertDialogTrigger asChild>
+                                            <DropdownMenuItem className="text-destructive focus:text-destructive">
+                                                <Trash2 className="mr-2" /> Excluir Selecionadas
+                                            </DropdownMenuItem>
+                                        </AlertDialogTrigger>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Excluir Perguntas</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            Tem certeza que deseja excluir as {selectedQuestionIds.length} perguntas selecionadas?
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                        <AlertDialogAction onClick={handleBulkDelete} disabled={isProcessing} className={buttonVariants({variant: 'destructive'})}>
+                                            {isProcessing && <Loader2 className="mr-2 animate-spin"/>}
+                                            Excluir
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        )}
+                        <ImportAnamnesisQuestionsDialog
+                            isOpen={isImportOpen}
+                            onOpenChange={setIsImportOpen}
+                            onImport={handleImport}
+                        >
+                             <Button variant="outline">
+                                <FileUp className="mr-2" />
+                                Importar
+                            </Button>
+                        </ImportAnamnesisQuestionsDialog>
+                    </div>
                 </div>
             </CardHeader>
             <CardContent>
@@ -868,11 +958,9 @@ function AnamnesisSettings() {
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="text">Discursiva</SelectItem>
-                                <SelectItem value="boolean">Sim / Não</SelectItem>
-                                <SelectItem value="boolean_with_text">Sim / Não com Texto</SelectItem>
-                                <SelectItem value="integer">Número Inteiro</SelectItem>
-                                <SelectItem value="decimal">Número Decimal</SelectItem>
+                                {Object.entries(typeNames).map(([key, name]) => (
+                                    <SelectItem key={key} value={key}>{name}</SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>
@@ -883,6 +971,12 @@ function AnamnesisSettings() {
                  <Table>
                     <TableHeader>
                         <TableRow>
+                            <TableHead className="w-[50px]">
+                                <Checkbox
+                                    checked={questions.length > 0 && selectedQuestionIds.length === questions.length}
+                                    onCheckedChange={handleSelectAll}
+                                />
+                            </TableHead>
                             <TableHead>Pergunta</TableHead>
                             <TableHead>Tipo</TableHead>
                             <TableHead className="text-right">Ações</TableHead>
@@ -890,10 +984,18 @@ function AnamnesisSettings() {
                     </TableHeader>
                     <TableBody>
                          {loading ? (
-                            <TableRow><TableCell colSpan={3}><Skeleton className="h-5 w-full" /></TableCell></TableRow>
-                        ) : (
+                            Array.from({length: 3}).map((_, i) => (
+                                <TableRow key={i}><TableCell colSpan={4}><Skeleton className="h-5 w-full" /></TableCell></TableRow>
+                            ))
+                        ) : questions.length > 0 ? (
                             questions.map(q => (
-                                <TableRow key={q.id}>
+                                <TableRow key={q.id} data-state={selectedQuestionIds.includes(q.id) && "selected"}>
+                                    <TableCell>
+                                        <Checkbox
+                                            checked={selectedQuestionIds.includes(q.id)}
+                                            onCheckedChange={(checked) => handleSelectQuestion(q.id, checked)}
+                                        />
+                                    </TableCell>
                                     <TableCell className="font-medium">{q.label}</TableCell>
                                     <TableCell>
                                         <Badge variant="outline">
@@ -901,16 +1003,55 @@ function AnamnesisSettings() {
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        <Button variant="ghost" size="icon" onClick={() => handleDelete(q.id)}>
+                                        <Button variant="ghost" size="icon" onClick={() => {
+                                            if (window.confirm('Tem certeza que deseja excluir esta pergunta?')) {
+                                                const batch = writeBatch(db);
+                                                batch.delete(doc(db, 'anamnesisQuestions', q.id));
+                                                batch.commit();
+                                            }
+                                        }}>
                                             <Trash2 className="h-4 w-4 text-destructive" />
                                         </Button>
                                     </TableCell>
                                 </TableRow>
                             ))
+                        ) : (
+                             <TableRow>
+                                <TableCell colSpan={4} className="h-24 text-center">Nenhuma pergunta encontrada.</TableCell>
+                             </TableRow>
                         )}
                     </TableBody>
                 </Table>
             </CardContent>
+            
+             <Dialog open={isChangeTypeDialogOpen} onOpenChange={setIsChangeTypeDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Alterar Tipo de Pergunta em Lote</DialogTitle>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <Label htmlFor="newBulkType">Novo Tipo</Label>
+                        <Select value={newBulkType} onValueChange={setNewBulkType}>
+                            <SelectTrigger id="newBulkType">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {Object.entries(typeNames).map(([key, name]) => (
+                                    <SelectItem key={key} value={key}>{name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setIsChangeTypeDialogOpen(false)}>Cancelar</Button>
+                        <Button onClick={handleBulkChangeType} disabled={isProcessing}>
+                            {isProcessing && <Loader2 className="mr-2 animate-spin"/>}
+                            Alterar Tipo
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
         </Card>
     );
 }
@@ -1034,3 +1175,5 @@ export default function SettingsPage() {
         </React.Suspense>
     )
 }
+
+    

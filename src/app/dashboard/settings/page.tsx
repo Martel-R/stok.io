@@ -754,7 +754,10 @@ function AnamnesisSettings() {
 
 
     useEffect(() => {
-        if (!user?.organizationId) return;
+        if (!user?.organizationId) {
+            setLoading(false);
+            return;
+        };
         const q = query(
             collection(db, 'anamnesisQuestions'), 
             where('organizationId', '==', user.organizationId),
@@ -1031,7 +1034,7 @@ function AnamnesisSettings() {
                     </DialogHeader>
                     <div className="py-4">
                         <Label htmlFor="newBulkType">Novo Tipo</Label>
-                        <Select value={newBulkType} onValueChange={setNewBulkType}>
+                        <Select value={newBulkType} onValueChange={(val: AnamnesisQuestionType) => setNewBulkType(val)}>
                             <SelectTrigger id="newBulkType">
                                 <SelectValue />
                             </SelectTrigger>

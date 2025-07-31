@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch, getDocs, orderBy } from 'firebase/firestore';
 import type { Customer, AnamnesisQuestion, AnamnesisAnswer } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Search, FileText } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Search, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -34,12 +34,14 @@ function CustomerForm({
     onSave: (data: Partial<Customer>) => void; 
     onDone: () => void 
 }) {
-    const [formData, setFormData] = useState<Partial<Customer>>(() => {
+    const [formData, setFormData] = useState<Partial<Customer>>({});
+    
+    useEffect(() => {
         const initialData = customer || { 
             name: '', cpfCnpj: '', email: '', phone: '', address: '', isActive: true, 
             anamnesisAnswers: [] 
         };
-        // Ensure every question has a corresponding answer placeholder
+
         const existingAnswers = new Map(initialData.anamnesisAnswers?.map(a => [a.questionId, a]));
         const fullAnswers = anamnesisQuestions.map(q => {
             const existing = existingAnswers.get(q.id);
@@ -48,10 +50,10 @@ function CustomerForm({
             let defaultAnswer: any;
             switch(q.type) {
                 case 'boolean':
-                    defaultAnswer = ''; // Not answered yet
+                    defaultAnswer = null; // Use null for 'not answered'
                     break;
                 case 'boolean_with_text':
-                    defaultAnswer = { choice: '', details: ''}; // Not answered yet
+                    defaultAnswer = { choice: null, details: ''}; // Use null for 'not answered'
                     break;
                 case 'integer':
                 case 'decimal':
@@ -68,8 +70,8 @@ function CustomerForm({
                 answer: defaultAnswer
             };
         });
-        return { ...initialData, anamnesisAnswers: fullAnswers as AnamnesisAnswer[] };
-    });
+        setFormData({ ...initialData, anamnesisAnswers: fullAnswers as AnamnesisAnswer[] });
+    }, [customer, anamnesisQuestions]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -90,6 +92,64 @@ function CustomerForm({
         onSave(formData);
         onDone();
     };
+    
+    const renderAnswerInput = (question: AnamnesisQuestion) => {
+        const answer = formData.anamnesisAnswers?.find(a => a.questionId === question.id);
+        if (!answer) return null;
+
+        switch(question.type) {
+            case 'text':
+                return (
+                    <Textarea 
+                        value={answer.answer || ''}
+                        onChange={(e) => handleAnamnesisChange(question.id, e.target.value)}
+                    />
+                );
+            case 'boolean':
+                return (
+                    <RadioGroup
+                        value={answer.answer === true ? 'sim' : answer.answer === false ? 'nao' : ''}
+                        onValueChange={(val) => handleAnamnesisChange(question.id, val === 'sim')}
+                        className="flex space-x-4"
+                    >
+                        <div className="flex items-center space-x-2"><RadioGroupItem value="sim" id={`${question.id}-sim`} /><Label htmlFor={`${question.id}-sim`}>Sim</Label></div>
+                        <div className="flex items-center space-x-2"><RadioGroupItem value="nao" id={`${question.id}-nao`} /><Label htmlFor={`${question.id}-nao`}>Não</Label></div>
+                    </RadioGroup>
+                );
+            case 'boolean_with_text':
+                return (
+                    <div className="space-y-2">
+                        <RadioGroup
+                            value={answer.answer?.choice === true ? 'sim' : answer.answer?.choice === false ? 'nao' : ''}
+                            onValueChange={(val) => handleAnamnesisChange(question.id, { ...answer.answer, choice: val === 'sim' })}
+                            className="flex space-x-4"
+                        >
+                            <div className="flex items-center space-x-2"><RadioGroupItem value="sim" id={`${question.id}-sim-wt`} /><Label htmlFor={`${question.id}-sim-wt`}>Sim</Label></div>
+                            <div className="flex items-center space-x-2"><RadioGroupItem value="nao" id={`${question.id}-nao-wt`} /><Label htmlFor={`${question.id}-nao-wt`}>Não</Label></div>
+                        </RadioGroup>
+                        {answer.answer?.choice === true && (
+                            <Textarea 
+                                value={answer.answer.details || ''}
+                                onChange={(e) => handleAnamnesisChange(question.id, { ...answer.answer, details: e.target.value })}
+                                placeholder="Se sim, especifique..."
+                            />
+                        )}
+                    </div>
+                );
+            case 'integer':
+            case 'decimal':
+                return (
+                    <Input 
+                        type="number"
+                        step={question.type === 'decimal' ? '0.01' : '1'}
+                        value={answer.answer === null || answer.answer === undefined ? '' : answer.answer}
+                        onChange={(e) => handleAnamnesisChange(question.id, e.target.value === '' ? null : (question.type === 'decimal' ? parseFloat(e.target.value) : parseInt(e.target.value, 10)))}
+                    />
+                );
+            default:
+                return null;
+        }
+    };
 
     return (
         <form onSubmit={handleSubmit}>
@@ -102,26 +162,26 @@ function CustomerForm({
                      <div className="grid grid-cols-2 gap-4">
                          <div className="space-y-2">
                             <Label htmlFor="name">Nome Completo</Label>
-                            <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
+                            <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} required />
                         </div>
                          <div className="space-y-2">
                             <Label htmlFor="cpfCnpj">CPF/CNPJ</Label>
-                            <Input id="cpfCnpj" name="cpfCnpj" value={formData.cpfCnpj} onChange={handleChange} required />
+                            <Input id="cpfCnpj" name="cpfCnpj" value={formData.cpfCnpj || ''} onChange={handleChange} required />
                         </div>
                     </div>
                      <div className="grid grid-cols-2 gap-4">
                          <div className="space-y-2">
                             <Label htmlFor="email">Email</Label>
-                            <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required />
+                            <Input id="email" name="email" type="email" value={formData.email || ''} onChange={handleChange} required />
                         </div>
                          <div className="space-y-2">
                             <Label htmlFor="phone">Telefone</Label>
-                            <Input id="phone" name="phone" value={formData.phone} onChange={handleChange} required />
+                            <Input id="phone" name="phone" value={formData.phone || ''} onChange={handleChange} required />
                         </div>
                     </div>
                      <div className="space-y-2">
                         <Label htmlFor="address">Endereço Completo</Label>
-                        <Input id="address" name="address" value={formData.address} onChange={handleChange} required />
+                        <Input id="address" name="address" value={formData.address || ''} onChange={handleChange} required />
                     </div>
                     <div className="flex items-center space-x-2">
                         <Switch 
@@ -133,69 +193,12 @@ function CustomerForm({
                      </div>
                 </TabsContent>
                 <TabsContent value="anamnesis" className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
-                   {anamnesisQuestions.map(question => {
-                        const answer = formData.anamnesisAnswers?.find(a => a.questionId === question.id);
-                        return (
-                            <div key={question.id} className="space-y-2 border-b pb-4">
-                                <Label>{question.label}</Label>
-                                {question.type === 'text' && (
-                                    <Textarea 
-                                        value={answer?.answer || ''}
-                                        onChange={(e) => handleAnamnesisChange(question.id, e.target.value)}
-                                    />
-                                )}
-                                {question.type === 'boolean' && (
-                                    <RadioGroup
-                                        value={answer?.answer === true ? 'sim' : answer?.answer === false ? 'nao' : ''}
-                                        onValueChange={(val) => handleAnamnesisChange(question.id, val === 'sim' ? true : false)}
-                                        className="flex space-x-4"
-                                    >
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value="sim" id={`${question.id}-sim`} />
-                                            <Label htmlFor={`${question.id}-sim`}>Sim</Label>
-                                        </div>
-                                         <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value="nao" id={`${question.id}-nao`} />
-                                            <Label htmlFor={`${question.id}-nao`}>Não</Label>
-                                        </div>
-                                    </RadioGroup>
-                                )}
-                                 {question.type === 'boolean_with_text' && (
-                                    <div className="space-y-2">
-                                        <RadioGroup
-                                            value={answer?.answer?.choice === true ? 'sim' : answer?.answer?.choice === false ? 'nao' : ''}
-                                            onValueChange={(val) => handleAnamnesisChange(question.id, { ...answer?.answer, choice: val === 'sim' })}
-                                            className="flex space-x-4"
-                                        >
-                                            <div className="flex items-center space-x-2">
-                                                <RadioGroupItem value="sim" id={`${question.id}-sim`} />
-                                                <Label htmlFor={`${question.id}-sim`}>Sim</Label>
-                                            </div>
-                                            <div className="flex items-center space-x-2">
-                                                <RadioGroupItem value="nao" id={`${question.id}-nao`} />
-                                                <Label htmlFor={`${question.id}-nao`}>Não</Label>
-                                            </div>
-                                        </RadioGroup>
-                                        {answer?.answer?.choice === true && (
-                                            <Textarea 
-                                                value={answer.answer.details || ''}
-                                                onChange={(e) => handleAnamnesisChange(question.id, { ...answer.answer, details: e.target.value })}
-                                                placeholder="Se sim, especifique..."
-                                            />
-                                        )}
-                                    </div>
-                                )}
-                                 {(question.type === 'integer' || question.type === 'decimal') && (
-                                    <Input 
-                                        type="number"
-                                        step={question.type === 'decimal' ? '0.01' : '1'}
-                                        value={answer?.answer || ''}
-                                        onChange={(e) => handleAnamnesisChange(question.id, question.type === 'decimal' ? parseFloat(e.target.value) : parseInt(e.target.value, 10))}
-                                    />
-                                )}
-                            </div>
-                        )
-                   })}
+                   {anamnesisQuestions.map(question => (
+                        <div key={question.id} className="space-y-2 border-b pb-4">
+                            <Label>{question.label}</Label>
+                            {renderAnswerInput(question)}
+                        </div>
+                   ))}
                 </TabsContent>
             </Tabs>
 
@@ -250,7 +253,7 @@ export default function CustomersPage() {
         if (!searchQuery) return customers;
         return customers.filter(c => 
             c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (c.email && c.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
             c.cpfCnpj.includes(searchQuery)
         );
     }, [customers, searchQuery]);
@@ -339,7 +342,7 @@ export default function CustomersPage() {
         <div className="space-y-6">
             <div className="flex justify-between items-center gap-4">
                 <div className="flex items-center gap-4">
-                    <FileText className="h-10 w-10 text-primary" />
+                    <Users className="h-10 w-10 text-primary" />
                     <div>
                         <h1 className="text-3xl font-bold">Clientes</h1>
                         <p className="text-muted-foreground">

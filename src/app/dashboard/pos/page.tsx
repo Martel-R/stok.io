@@ -505,15 +505,15 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-4xl grid-rows-[auto,1fr,auto]">
+            <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col">
                 <DialogHeader>
                     <DialogTitle>Monte seu Kit: {kit.name}</DialogTitle>
                     <DialogDescription>Selecione {kit.numberOfItems} dos produtos abaixo. Você pode selecionar o mesmo produto mais de uma vez.</DialogDescription>
                 </DialogHeader>
-                <div className="grid md:grid-cols-2 gap-6 overflow-hidden">
-                    <div className="flex flex-col gap-4">
+                <div className="flex flex-col md:flex-row gap-6 overflow-hidden flex-grow">
+                    <div className="flex flex-col gap-4 md:w-1/2">
                         <h3 className="font-semibold">Produtos Disponíveis</h3>
-                        <ScrollArea className="h-96 border rounded-md">
+                        <ScrollArea className="flex-grow border rounded-md">
                             <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
                                 {eligibleProducts.map(p => (
                                     <Card
@@ -534,9 +534,9 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                             </div>
                         </ScrollArea>
                     </div>
-                     <div className="flex flex-col gap-4">
+                     <div className="flex flex-col gap-4 md:w-1/2">
                         <h3 className="font-semibold">Sua Seleção ({selectedProducts.length} de {kit.numberOfItems})</h3>
-                        <ScrollArea className="h-96 border rounded-md p-4">
+                        <ScrollArea className="flex-grow border rounded-md p-4">
                            {selectedProducts.length === 0 ? (
                                 <div className="flex items-center justify-center h-full text-muted-foreground">
                                     Selecione produtos da lista ao lado.
@@ -1099,7 +1099,7 @@ export default function POSPage() {
                                         {(item.itemType === 'combo' || item.itemType === 'kit' || item.itemType === 'service') && <Badge variant="secondary">{item.itemType}</Badge>}
                                     </p>
                                     <p className="text-sm text-muted-foreground">
-                                        {item.itemType === 'kit' 
+                                        {item.itemType === 'kit'
                                             ? `Total do Kit: R$${item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
                                             : item.itemType === 'service'
                                             ? `Serviço: R$${item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`

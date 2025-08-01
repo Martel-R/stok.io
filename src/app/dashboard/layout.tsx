@@ -31,7 +31,7 @@ function DashboardNav() {
         { href: '/dashboard/products', label: 'Produtos', icon: Package, roles: ['admin', 'manager'], module: 'products' },
         { href: '/dashboard/combos', label: 'Combos', icon: Gift, roles: ['admin', 'manager'], module: 'combos' },
         { href: '/dashboard/kits', label: 'Kits', icon: Component, roles: ['admin', 'manager'], module: 'kits' },
-        { href: '/dashboard/inventory', label: 'Movimentação', icon: BarChart, roles: ['admin', 'manager'], module: 'inventory' },
+        { href: '/dashboard/inventory', label: 'Movimentação', icon: BarChart, roles: ['admin', 'manager', 'atendimento'], module: 'inventory' },
         { href: '/dashboard/pos', label: 'Frente de Caixa', icon: ShoppingCart, roles: ['admin', 'manager', 'atendimento'], module: 'pos' },
         { href: '/dashboard/assistant', label: 'Oráculo AI', icon: Bot, roles: ['admin', 'manager'], module: 'assistant' },
         { href: '/dashboard/reports', label: 'Relatórios', icon: FileText, roles: ['admin'], module: 'reports' },
@@ -298,3 +298,5 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </SidebarProvider>
     );
 }
+
+    

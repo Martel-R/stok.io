@@ -12,12 +12,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import Link from 'next/link';
 import { format, startOfDay, endOfDay, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, ArrowRightLeft, MinusCircle, Package, History } from 'lucide-react';
+import { PlusCircle, ArrowRightLeft, MinusCircle, Package, History, Search } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { StockMovementForm } from '@/components/stock-movement-form';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
 
 const convertDate = (dateField: any): Date => {
     if (dateField instanceof Timestamp) return dateField.toDate();
@@ -46,6 +47,7 @@ export default function InventoryPage() {
     const [formType, setFormType] = useState<'entry' | 'adjustment' | 'transfer'>('entry');
     const [selectedHistoryItem, setSelectedHistoryItem] = useState<DailyStockSummary | null>(null);
     const { toast } = useToast();
+    const [searchQuery, setSearchQuery] = useState("");
 
     useEffect(() => {
         if (authLoading || !currentBranch) {
@@ -81,6 +83,14 @@ export default function InventoryPage() {
             return { ...product, stock };
         });
     }, [products, allStockEntries]);
+
+    const filteredProductsWithStock = useMemo(() => {
+        if (!searchQuery) return productsWithStock;
+        return productsWithStock.filter(p =>
+            p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            p.category.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }, [productsWithStock, searchQuery]);
 
     const dailyStockHistory = useMemo(() => {
         const sortedEntries = [...allStockEntries].sort((a,b) => a.date.getTime() - b.date.getTime());
@@ -154,35 +164,39 @@ export default function InventoryPage() {
         )
     }
 
+    const canManageStock = user?.role === 'admin' || user?.role === 'manager';
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                 <h1 className="text-3xl font-bold">Gestão de Estoque</h1>
-                <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                    <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" onClick={() => handleOpenForm('entry')}><PlusCircle className="mr-2" />Entrada</Button>
-                        <Button variant="outline" onClick={() => handleOpenForm('adjustment')}><MinusCircle className="mr-2" />Saída</Button>
-                        <Button variant="outline" onClick={() => handleOpenForm('transfer')} disabled={branches.length <= 1}><ArrowRightLeft className="mr-2" />Transferir</Button>
-                    </div>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>
-                                {formType === 'entry' && 'Entrada de Estoque'}
-                                {formType === 'adjustment' && 'Saída de Estoque'}
-                                {formType === 'transfer' && 'Transferência de Estoque'}
-                            </DialogTitle>
-                             <DialogDescription>
-                                {formType === 'transfer' ? "Selecione o produto, quantidade e filial de destino." : "Selecione o produto e a quantidade para registrar a movimentação."}
-                            </DialogDescription>
-                        </DialogHeader>
-                        <StockMovementForm 
-                            type={formType}
-                            products={products}
-                            branches={branches.filter(b => b.id !== currentBranch?.id)}
-                            onDone={() => setIsFormOpen(false)}
-                        />
-                    </DialogContent>
-                </Dialog>
+                {canManageStock && (
+                    <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                        <div className="flex flex-wrap gap-2">
+                            <Button variant="outline" onClick={() => handleOpenForm('entry')}><PlusCircle className="mr-2" />Entrada</Button>
+                            <Button variant="outline" onClick={() => handleOpenForm('adjustment')}><MinusCircle className="mr-2" />Saída</Button>
+                            <Button variant="outline" onClick={() => handleOpenForm('transfer')} disabled={branches.length <= 1}><ArrowRightLeft className="mr-2" />Transferir</Button>
+                        </div>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>
+                                    {formType === 'entry' && 'Entrada de Estoque'}
+                                    {formType === 'adjustment' && 'Saída de Estoque'}
+                                    {formType === 'transfer' && 'Transferência de Estoque'}
+                                </DialogTitle>
+                                 <DialogDescription>
+                                    {formType === 'transfer' ? "Selecione o produto, quantidade e filial de destino." : "Selecione o produto e a quantidade para registrar a movimentação."}
+                                </DialogDescription>
+                            </DialogHeader>
+                            <StockMovementForm 
+                                type={formType}
+                                products={products}
+                                branches={branches.filter(b => b.id !== currentBranch?.id)}
+                                onDone={() => setIsFormOpen(false)}
+                            />
+                        </DialogContent>
+                    </Dialog>
+                )}
             </div>
 
             <Tabs defaultValue="current">
@@ -195,6 +209,16 @@ export default function InventoryPage() {
                         <CardHeader>
                             <CardTitle>Estoque Atual</CardTitle>
                             <CardDescription>Visão geral das quantidades de cada produto na filial.</CardDescription>
+                            <div className="relative pt-2">
+                                <Search className="absolute left-2.5 top-4.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    type="search"
+                                    placeholder="Buscar produto por nome ou categoria..."
+                                    className="w-full rounded-lg bg-background pl-8"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                            </div>
                         </CardHeader>
                         <CardContent>
                             <Table>
@@ -214,8 +238,8 @@ export default function InventoryPage() {
                                                 <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                                             </TableRow>
                                         ))
-                                    ) : productsWithStock.length > 0 ? (
-                                        productsWithStock.map((item) => (
+                                    ) : filteredProductsWithStock.length > 0 ? (
+                                        filteredProductsWithStock.map((item) => (
                                             <TableRow key={item.id}>
                                                 <TableCell className="font-medium">{item.name}</TableCell>
                                                 <TableCell>{item.category}</TableCell>

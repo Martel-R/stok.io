@@ -586,6 +586,7 @@ export default function POSPage() {
   const [selectedKit, setSelectedKit] = useState<Kit | null>(null);
   const [currentAttendanceId, setCurrentAttendanceId] = useState<string | undefined>(undefined);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const { toast } = useToast();
   const { user, currentBranch, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -649,6 +650,18 @@ export default function POSPage() {
         unsubscribeSales();
     }
   }, [currentBranch, authLoading, user]);
+
+  const filteredProducts = useMemo(() => {
+    return products.filter(p => p.isSalable && p.stock > 0 && p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  }, [products, searchQuery]);
+  
+  const filteredCombos = useMemo(() => {
+    return combos.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  }, [combos, searchQuery]);
+  
+  const filteredKits = useMemo(() => {
+    return kits.filter(k => k.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  }, [kits, searchQuery]);
   
   const handleKitSelection = (kit: Kit, chosenProducts: Product[]) => {
       const originalPrice = chosenProducts.reduce((sum, p) => sum + p.price, 0);
@@ -921,8 +934,6 @@ export default function POSPage() {
     )
   }
 
-  const salableProducts = products.filter(p => p.isSalable && p.stock > 0);
-
   const getCartItemPrice = (item: CartItem) => {
       switch (item.itemType) {
           case 'product': return (item as ProductWithStock).price;
@@ -943,20 +954,30 @@ export default function POSPage() {
               <CardDescription>Selecione os produtos, combos ou kits para adicionar ao carrinho.</CardDescription>
           </CardHeader>
           <CardContent className="flex-grow flex flex-col">
-            <Tabs defaultValue="products" className="flex-grow flex flex-col">
+            <Tabs defaultValue="products" className="flex-grow flex flex-col" onValueChange={() => setSearchQuery('')}>
                  <TabsList className="grid w-full grid-flow-col auto-cols-fr">
                     {user?.enabledModules?.appointments && <TabsTrigger value="pending"><UserCheck className="mr-2 h-4 w-4"/> Atendimentos</TabsTrigger>}
                     <TabsTrigger value="products"><Package className="mr-2 h-4 w-4"/> Produtos</TabsTrigger>
                     {user?.enabledModules?.combos && <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Combos</TabsTrigger>}
                     {user?.enabledModules?.kits && <TabsTrigger value="kits"><Component className="mr-2 h-4 w-4"/> Kits</TabsTrigger>}
-                    <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/> Histórico</TabsTrigger>
+                    <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/> Histórico</TabsTrigger>}
                 </TabsList>
+                <div className="relative pt-4">
+                    <Search className="absolute left-2.5 top-6.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        type="search"
+                        placeholder="Buscar item..."
+                        className="w-full rounded-lg bg-background pl-8"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                </div>
 
                  <TabsContent value="pending" className="mt-4 flex-grow">
                     <PendingAttendancesTab onSelect={handleSelectAttendance} />
                 </TabsContent>
                 <TabsContent value="products" className="mt-4 flex-grow">
-                    <ScrollArea className="h-[calc(100vh-22rem)]">
+                    <ScrollArea className="h-[calc(100vh-25rem)]">
                         {loading ? (
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                             {Array.from({ length: 10 }).map((_, i) => (
@@ -971,7 +992,7 @@ export default function POSPage() {
                             </div>
                         ) : (
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {salableProducts.map((product) => (
+                            {filteredProducts.map((product) => (
                                 <Card 
                                 key={product.id} 
                                 onClick={() => addToCart(product, 'product')} 
@@ -990,14 +1011,14 @@ export default function POSPage() {
                     </ScrollArea>
                 </TabsContent>
                 <TabsContent value="combos" className="mt-4 flex-grow">
-                    <ScrollArea className="h-[calc(100vh-22rem)]">
+                    <ScrollArea className="h-[calc(100vh-25rem)]">
                         {loading ? (
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                             {Array.from({ length: 5 }).map((_, i) => ( <Skeleton key={i} className="h-[150px] w-full" /> ))}
                             </div>
                         ) : (
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {combos.map((combo) => (
+                            {filteredCombos.map((combo) => (
                                 <Card 
                                 key={combo.id} 
                                 onClick={() => addToCart(combo, 'combo')} 
@@ -1015,14 +1036,14 @@ export default function POSPage() {
                     </ScrollArea>
                 </TabsContent>
                 <TabsContent value="kits" className="mt-4 flex-grow">
-                    <ScrollArea className="h-[calc(100vh-22rem)]">
+                    <ScrollArea className="h-[calc(100vh-25rem)]">
                         {loading ? (
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                             {Array.from({ length: 5 }).map((_, i) => ( <Skeleton key={i} className="h-[150px] w-full" /> ))}
                             </div>
                         ) : (
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {kits.map((kit) => (
+                            {filteredKits.map((kit) => (
                                 <Card 
                                 key={kit.id} 
                                 onClick={() => setSelectedKit(kit)} 
@@ -1151,3 +1172,4 @@ export default function POSPage() {
   );
 }
 
+    

@@ -511,7 +511,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                     <DialogDescription>Selecione {kit.numberOfItems} dos produtos abaixo. Você pode selecionar o mesmo produto mais de uma vez.</DialogDescription>
                 </DialogHeader>
                 <div className="flex flex-col md:flex-row gap-6 overflow-hidden flex-grow">
-                    <div className="flex flex-col gap-4 md:w-1/2">
+                    <div className="flex flex-col gap-4 md:w-1/2 flex-1">
                         <h3 className="font-semibold">Produtos Disponíveis</h3>
                         <ScrollArea className="flex-grow border rounded-md">
                             <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -534,7 +534,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                             </div>
                         </ScrollArea>
                     </div>
-                     <div className="flex flex-col gap-4 md:w-1/2">
+                     <div className="flex flex-col gap-4 md:w-1/2 flex-1">
                         <h3 className="font-semibold">Sua Seleção ({selectedProducts.length} de {kit.numberOfItems})</h3>
                         <ScrollArea className="flex-grow border rounded-md p-4">
                            {selectedProducts.length === 0 ? (

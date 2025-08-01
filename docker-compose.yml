@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  stokio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Estas variáveis precisam estar em um arquivo .env na raiz do projeto
+        # ou serem definidas no ambiente onde o docker-compose é executado.
+        - NEXT_PUBLIC_FIREBASE_API_KEY=${NEXT_PUBLIC_FIREBASE_API_KEY}
+        - NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN}
+        - NEXT_PUBLIC_FIREBASE_PROJECT_ID=${NEXT_PUBLIC_FIREBASE_PROJECT_ID}
+        - NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET}
+        - NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID}
+        - NEXT_PUBLIC_FIREBASE_APP_ID=${NEXT_PUBLIC_FIREBASE_APP_ID}
+        - NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=${NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID}
+        - NEXT_PUBLIC_RECAPTCHA_SITE_KEY=${NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
+        - NEXT_PUBLIC_SUPER_ADMIN_EMAIL=${NEXT_PUBLIC_SUPER_ADMIN_EMAIL}
+    container_name: stokio_app
+    restart: unless-stopped
+    ports:
+      # O serviço roda na porta 3000 dentro do container e o Traefik acessa essa porta.
+      # A porta externa (9001) não precisa ser exposta aqui se você usa o Traefik como proxy.
+      - "9001:3000"
+    networks:
+      - traefik_proxy # Rede do Traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.stokio.rule=Host(`stokio.martel.page`)"
+      - "traefik.http.routers.stokio.entrypoints=websecure"
+      - "traefik.http.routers.stokio.tls.certresolver=cloudflare"
+      - "traefik.http.services.stokio.loadbalancer.server.port=3000"
+
+networks:
+  traefik_proxy:
+    external: true

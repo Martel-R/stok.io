@@ -1087,7 +1087,7 @@ export default function POSPage() {
                 {cart.length === 0 ? (
                     <div className="text-muted-foreground text-center space-y-4">
                         <p>O carrinho está vazio</p>
-                        {!currentAttendanceId && <CustomerSelector onSelect={setSelectedCustomer} />}
+                        {!currentAttendanceId && user?.enabledModules?.customers && <CustomerSelector onSelect={setSelectedCustomer} />}
                     </div>
                 ) : (
                     <div className="space-y-4">
@@ -1172,4 +1172,3 @@ export default function POSPage() {
   );
 }
 
-    

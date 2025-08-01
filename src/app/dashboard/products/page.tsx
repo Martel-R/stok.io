@@ -411,9 +411,9 @@ export default function ProductsPage() {
 
   return (
     <div className="space-y-6">
-       <div className="flex justify-between items-center gap-4">
+       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <h1 className="text-3xl font-bold">Produtos</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
             {selectedProductIds.length > 0 && (
                  <AlertDialog>
                     <DropdownMenu>

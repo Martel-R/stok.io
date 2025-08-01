@@ -209,7 +209,7 @@ function UsersTable() {
     return (
         <Card>
             <CardHeader>
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                     <div>
                         <CardTitle>Usuários</CardTitle>
                         <CardDescription>Gerencie as permissões dos usuários da sua organização.</CardDescription>
@@ -377,7 +377,7 @@ function BranchesSettings() {
     return (
         <Card>
             <CardHeader>
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                     <div>
                         <CardTitle>Filiais</CardTitle>
                         <CardDescription>Gerencie as unidades de negócio da sua empresa.</CardDescription>
@@ -906,12 +906,12 @@ function AnamnesisSettings() {
     return (
          <Card>
             <CardHeader>
-                <div className="flex justify-between items-center flex-wrap gap-2">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                     <div>
                         <CardTitle>Perguntas da Anamnese</CardTitle>
                         <CardDescription>Configure as perguntas que aparecerão no formulário de anamnese dos clientes.</CardDescription>
                     </div>
-                     <div className="flex gap-2">
+                     <div className="flex flex-wrap gap-2">
                         <ImportAnamnesisQuestionsDialog
                             isOpen={isImportOpen}
                             onOpenChange={setIsImportOpen}

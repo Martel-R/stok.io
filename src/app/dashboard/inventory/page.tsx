@@ -156,10 +156,10 @@ export default function InventoryPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center gap-4">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                 <h1 className="text-3xl font-bold">Gestão de Estoque</h1>
                 <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         <Button variant="outline" onClick={() => handleOpenForm('entry')}><PlusCircle className="mr-2" />Entrada</Button>
                         <Button variant="outline" onClick={() => handleOpenForm('adjustment')}><MinusCircle className="mr-2" />Saída</Button>
                         <Button variant="outline" onClick={() => handleOpenForm('transfer')} disabled={branches.length <= 1}><ArrowRightLeft className="mr-2" />Transferir</Button>

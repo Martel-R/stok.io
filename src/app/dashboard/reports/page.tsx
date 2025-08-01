@@ -72,9 +72,9 @@ function SalesPerformanceReport({ branches, sales }: { branches: Branch[], sales
     const headers = ["Filial", "Receita Total", "Nº de Vendas", "Ticket Médio"];
     const dataForExport = performanceData.map(p => [
         p.name,
-        `R$ ${p.totalRevenue.toFixed(2)}`,
+        `R$ ${p.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
         p.salesCount,
-        `R$ ${p.averageTicket.toFixed(2)}`
+        `R$ ${p.averageTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
     ]);
 
     const exportToCSV = () => {
@@ -129,9 +129,9 @@ function SalesPerformanceReport({ branches, sales }: { branches: Branch[], sales
                         {performanceData.map(p => (
                             <TableRow key={p.id}>
                                 <TableCell className="font-medium">{p.name}</TableCell>
-                                <TableCell className="text-right">R$ {p.totalRevenue.toFixed(2)}</TableCell>
+                                <TableCell className="text-right">R$ {p.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
                                 <TableCell className="text-right">{p.salesCount}</TableCell>
-                                <TableCell className="text-right">R$ {p.averageTicket.toFixed(2)}</TableCell>
+                                <TableCell className="text-right">R$ {p.averageTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
@@ -482,4 +482,3 @@ export default function ReportsPage() {
         </div>
     );
 }
-

@@ -336,7 +336,7 @@ export default function KitsPage() {
                             <TableRow key={kit.id}>
                                 <TableCell className="font-medium">{kit.name}</TableCell>
                                 <TableCell>{kit.numberOfItems}</TableCell>
-                                <TableCell>{kit.discountValue}{kit.discountType === 'percentage' ? '%' : ' R$'}</TableCell>
+                                <TableCell>{kit.discountValue.toLocaleString('pt-BR')}{kit.discountType === 'percentage' ? '%' : ' R$'}</TableCell>
                                 <TableCell>
                                     <div className="flex flex-wrap gap-1">
                                         {getProductNames(kit.eligibleProductIds).map(name => (

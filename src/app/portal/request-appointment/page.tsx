@@ -123,7 +123,7 @@ export default function RequestAppointmentPage() {
                         <Select value={selectedServiceId} onValueChange={setSelectedServiceId} required>
                             <SelectTrigger><SelectValue placeholder="Selecione um serviço..." /></SelectTrigger>
                             <SelectContent>
-                                {services.map(s => <SelectItem key={s.id} value={s.id}>{s.name} - R$ {s.price.toFixed(2)}</SelectItem>)}
+                                {services.map(s => <SelectItem key={s.id} value={s.id}>{s.name} - R$ {s.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</SelectItem>)}
                             </SelectContent>
                         </Select>
                     </div>

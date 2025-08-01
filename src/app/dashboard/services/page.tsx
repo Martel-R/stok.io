@@ -291,7 +291,7 @@ export default function ServicesPage() {
                                 <TableCell className="font-medium">{service.name}</TableCell>
                                 <TableCell>{service.category}</TableCell>
                                 <TableCell>{service.duration} min</TableCell>
-                                <TableCell>R$ {service.price.toFixed(2)}</TableCell>
+                                <TableCell>R$ {service.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
                                 <TableCell>
                                     <div className="flex flex-wrap gap-1">
                                         {getProfessionalNames(service.professionalIds)}
@@ -329,4 +329,3 @@ export default function ServicesPage() {
         </div>
     );
 }
-

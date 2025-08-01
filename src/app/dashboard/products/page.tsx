@@ -569,7 +569,7 @@ export default function ProductsPage() {
                         {product.isSalable ? "Sim" : "Não"}
                     </Badge>
                 </TableCell>
-                <TableCell className="text-right">R${product.price.toFixed(2).replace('.', ',')}</TableCell>
+                <TableCell className="text-right">R${product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
                 <TableCell className="text-right">{product.stock}</TableCell>
                 <TableCell className="text-center">
                   <DropdownMenu>

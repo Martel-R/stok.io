@@ -296,7 +296,7 @@ export default function DashboardPage() {
                                     <div className="ml-4 flex-1 space-y-1">
                                         <p className="text-sm font-medium leading-none">{name}</p>
                                     </div>
-                                    <div className="font-medium">R${total.toFixed(2).replace('.',',')}</div>
+                                    <div className="font-medium">R${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
                                 </div>
                             )) : (
                                 <p className="text-sm text-muted-foreground text-center">Nenhuma venda registrada no período para ranking.</p>

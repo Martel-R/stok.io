@@ -96,7 +96,7 @@ export default function CustomerHistoryPage() {
                                             <p className="text-sm text-muted-foreground max-w-lg truncate">{event.description}</p>
                                         </div>
                                         <div className="text-right">
-                                            <p className="font-bold text-xl">R$ {event.total.toFixed(2)}</p>
+                                            <p className="font-bold text-xl">R$ {event.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                                             <Badge variant={event.type === 'attendance' ? 'secondary' : 'outline'}>
                                                 {event.type === 'attendance' ? 'Atendimento' : 'Compra'}
                                             </Badge>

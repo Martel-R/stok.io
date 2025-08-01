@@ -960,7 +960,7 @@ export default function POSPage() {
                     <TabsTrigger value="products"><Package className="mr-2 h-4 w-4"/> Produtos</TabsTrigger>
                     {user?.enabledModules?.combos && <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Combos</TabsTrigger>}
                     {user?.enabledModules?.kits && <TabsTrigger value="kits"><Component className="mr-2 h-4 w-4"/> Kits</TabsTrigger>}
-                    <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/> Histórico</TabsTrigger>}
+                    <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/> Histórico</TabsTrigger>
                 </TabsList>
                 <div className="relative pt-4">
                     <Search className="absolute left-2.5 top-6.5 h-4 w-4 text-muted-foreground" />

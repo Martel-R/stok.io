@@ -396,6 +396,7 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
                         <TableRow>
                             <TableHead>Data</TableHead>
                             <TableHead>Itens</TableHead>
+                            <TableHead>Vendedor</TableHead>
                             <TableHead className="text-right">Total</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -405,14 +406,26 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
                                 <TableRow key={sale.id}>
                                     <TableCell>{format(sale.date, 'dd/MM/yyyy HH:mm')}</TableCell>
                                     <TableCell className="font-medium">
-                                        {sale.items?.map(item => item.name).join(', ')}
+                                        <div className="flex flex-col gap-1">
+                                            {sale.items?.map((item: any) => (
+                                                <div key={item.id}>
+                                                    <span>{item.name}</span>
+                                                    {item.type === 'kit' && item.chosenProducts && (
+                                                        <span className="text-xs text-muted-foreground ml-1">
+                                                            ({item.chosenProducts.map((p: any) => p.name).join(', ')})
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
                                     </TableCell>
+                                    <TableCell>{sale.cashier}</TableCell>
                                     <TableCell className="text-right">R${sale.total.toFixed(2).replace('.', ',')}</TableCell>
                                 </TableRow>
                             ))
                         ) : (
                             <TableRow>
-                                <TableCell colSpan={3} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
+                                <TableCell colSpan={4} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
                             </TableRow>
                         )}
                     </TableBody>
@@ -822,10 +835,21 @@ export default function POSPage() {
             }
         }
 
+        const saleItems = cart.map(item => {
+            const baseItem: any = { id: item.id, name: item.name, quantity: item.quantity, type: item.itemType };
+            if (item.itemType === 'product' || item.itemType === 'service') {
+                baseItem.price = item.price;
+            }
+            if (item.itemType === 'kit') {
+                baseItem.chosenProducts = item.chosenProducts.map(p => ({id: p.id, name: p.name, price: p.price}));
+            }
+            return baseItem;
+        });
+
         // Create one consolidated sale document
         const saleRef = doc(collection(db, "sales"));
         const saleData: Omit<Sale, 'id'> = {
-            items: cart.map(item => ({ id: item.id, name: item.name, quantity: item.quantity, type: item.itemType, price: item.itemType === 'service' ? item.price : undefined })),
+            items: saleItems,
             total: grandTotal,
             date: new Date(),
             cashier: user.name,
@@ -1126,3 +1150,4 @@ export default function POSPage() {
     </>
   );
 }
+

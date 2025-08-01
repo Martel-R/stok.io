@@ -449,17 +449,24 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
 
 function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: { kit: Kit; products: ProductWithStock[]; isOpen: boolean; onOpenChange: (isOpen: boolean) => void; onConfirm: (chosenProducts: Product[]) => void; }) {
     const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
     const { toast } = useToast();
 
     useEffect(() => {
         if (!isOpen) {
             setSelectedProducts([]);
+            setSearchQuery('');
         }
     }, [isOpen]);
 
     const eligibleProducts = useMemo(() => {
-        const uniqueProducts = products.filter(p => kit.eligibleProductIds.includes(p.id));
-        const mappedProducts = uniqueProducts.map(p => {
+        const baseEligible = products.filter(p => kit.eligibleProductIds.includes(p.id));
+        
+        const searched = searchQuery
+            ? baseEligible.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+            : baseEligible;
+
+        const mappedProducts = searched.map(p => {
             const stockInCart = selectedProducts.filter(sp => sp.id === p.id).length;
             return {
                 ...p,
@@ -468,7 +475,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
         });
         // Sort to show items with stock first
         return mappedProducts.sort((a, b) => b.availableStock - a.availableStock);
-    }, [kit, products, selectedProducts]);
+    }, [kit, products, selectedProducts, searchQuery]);
 
     const addProduct = (product: Product) => {
         const productWithStock = eligibleProducts.find(p => p.id === product.id);
@@ -522,9 +529,19 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                     <DialogTitle>Monte seu Kit: {kit.name}</DialogTitle>
                     <DialogDescription>Selecione {kit.numberOfItems} dos produtos abaixo. Você pode selecionar o mesmo produto mais de uma vez.</DialogDescription>
                 </DialogHeader>
-                <div className="flex flex-col md:flex-row gap-6 min-h-0 flex-grow">
+                <div className="flex flex-col md:flex-row gap-6 flex-grow min-h-0">
                     <div className="flex flex-col gap-4 md:w-1/2 flex-1 min-h-0">
                         <h3 className="font-semibold shrink-0">Produtos Disponíveis</h3>
+                        <div className="relative shrink-0">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                type="search"
+                                placeholder="Buscar produto..."
+                                className="w-full bg-background pl-8"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
                         <ScrollArea className="flex-grow border rounded-md">
                             <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
                                 {eligibleProducts.map(p => (
@@ -577,7 +594,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                         </ScrollArea>
                     </div>
                 </div>
-                <DialogFooter className="shrink-0">
+                <DialogFooter className="shrink-0 pt-4">
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
                     <Button onClick={handleConfirm}>Confirmar Seleção</Button>
                 </DialogFooter>

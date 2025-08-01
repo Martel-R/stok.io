@@ -24,56 +24,62 @@ Este projeto foi construído com uma stack moderna e robusta, focada em performa
 - **Estilização:** [Tailwind CSS](https://tailwindcss.com/) e [ShadCN UI](https://ui.shadcn.com/)
 - **Inteligência Artificial:** [Google AI & Genkit](https://firebase.google.com/docs/genkit)
 - **Linguagem:** [TypeScript](https://www.typescriptlang.org/)
+- **Containerização:** [Docker](https://www.docker.com/)
 
 ## 🚀 Como Começar
 
 Para executar este projeto localmente, siga os passos abaixo:
 
-1.  **Clone o repositório:**
-    ```bash
-    git clone https://github.com/seu-usuario/stokio.git
-    cd stokio
-    ```
+### 1. Pré-requisitos
+- Node.js
+- npm ou yarn
+- Docker e Docker Compose
 
-2.  **Instale as dependências:**
-    ```bash
-    npm install
-    ```
-
-3.  **Configure as Variáveis de Ambiente:**
-    Crie um arquivo chamado `.env` na raiz do projeto e adicione suas credenciais do Firebase. Você pode usar o arquivo `.env.example` como base.
-
-    ```env
-    # Firebase
-    NEXT_PUBLIC_FIREBASE_API_KEY=SUA_CHAVE_DE_API
-    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=SEU_DOMINIO_DE_AUTENTICACAO
-    NEXT_PUBLIC_FIREBASE_PROJECT_ID=SEU_ID_DE_PROJETO
-    NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=SEU_STORAGE_BUCKET
-    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=SEU_SENDER_ID
-    NEXT_PUBLIC_FIREBASE_APP_ID=SEU_APP_ID
-
-    # Firebase App Check (reCAPTCHA v3)
-    NEXT_PUBLIC_RECAPTCHA_SITE_KEY=SUA_CHAVE_DO_RECAPTCHA
-    ```
-
-4.  **Execute o servidor de desenvolvimento:**
-    ```bash
-    npm run dev
-    ```
-
-    A aplicação estará disponível em `http://localhost:9002`.
-
-## ☁️ Hospedagem
-
-A aplicação está configurada para ser hospedada no **Firebase App Hosting**. Para fazer o deploy, utilize o Firebase CLI:
-
+### 2. Clone o repositório
 ```bash
-# Inicialize o Firebase no projeto (apenas na primeira vez)
-firebase init apphosting
-
-# Faça o deploy para produção
-firebase deploy
+git clone https://github.com/seu-usuario/stokio.git
+cd stokio
 ```
 
----
+### 3. Configure as Variáveis de Ambiente
+Crie um arquivo chamado `.env` na raiz do projeto. Você pode usar o arquivo `.env.example` como base. Adicione todas as suas credenciais do Firebase e outras chaves necessárias.
 
+```env
+# Firebase
+NEXT_PUBLIC_FIREBASE_API_KEY=SUA_CHAVE_DE_API
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=SEU_DOMINIO_DE_AUTENTICACAO
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=SEU_ID_DE_PROJETO
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=SEU_STORAGE_BUCKET
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=SEU_SENDER_ID
+NEXT_PUBLIC_FIREBASE_APP_ID=SEU_APP_ID
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=SEU_MEASUREMENT_ID
+
+# Firebase App Check (reCAPTCHA v3) - Opcional, mas recomendado
+NEXT_PUBLIC_RECAPTCHA_SITE_KEY=SUA_CHAVE_DO_RECAPTCHA
+
+# E-mail do Super Administrador do sistema
+NEXT_PUBLIC_SUPER_ADMIN_EMAIL=seu_email_superadmin@exemplo.com
+```
+
+### 4. Modo de Desenvolvimento
+Para rodar a aplicação em modo de desenvolvimento com hot-reload:
+
+```bash
+# Instale as dependências
+npm install
+
+# Execute o servidor de desenvolvimento
+npm run dev
+```
+A aplicação estará disponível em `http://localhost:9002`.
+
+### 5. Modo de Produção com Docker
+Para simular o ambiente de produção ou fazer o deploy em seu servidor:
+
+```bash
+# Construa e suba os containers do Docker
+docker-compose up --build -d
+```
+A aplicação será servida pelo Traefik no host configurado em `docker-compose.yml` (ex: `stokio.martel.page`).
+
+---

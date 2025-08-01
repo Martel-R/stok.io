@@ -419,8 +419,8 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
                                     <TableCell>{format(sale.date, 'dd/MM/yyyy HH:mm')}</TableCell>
                                     <TableCell className="font-medium">
                                         <div className="flex flex-col gap-1">
-                                            {sale.items?.map((item: any) => (
-                                                <div key={item.id}>
+                                            {sale.items?.map((item: any, index: number) => (
+                                                <div key={item.id + index}>
                                                     <span>{item.name}</span>
                                                     {item.type === 'kit' && item.chosenProducts && (
                                                         <span className="text-xs text-muted-foreground ml-1">
@@ -522,9 +522,9 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                     <DialogTitle>Monte seu Kit: {kit.name}</DialogTitle>
                     <DialogDescription>Selecione {kit.numberOfItems} dos produtos abaixo. Você pode selecionar o mesmo produto mais de uma vez.</DialogDescription>
                 </DialogHeader>
-                <div className="flex flex-col md:flex-row gap-6 overflow-hidden flex-grow">
-                    <div className="flex flex-col gap-4 md:w-1/2 flex-1">
-                        <h3 className="font-semibold">Produtos Disponíveis</h3>
+                <div className="flex flex-col md:flex-row gap-6 min-h-0 flex-grow">
+                    <div className="flex flex-col gap-4 md:w-1/2 flex-1 min-h-0">
+                        <h3 className="font-semibold shrink-0">Produtos Disponíveis</h3>
                         <ScrollArea className="flex-grow border rounded-md">
                             <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
                                 {eligibleProducts.map(p => (
@@ -546,8 +546,8 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                             </div>
                         </ScrollArea>
                     </div>
-                     <div className="flex flex-col gap-4 md:w-1/2 flex-1">
-                        <h3 className="font-semibold">Sua Seleção ({selectedProducts.length} de {kit.numberOfItems})</h3>
+                     <div className="flex flex-col gap-4 md:w-1/2 flex-1 min-h-0">
+                        <h3 className="font-semibold shrink-0">Sua Seleção ({selectedProducts.length} de {kit.numberOfItems})</h3>
                         <ScrollArea className="flex-grow border rounded-md p-4">
                            {selectedProducts.length === 0 ? (
                                 <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -577,7 +577,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                         </ScrollArea>
                     </div>
                 </div>
-                <DialogFooter>
+                <DialogFooter className="shrink-0">
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
                     <Button onClick={handleConfirm}>Confirmar Seleção</Button>
                 </DialogFooter>
@@ -864,9 +864,15 @@ export default function POSPage() {
             const baseItem: any = { id: item.id, name: item.name, quantity: item.quantity, type: item.itemType };
             if (item.itemType === 'product' || item.itemType === 'service') {
                 baseItem.price = item.price;
+                baseItem.total = item.total;
             }
             if (item.itemType === 'kit') {
                 baseItem.chosenProducts = item.chosenProducts.map(p => ({id: p.id, name: p.name, price: p.price}));
+                baseItem.total = item.total;
+            }
+            if (item.itemType === 'combo') {
+                baseItem.originalPrice = item.originalPrice;
+                baseItem.finalPrice = item.finalPrice;
             }
             return baseItem;
         });

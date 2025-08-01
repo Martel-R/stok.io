@@ -184,7 +184,11 @@ function CheckoutModal({
           <DialogDescription>Selecione as formas de pagamento para o total de <span className="font-bold">R${grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
-          {payments.map((payment, index) => (
+          {payments.map((payment, index) => {
+            const condition = paymentConditions.find(c => c.id === payment.conditionId);
+            const maxInstallments = condition?.maxInstallments || 1;
+
+            return (
             <div key={index} className="p-4 border rounded-lg space-y-3 relative">
               {payments.length > 1 && (
                   <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7" onClick={() => handleRemovePayment(index)}>
@@ -220,13 +224,21 @@ function CheckoutModal({
               {payment.type === 'credit' && (
                 <div>
                   <Label htmlFor={`installments-${index}`}>Parcelas</Label>
-                  <Input
-                    id={`installments-${index}`}
-                    type="number"
-                    min={1}
-                    value={payment.installments}
-                    onChange={(e) => handlePaymentChange(index, 'installments', parseInt(e.target.value) || 1)}
-                  />
+                   <Select
+                        value={String(payment.installments)}
+                        onValueChange={(val) => handlePaymentChange(index, 'installments', parseInt(val, 10) || 1)}
+                    >
+                        <SelectTrigger id={`installments-${index}`}>
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {Array.from({ length: maxInstallments }, (_, i) => i + 1).map(i => (
+                                <SelectItem key={i} value={String(i)}>
+                                    {i}x de R$ {(payment.amount / i).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 </div>
               )}
                {(payment.type === 'credit' || payment.type === 'debit') && (
@@ -242,7 +254,7 @@ function CheckoutModal({
                 </div>
               )}
             </div>
-          ))}
+          )})}
           {remainingAmount > 0.01 && (
              <Button variant="outline" onClick={handleAddPayment} className="w-full">
                 <PlusCircle className="mr-2 h-4 w-4"/> Adicionar Outra Forma de Pagamento
@@ -407,8 +419,8 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
                                     <TableCell>{format(sale.date, 'dd/MM/yyyy HH:mm')}</TableCell>
                                     <TableCell className="font-medium">
                                         <div className="flex flex-col gap-1">
-                                            {sale.items?.map((item: any) => (
-                                                <div key={item.id}>
+                                            {sale.items?.map((item: any, index: number) => (
+                                                <div key={item.id + index}>
                                                     <span>{item.name}</span>
                                                     {item.type === 'kit' && item.chosenProducts && (
                                                         <span className="text-xs text-muted-foreground ml-1">
@@ -437,17 +449,24 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
 
 function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: { kit: Kit; products: ProductWithStock[]; isOpen: boolean; onOpenChange: (isOpen: boolean) => void; onConfirm: (chosenProducts: Product[]) => void; }) {
     const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
     const { toast } = useToast();
 
     useEffect(() => {
         if (!isOpen) {
             setSelectedProducts([]);
+            setSearchQuery('');
         }
     }, [isOpen]);
 
     const eligibleProducts = useMemo(() => {
-        const uniqueProducts = products.filter(p => kit.eligibleProductIds.includes(p.id));
-        const mappedProducts = uniqueProducts.map(p => {
+        const baseEligible = products.filter(p => kit.eligibleProductIds.includes(p.id));
+        
+        const searched = searchQuery
+            ? baseEligible.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+            : baseEligible;
+
+        const mappedProducts = searched.map(p => {
             const stockInCart = selectedProducts.filter(sp => sp.id === p.id).length;
             return {
                 ...p,
@@ -456,7 +475,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
         });
         // Sort to show items with stock first
         return mappedProducts.sort((a, b) => b.availableStock - a.availableStock);
-    }, [kit, products, selectedProducts]);
+    }, [kit, products, selectedProducts, searchQuery]);
 
     const addProduct = (product: Product) => {
         const productWithStock = eligibleProducts.find(p => p.id === product.id);
@@ -510,9 +529,19 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                     <DialogTitle>Monte seu Kit: {kit.name}</DialogTitle>
                     <DialogDescription>Selecione {kit.numberOfItems} dos produtos abaixo. Você pode selecionar o mesmo produto mais de uma vez.</DialogDescription>
                 </DialogHeader>
-                <div className="flex flex-col md:flex-row gap-6 overflow-hidden flex-grow">
-                    <div className="flex flex-col gap-4 md:w-1/2 flex-1">
-                        <h3 className="font-semibold">Produtos Disponíveis</h3>
+                <div className="flex flex-col md:flex-row gap-6 min-h-0 flex-grow">
+                    <div className="flex flex-col gap-4 md:w-1/2 flex-1 min-h-0">
+                        <h3 className="font-semibold shrink-0">Produtos Disponíveis</h3>
+                        <div className="relative shrink-0">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                type="search"
+                                placeholder="Buscar produto..."
+                                className="w-full bg-background pl-8"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
                         <ScrollArea className="flex-grow border rounded-md">
                             <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
                                 {eligibleProducts.map(p => (
@@ -534,8 +563,8 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                             </div>
                         </ScrollArea>
                     </div>
-                     <div className="flex flex-col gap-4 md:w-1/2 flex-1">
-                        <h3 className="font-semibold">Sua Seleção ({selectedProducts.length} de {kit.numberOfItems})</h3>
+                     <div className="flex flex-col gap-4 md:w-1/2 flex-1 min-h-0">
+                        <h3 className="font-semibold shrink-0">Sua Seleção ({selectedProducts.length} de {kit.numberOfItems})</h3>
                         <ScrollArea className="flex-grow border rounded-md p-4">
                            {selectedProducts.length === 0 ? (
                                 <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -565,7 +594,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                         </ScrollArea>
                     </div>
                 </div>
-                <DialogFooter>
+                <DialogFooter className="shrink-0">
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
                     <Button onClick={handleConfirm}>Confirmar Seleção</Button>
                 </DialogFooter>
@@ -852,9 +881,15 @@ export default function POSPage() {
             const baseItem: any = { id: item.id, name: item.name, quantity: item.quantity, type: item.itemType };
             if (item.itemType === 'product' || item.itemType === 'service') {
                 baseItem.price = item.price;
+                baseItem.total = item.total;
             }
             if (item.itemType === 'kit') {
                 baseItem.chosenProducts = item.chosenProducts.map(p => ({id: p.id, name: p.name, price: p.price}));
+                baseItem.total = item.total;
+            }
+            if (item.itemType === 'combo') {
+                baseItem.originalPrice = item.originalPrice;
+                baseItem.finalPrice = item.finalPrice;
             }
             return baseItem;
         });
@@ -1171,3 +1206,5 @@ export default function POSPage() {
     </>
   );
 }
+
+    

@@ -81,7 +81,7 @@ export default function InventoryPage() {
                 .filter(e => e.productId === product.id)
                 .reduce((sum, e) => sum + (Number(e.quantity) || 0), 0);
             return { ...product, stock };
-        });
+        }).sort((a,b) => a.name.localeCompare(b.name));
     }, [products, allStockEntries]);
 
     const filteredProductsWithStock = useMemo(() => {
@@ -286,47 +286,74 @@ export default function InventoryPage() {
                             <CardDescription>Visão completa de todas as movimentações de estoque da filial.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Data</TableHead>
-                                        <TableHead>Produto</TableHead>
-                                        <TableHead className="text-right">Est. Inicial</TableHead>
-                                        <TableHead className="text-right text-green-600">Entradas</TableHead>
-                                        <TableHead className="text-right text-red-500">Saídas</TableHead>
-                                        <TableHead className="text-right">Est. Final</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {loading ? (
-                                        Array.from({ length: 5 }).map((_, i) => (
-                                            <TableRow key={i}>
-                                                <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                                                <TableCell><Skeleton className="h-5 w-48" /></TableCell>
-                                                <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
-                                                <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
-                                                <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
-                                                <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
-                                            </TableRow>
-                                        ))
-                                    ) : dailyStockHistory.length > 0 ? (
-                                        dailyStockHistory.map((item, index) => (
-                                            <TableRow key={`${item.date}-${item.productId}`} onClick={() => setSelectedHistoryItem(item)} className="cursor-pointer">
-                                                <TableCell className="font-medium">{format(parseISO(item.date), 'dd/MM/yyyy')}</TableCell>
-                                                <TableCell>{item.productName}</TableCell>
-                                                <TableCell className="text-right">{item.initialStock}</TableCell>
-                                                <TableCell className="text-right text-green-600">+{item.entries}</TableCell>
-                                                <TableCell className="text-right text-red-500">-{item.exits}</TableCell>
-                                                <TableCell className="text-right font-semibold">{item.finalStock}</TableCell>
-                                            </TableRow>
-                                        ))
-                                    ) : (
+                            {/* Mobile View */}
+                            <div className="md:hidden space-y-4">
+                                {loading ? (
+                                    Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-32 w-full" />)
+                                ) : dailyStockHistory.length > 0 ? (
+                                    dailyStockHistory.map((item, index) => (
+                                        <Card key={`${item.date}-${item.productId}`} onClick={() => setSelectedHistoryItem(item)} className="cursor-pointer">
+                                            <CardHeader>
+                                                <CardTitle className="text-base">{item.productName}</CardTitle>
+                                                <CardDescription>{format(parseISO(item.date), 'dd/MM/yyyy')}</CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                                <div>Est. Inicial: <span className="font-semibold">{item.initialStock}</span></div>
+                                                <div className="text-green-600">Entradas: <span className="font-semibold">+{item.entries}</span></div>
+                                                <div className="text-red-500">Saídas: <span className="font-semibold">-{item.exits}</span></div>
+                                                <div>Est. Final: <span className="font-semibold">{item.finalStock}</span></div>
+                                            </CardContent>
+                                        </Card>
+                                    ))
+                                ) : (
+                                    <p className="text-center text-muted-foreground py-10">Nenhuma movimentação encontrada.</p>
+                                )}
+                            </div>
+
+                            {/* Desktop View */}
+                            <div className="hidden md:block">
+                                <Table>
+                                    <TableHeader>
                                         <TableRow>
-                                            <TableCell colSpan={6} className="h-24 text-center">Nenhuma movimentação encontrada.</TableCell>
+                                            <TableHead>Data</TableHead>
+                                            <TableHead>Produto</TableHead>
+                                            <TableHead className="text-right">Est. Inicial</TableHead>
+                                            <TableHead className="text-right text-green-600">Entradas</TableHead>
+                                            <TableHead className="text-right text-red-500">Saídas</TableHead>
+                                            <TableHead className="text-right">Est. Final</TableHead>
                                         </TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {loading ? (
+                                            Array.from({ length: 5 }).map((_, i) => (
+                                                <TableRow key={i}>
+                                                    <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                                                    <TableCell><Skeleton className="h-5 w-48" /></TableCell>
+                                                    <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
+                                                    <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
+                                                    <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
+                                                    <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
+                                                </TableRow>
+                                            ))
+                                        ) : dailyStockHistory.length > 0 ? (
+                                            dailyStockHistory.map((item, index) => (
+                                                <TableRow key={`${item.date}-${item.productId}`} onClick={() => setSelectedHistoryItem(item)} className="cursor-pointer">
+                                                    <TableCell className="font-medium">{format(parseISO(item.date), 'dd/MM/yyyy')}</TableCell>
+                                                    <TableCell>{item.productName}</TableCell>
+                                                    <TableCell className="text-right">{item.initialStock}</TableCell>
+                                                    <TableCell className="text-right text-green-600">+{item.entries}</TableCell>
+                                                    <TableCell className="text-right text-red-500">-{item.exits}</TableCell>
+                                                    <TableCell className="text-right font-semibold">{item.finalStock}</TableCell>
+                                                </TableRow>
+                                            ))
+                                        ) : (
+                                            <TableRow>
+                                                <TableCell colSpan={6} className="h-24 text-center">Nenhuma movimentação encontrada.</TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
                         </CardContent>
                     </Card>
                 </TabsContent>

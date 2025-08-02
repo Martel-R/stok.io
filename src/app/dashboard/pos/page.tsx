@@ -46,7 +46,8 @@ function CustomerSelector({ onSelect }: { onSelect: (customer: Customer) => void
         if (!user?.organizationId) return;
         const q = query(collection(db, 'customers'), where('organizationId', '==', user.organizationId), where('isActive', '==', true));
         const unsub = onSnapshot(q, snap => {
-            setCustomers(snap.docs.map(d => ({id: d.id, ...d.data()} as Customer)));
+            const customerData = snap.docs.map(d => ({id: d.id, ...d.data()} as Customer));
+            setCustomers(customerData.sort((a,b) => a.name.localeCompare(b.name)));
         });
         return () => unsub();
     }, [user]);
@@ -473,8 +474,13 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                 availableStock: p.stock - stockInCart,
             };
         });
-        // Sort to show items with stock first
-        return mappedProducts.sort((a, b) => b.availableStock - a.availableStock);
+        // Sort to show items with stock first, then alphabetically
+        return mappedProducts.sort((a, b) => {
+            if (b.availableStock - a.availableStock !== 0) {
+                return b.availableStock - a.availableStock;
+            }
+            return a.name.localeCompare(b.name);
+        });
     }, [kit, products, selectedProducts, searchQuery]);
 
     const addProduct = (product: Product) => {
@@ -524,15 +530,15 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col">
+            <DialogContent className="sm:max-w-4xl grid-rows-[auto_1fr_auto] max-h-[90vh]">
                 <DialogHeader>
                     <DialogTitle>Monte seu Kit: {kit.name}</DialogTitle>
                     <DialogDescription>Selecione {kit.numberOfItems} dos produtos abaixo. Você pode selecionar o mesmo produto mais de uma vez.</DialogDescription>
                 </DialogHeader>
-                <div className="flex flex-col md:flex-row gap-6 min-h-0 flex-grow">
-                    <div className="flex flex-col gap-4 md:w-1/2 flex-1 min-h-0">
-                        <h3 className="font-semibold shrink-0">Produtos Disponíveis</h3>
-                        <div className="relative shrink-0">
+                <div className="grid md:grid-cols-2 gap-6 overflow-y-auto pr-4">
+                    <div className="flex flex-col gap-4">
+                        <h3 className="font-semibold">Produtos Disponíveis</h3>
+                        <div className="relative">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
                                 type="search"
@@ -542,7 +548,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
                         </div>
-                        <ScrollArea className="flex-grow border rounded-md">
+                        <ScrollArea className="h-full rounded-md border">
                             <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
                                 {eligibleProducts.map(p => (
                                     <Card
@@ -563,9 +569,9 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                             </div>
                         </ScrollArea>
                     </div>
-                     <div className="flex flex-col gap-4 md:w-1/2 flex-1 min-h-0">
-                        <h3 className="font-semibold shrink-0">Sua Seleção ({selectedProducts.length} de {kit.numberOfItems})</h3>
-                        <ScrollArea className="flex-grow border rounded-md p-4">
+                     <div className="flex flex-col gap-4">
+                        <h3 className="font-semibold">Sua Seleção ({selectedProducts.length} de {kit.numberOfItems})</h3>
+                        <ScrollArea className="h-full rounded-md border p-4">
                            {selectedProducts.length === 0 ? (
                                 <div className="flex items-center justify-center h-full text-muted-foreground">
                                     Selecione produtos da lista ao lado.
@@ -594,7 +600,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                         </ScrollArea>
                     </div>
                 </div>
-                <DialogFooter className="shrink-0">
+                <DialogFooter className="pt-4">
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
                     <Button onClick={handleConfirm}>Confirmar Seleção</Button>
                 </DialogFooter>
@@ -645,7 +651,7 @@ export default function POSPage() {
                     .reduce((sum, e) => sum + e.quantity, 0);
                 return { ...p, stock: stock };
             });
-            setProducts(productsWithStock);
+            setProducts(productsWithStock.sort((a,b) => a.name.localeCompare(b.name)));
             setLoading(false);
         });
 
@@ -1173,7 +1179,6 @@ export default function POSPage() {
                  )}
                  <div className="flex justify-between"><p>Subtotal</p><p>R${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>
                  <div className="flex justify-between"><p>Imposto ({currentBranch?.taxRate || 0}%)</p><p>R${tax.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>
-                 <Separator />
                  <div className="flex justify-between font-bold text-lg"><p>Total</p><p>R${grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>
              </div>
              <Button className="w-full mt-4" size="lg" onClick={() => setIsCheckoutModalOpen(true)} disabled={cart.length === 0}>
@@ -1206,5 +1211,3 @@ export default function POSPage() {
     </>
   );
 }
-
-    

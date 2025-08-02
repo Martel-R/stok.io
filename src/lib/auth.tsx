@@ -452,7 +452,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             router.push('/portal');
         } else if (user.role !== 'customer' && isPortalPage) {
             router.push('/dashboard');
-        } else if (user.role === 'atendimento' && pathname !== '/dashboard/pos' && pathname !== '/dashboard/profile') {
+        } else if (user.role === 'atendimento' && pathname === '/dashboard') {
             router.push('/dashboard/pos');
         }
     }

@@ -4,6 +4,7 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { Button, type ButtonProps } from '@/components/ui/button';
+import { ScrollArea } from './scroll-area';
 
 interface SidebarContextProps {
   isOpen: boolean;
@@ -66,9 +67,13 @@ export const SidebarHeader = React.forwardRef<HTMLDivElement, React.HTMLAttribut
 SidebarHeader.displayName = 'SidebarHeader';
 
 export const SidebarContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => {
+  ({ className, children, ...props }, ref) => {
       return (
-        <div ref={ref} className={cn('flex flex-1 flex-col overflow-y-auto', className)} {...props} />
+        <ScrollArea ref={ref} className={cn('flex-1', className)} {...props}>
+            <div className="p-2">
+                {children}
+            </div>
+        </ScrollArea>
       )
   }
 );

@@ -4,12 +4,12 @@
 
 import React from 'react';
 import { useAuth } from '@/lib/auth';
-import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter } from '@/components/ui/sidebar';
+import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, useSidebar } from '@/components/ui/sidebar';
 import { Icons } from '@/components/icons';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Home, Package, BarChart, ShoppingCart, Bot, FileText, LogOut, Loader2, Users, Settings, ChevronsUpDown, Check, Building, Gift, AlertTriangle, CreditCard, Component, LifeBuoy, Calendar, Briefcase } from 'lucide-react';
+import { Home, Package, BarChart, ShoppingCart, Bot, FileText, LogOut, Loader2, Users, Settings, ChevronsUpDown, Check, Building, Gift, AlertTriangle, CreditCard, Component, LifeBuoy, Calendar, Briefcase, Menu } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -219,6 +219,7 @@ function SystemLockedScreen() {
 
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
     const { user } = useAuth();
+    const { setIsOpen } = useSidebar();
 
     useEffect(() => {
         if(user?.organization?.branding?.primaryColor) {
@@ -254,7 +255,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                         <span className="text-xl font-semibold truncate">{user?.organization?.name || 'Stokio'}</span>
                     </div>
                 </SidebarHeader>
-                <SidebarContent className="p-2">
+                <SidebarContent>
                     <DashboardNav />
                 </SidebarContent>
                 <SidebarFooter>
@@ -264,6 +265,15 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
             <div className="flex flex-1 flex-col md:ml-64">
                 <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b bg-background px-4 md:px-6">
                     <div className="flex items-center gap-4">
+                         <Button
+                            variant="ghost"
+                            size="icon"
+                            className="md:hidden"
+                            onClick={() => setIsOpen(true)}
+                        >
+                            <Menu />
+                            <span className="sr-only">Abrir Menu</span>
+                        </Button>
                         <BranchSwitcher />
                     </div>
                     <div className="flex w-full items-center justify-end gap-4">
@@ -298,5 +308,3 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </SidebarProvider>
     );
 }
-
-    

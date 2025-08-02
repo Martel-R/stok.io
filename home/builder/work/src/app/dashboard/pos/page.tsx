@@ -46,7 +46,8 @@ function CustomerSelector({ onSelect }: { onSelect: (customer: Customer) => void
         if (!user?.organizationId) return;
         const q = query(collection(db, 'customers'), where('organizationId', '==', user.organizationId), where('isActive', '==', true));
         const unsub = onSnapshot(q, snap => {
-            setCustomers(snap.docs.map(d => ({id: d.id, ...d.data()} as Customer)));
+            const customerData = snap.docs.map(d => ({id: d.id, ...d.data()} as Customer));
+            setCustomers(customerData.sort((a,b) => a.name.localeCompare(b.name)));
         });
         return () => unsub();
     }, [user]);
@@ -473,8 +474,13 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                 availableStock: p.stock - stockInCart,
             };
         });
-        // Sort to show items with stock first
-        return mappedProducts.sort((a, b) => b.availableStock - a.availableStock);
+        // Sort to show items with stock first, then alphabetically
+        return mappedProducts.sort((a, b) => {
+            if (b.availableStock - a.availableStock !== 0) {
+                return b.availableStock - a.availableStock;
+            }
+            return a.name.localeCompare(b.name);
+        });
     }, [kit, products, selectedProducts, searchQuery]);
 
     const addProduct = (product: Product) => {
@@ -529,8 +535,8 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                     <DialogTitle>Monte seu Kit: {kit.name}</DialogTitle>
                     <DialogDescription>Selecione {kit.numberOfItems} dos produtos abaixo. Você pode selecionar o mesmo produto mais de uma vez.</DialogDescription>
                 </DialogHeader>
-                <div className="flex flex-col md:flex-row gap-6 flex-grow min-h-0">
-                    <div className="flex flex-col gap-4 md:w-1/2 flex-1 min-h-0">
+                <div className="grid md:grid-cols-2 gap-6 flex-grow overflow-y-auto">
+                    <div className="flex flex-col gap-4">
                         <h3 className="font-semibold shrink-0">Produtos Disponíveis</h3>
                         <div className="relative shrink-0">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -563,7 +569,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                             </div>
                         </ScrollArea>
                     </div>
-                     <div className="flex flex-col gap-4 md:w-1/2 flex-1 min-h-0">
+                     <div className="flex flex-col gap-4">
                         <h3 className="font-semibold shrink-0">Sua Seleção ({selectedProducts.length} de {kit.numberOfItems})</h3>
                         <ScrollArea className="flex-grow border rounded-md p-4">
                            {selectedProducts.length === 0 ? (
@@ -645,7 +651,7 @@ export default function POSPage() {
                     .reduce((sum, e) => sum + e.quantity, 0);
                 return { ...p, stock: stock };
             });
-            setProducts(productsWithStock);
+            setProducts(productsWithStock.sort((a,b) => a.name.localeCompare(b.name)));
             setLoading(false);
         });
 

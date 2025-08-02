@@ -368,43 +368,35 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
 
     return (
         <div className="flex flex-col h-[calc(100vh-18rem)]">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Crédito</CardTitle>
-                        <CreditCard className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-lg font-bold">R$ {totalsByPaymentType.credit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                    </CardContent>
-                </Card>
-                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Débito</CardTitle>
-                        <CreditCard className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-lg font-bold">R$ {totalsByPaymentType.debit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                    </CardContent>
-                </Card>
-                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Pix</CardTitle>
-                        <DollarSign className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-lg font-bold">R$ {totalsByPaymentType.pix.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                    </CardContent>
-                </Card>
-                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Dinheiro</CardTitle>
-                        <DollarSign className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-lg font-bold">R$ {totalsByPaymentType.cash.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                    </CardContent>
-                </Card>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 border-b pb-4">
+                <div className="flex items-center gap-2">
+                    <CreditCard className="h-6 w-6 text-muted-foreground"/>
+                    <div>
+                        <p className="text-sm text-muted-foreground">Crédito</p>
+                        <p className="font-bold text-lg">R$ {totalsByPaymentType.credit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                    </div>
+                </div>
+                 <div className="flex items-center gap-2">
+                    <CreditCard className="h-6 w-6 text-muted-foreground"/>
+                    <div>
+                        <p className="text-sm text-muted-foreground">Débito</p>
+                        <p className="font-bold text-lg">R$ {totalsByPaymentType.debit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                    </div>
+                </div>
+                 <div className="flex items-center gap-2">
+                    <DollarSign className="h-6 w-6 text-muted-foreground"/>
+                    <div>
+                        <p className="text-sm text-muted-foreground">Pix</p>
+                        <p className="font-bold text-lg">R$ {totalsByPaymentType.pix.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                    </div>
+                </div>
+                 <div className="flex items-center gap-2">
+                    <DollarSign className="h-6 w-6 text-muted-foreground"/>
+                    <div>
+                        <p className="text-sm text-muted-foreground">Dinheiro</p>
+                        <p className="font-bold text-lg">R$ {totalsByPaymentType.cash.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                    </div>
+                </div>
             </div>
             <ScrollArea className="flex-grow">
                 <Table>
@@ -426,9 +418,9 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                                         <div className="flex flex-col gap-1">
                                             {sale.items?.map((item: any, index: number) => (
                                                 <div key={item.id + index}>
-                                                    <span>{item.name}</span>
+                                                    <span className="font-semibold">{item.name}</span>
                                                     {item.type === 'kit' && item.chosenProducts && (
-                                                        <span className="text-xs ml-1">
+                                                        <span className="text-xs text-muted-foreground ml-1">
                                                             ({item.chosenProducts.map((p: any) => p.name).join(', ')})
                                                         </span>
                                                     )}
@@ -552,13 +544,13 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-4xl grid-rows-[auto_1fr_auto] max-h-[90vh]">
+            <DialogContent className="sm:max-w-4xl grid grid-rows-[auto_1fr_auto] h-[90vh] max-h-[90vh]">
                 <DialogHeader>
                     <DialogTitle>Monte seu Kit: {kit.name}</DialogTitle>
                     <DialogDescription>Selecione {kit.numberOfItems} dos produtos abaixo. Você pode selecionar o mesmo produto mais de uma vez.</DialogDescription>
                 </DialogHeader>
-                <div className="grid md:grid-cols-2 gap-6 overflow-y-auto pr-4">
-                    <div className="flex flex-col gap-4">
+                <div className="grid md:grid-cols-2 gap-6 min-h-0 flex-grow">
+                    <div className="flex flex-col gap-4 min-h-0">
                         <h3 className="font-semibold">Produtos Disponíveis</h3>
                         <div className="relative">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -591,7 +583,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                             </div>
                         </ScrollArea>
                     </div>
-                     <div className="flex flex-col gap-4">
+                     <div className="flex flex-col gap-4 min-h-0">
                         <h3 className="font-semibold">Sua Seleção ({selectedProducts.length} de {kit.numberOfItems})</h3>
                         <ScrollArea className="h-full rounded-md border p-4">
                            {selectedProducts.length === 0 ? (

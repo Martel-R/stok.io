@@ -148,6 +148,7 @@ export default function InventoryPage() {
             case 'adjustment': return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Saída</Badge>;
             case 'sale': return <Badge variant="outline">Venda</Badge>;
             case 'transfer': return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Transferência</Badge>;
+            case 'cancellation': return <Badge variant="destructive">Cancelamento</Badge>;
             default: return <Badge variant="outline">{type}</Badge>;
         }
     }
@@ -221,38 +222,60 @@ export default function InventoryPage() {
                             </div>
                         </CardHeader>
                         <CardContent>
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Produto</TableHead>
-                                        <TableHead>Categoria</TableHead>
-                                        <TableHead className="text-right">Quantidade</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {loading ? (
-                                        Array.from({ length: 5 }).map((_, i) => (
-                                            <TableRow key={i}>
-                                                <TableCell><Skeleton className="h-5 w-48" /></TableCell>
-                                                <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-                                                <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
-                                            </TableRow>
-                                        ))
-                                    ) : filteredProductsWithStock.length > 0 ? (
-                                        filteredProductsWithStock.map((item) => (
-                                            <TableRow key={item.id}>
-                                                <TableCell className="font-medium">{item.name}</TableCell>
-                                                <TableCell>{item.category}</TableCell>
-                                                <TableCell className="text-right font-semibold">{item.stock}</TableCell>
-                                            </TableRow>
-                                        ))
-                                    ) : (
+                             {/* Mobile View - List of Cards */}
+                            <div className="md:hidden space-y-3">
+                                {loading ? (
+                                    Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)
+                                ) : filteredProductsWithStock.length > 0 ? (
+                                    filteredProductsWithStock.map((item) => (
+                                        <div key={item.id} className="p-4 border rounded-lg flex justify-between items-center">
+                                            <div>
+                                                <p className="font-medium">{item.name}</p>
+                                                <p className="text-sm text-muted-foreground">{item.category}</p>
+                                            </div>
+                                            <p className="font-bold text-2xl">{item.stock}</p>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-center text-muted-foreground py-10">Nenhum produto encontrado.</p>
+                                )}
+                            </div>
+
+                            {/* Desktop View - Table */}
+                            <div className="hidden md:block">
+                                <Table>
+                                    <TableHeader>
                                         <TableRow>
-                                            <TableCell colSpan={3} className="h-24 text-center">Nenhum produto encontrado.</TableCell>
+                                            <TableHead>Produto</TableHead>
+                                            <TableHead>Categoria</TableHead>
+                                            <TableHead className="text-right">Quantidade</TableHead>
                                         </TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {loading ? (
+                                            Array.from({ length: 5 }).map((_, i) => (
+                                                <TableRow key={i}>
+                                                    <TableCell><Skeleton className="h-5 w-48" /></TableCell>
+                                                    <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                                                    <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
+                                                </TableRow>
+                                            ))
+                                        ) : filteredProductsWithStock.length > 0 ? (
+                                            filteredProductsWithStock.map((item) => (
+                                                <TableRow key={item.id}>
+                                                    <TableCell className="font-medium">{item.name}</TableCell>
+                                                    <TableCell>{item.category}</TableCell>
+                                                    <TableCell className="text-right font-semibold">{item.stock}</TableCell>
+                                                </TableRow>
+                                            ))
+                                        ) : (
+                                            <TableRow>
+                                                <TableCell colSpan={3} className="h-24 text-center">Nenhum produto encontrado.</TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -348,5 +371,3 @@ export default function InventoryPage() {
         </div>
     );
 }
-
-    

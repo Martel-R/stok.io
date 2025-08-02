@@ -347,57 +347,9 @@ function PendingAttendancesTab({ onSelect }: { onSelect: (attendance: Attendance
 
 function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[], onCancelSale: (sale: Sale) => void }) {
     const { user } = useAuth();
-    const totalsByPaymentType = useMemo(() => {
-        const totals: Record<PaymentConditionType, number> = {
-            cash: 0,
-            credit: 0,
-            debit: 0,
-            pix: 0,
-        };
-
-        salesHistory.forEach(sale => {
-            if (sale.status === 'cancelled') return;
-            sale.payments?.forEach(payment => {
-                if (totals.hasOwnProperty(payment.type)) {
-                    totals[payment.type] += payment.amount;
-                }
-            });
-        });
-        return totals;
-    }, [salesHistory]);
-
+   
     return (
         <div className="flex flex-col h-[calc(100vh-18rem)]">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 border-b pb-4">
-                <div className="flex items-center gap-2">
-                    <CreditCard className="h-6 w-6 text-muted-foreground"/>
-                    <div>
-                        <p className="text-sm text-muted-foreground">Crédito</p>
-                        <p className="font-bold text-lg">R$ {totalsByPaymentType.credit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                    </div>
-                </div>
-                 <div className="flex items-center gap-2">
-                    <CreditCard className="h-6 w-6 text-muted-foreground"/>
-                    <div>
-                        <p className="text-sm text-muted-foreground">Débito</p>
-                        <p className="font-bold text-lg">R$ {totalsByPaymentType.debit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                    </div>
-                </div>
-                 <div className="flex items-center gap-2">
-                    <DollarSign className="h-6 w-6 text-muted-foreground"/>
-                    <div>
-                        <p className="text-sm text-muted-foreground">Pix</p>
-                        <p className="font-bold text-lg">R$ {totalsByPaymentType.pix.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                    </div>
-                </div>
-                 <div className="flex items-center gap-2">
-                    <DollarSign className="h-6 w-6 text-muted-foreground"/>
-                    <div>
-                        <p className="text-sm text-muted-foreground">Dinheiro</p>
-                        <p className="font-bold text-lg">R$ {totalsByPaymentType.cash.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                    </div>
-                </div>
-            </div>
             <ScrollArea className="flex-grow">
                 <Table>
                     <TableHeader>

@@ -46,11 +46,12 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
   const { toast } = useToast();
 
   useEffect(() => {
+    let stream: MediaStream | null = null;
     const enableCamera = async () => {
         if (activeTab !== 'camera') {
             if (videoRef.current?.srcObject) {
-                const stream = videoRef.current.srcObject as MediaStream;
-                stream.getTracks().forEach(track => track.stop());
+                const currentStream = videoRef.current.srcObject as MediaStream;
+                currentStream.getTracks().forEach(track => track.stop());
                 videoRef.current.srcObject = null;
             }
             return;
@@ -59,27 +60,27 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
         try {
             if (!navigator.mediaDevices?.getUserMedia) {
                 setHasCameraPermission(false);
+                toast({ title: 'A câmera não é suportada neste navegador.', variant: 'destructive'});
                 return;
             }
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
             setHasCameraPermission(true);
             if (videoRef.current) {
                 videoRef.current.srcObject = stream;
             }
         } catch (err) {
-            console.error(err);
+            console.error("Camera access error:", err);
             setHasCameraPermission(false);
         }
     };
     enableCamera();
 
     return () => {
-         if (videoRef.current?.srcObject) {
-            const stream = videoRef.current.srcObject as MediaStream;
+         if (stream) {
             stream.getTracks().forEach(track => track.stop());
          }
     }
-  }, [activeTab]);
+  }, [activeTab, toast]);
 
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -423,6 +424,7 @@ export default function ProductsPage() {
             return;
         }
         setIsProcessingBulkAction(true);
+        const batch = writeBatch(db);
         const productsToCopy = products.filter(p => selectedProductIds.includes(p.id));
 
         branchesToCopyTo.forEach(branchId => {

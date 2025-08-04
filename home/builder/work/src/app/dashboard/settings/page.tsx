@@ -565,20 +565,97 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
 }
 
 
-function PaymentConditions() {
-    type FeeType = 'percentage' | 'fixed';
+function PaymentConditionForm({ condition, onSave, onDone }: { condition?: PaymentCondition, onSave: (data: Partial<PaymentCondition>) => void, onDone: () => void }) {
+    const [formData, setFormData] = useState(
+        condition || { name: '', type: 'credit', fee: 0, feeType: 'percentage', maxInstallments: 12 }
+    );
     
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value, type } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            [name]: type === 'number' ? parseFloat(value) || 0 : value
+        }));
+    };
+    
+    const handleSelectChange = (name: string, value: string) => {
+         setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData);
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+             <div className="space-y-2">
+                <Label htmlFor="name">Nome da Condição</Label>
+                <Input 
+                    id="name"
+                    name="name"
+                    value={formData.name} 
+                    onChange={handleInputChange}
+                    placeholder="Ex: Cartão de Crédito"
+                    required
+                />
+            </div>
+             <div className="space-y-2">
+                <Label htmlFor="type">Tipo</Label>
+                <Select name="type" value={formData.type} onValueChange={(value: PaymentConditionType) => handleSelectChange('type', value)}>
+                    <SelectTrigger id="type">
+                        <SelectValue placeholder="Selecione um tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="credit">Crédito</SelectItem>
+                        <SelectItem value="debit">Débito</SelectItem>
+                        <SelectItem value="cash">Dinheiro</SelectItem>
+                        <SelectItem value="pix">Pix</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+
+            <div className="space-y-2">
+                <Label htmlFor="fee">Taxa (%)</Label>
+                <Input 
+                    id="fee"
+                    name="fee"
+                    type="number"
+                    step="0.01"
+                    value={formData.fee} 
+                    onChange={handleInputChange}
+                    placeholder="Ex: 2.5"
+                    disabled={formData.type === 'cash'}
+                />
+            </div>
+
+             {formData.type === 'credit' && (
+                 <div className="space-y-2">
+                    <Label htmlFor="maxInstallments">Máximo de Parcelas</Label>
+                    <Input 
+                        id="maxInstallments"
+                        name="maxInstallments"
+                        type="number"
+                        value={formData.maxInstallments} 
+                        onChange={handleInputChange}
+                    />
+                </div>
+             )}
+            <DialogFooter>
+                <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
+                <Button type="submit">Salvar</Button>
+            </DialogFooter>
+        </form>
+    )
+}
+
+function PaymentConditions() {
     const [conditions, setConditions] = useState<PaymentCondition[]>([]);
     const [loading, setLoading] = useState(true);
     const { user } = useAuth();
-    const [newCondition, setNewCondition] = useState({
-        name: '',
-        type: 'credit' as PaymentConditionType,
-        fee: 0,
-        feeType: 'percentage' as FeeType,
-        maxInstallments: 12,
-    });
     const { toast } = useToast();
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [editingCondition, setEditingCondition] = useState<PaymentCondition | undefined>(undefined);
 
     useEffect(() => {
         if (!user?.organizationId) return;
@@ -591,33 +668,27 @@ function PaymentConditions() {
         return () => unsubscribe();
     }, [user]);
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value, type } = e.target;
-        setNewCondition(prev => ({
-            ...prev,
-            [name]: type === 'number' ? parseFloat(value) || 0 : value
-        }));
-    };
-    
-    const handleSelectChange = (name: string, value: string) => {
-         setNewCondition(prev => ({ ...prev, [name]: value }));
-    }
-
-    const handleAdd = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newCondition.name.trim() || !user?.organizationId) {
-            toast({ title: 'O nome é obrigatório ou organização não encontrada.', variant: 'destructive' });
+    const handleSave = async (data: Partial<PaymentCondition>) => {
+        if (!user?.organizationId) {
+            toast({ title: 'Organização não encontrada.', variant: 'destructive' });
             return;
         }
+
         try {
-            await addDoc(collection(db, 'paymentConditions'), {
-                ...newCondition,
-                organizationId: user.organizationId
-            });
-            setNewCondition({ name: '', type: 'credit', fee: 0, feeType: 'percentage', maxInstallments: 12 });
-            toast({ title: 'Condição de pagamento adicionada!' });
+            if (editingCondition?.id) {
+                const { id, ...dataToSave } = data;
+                await updateDoc(doc(db, 'paymentConditions', editingCondition.id), dataToSave);
+                toast({ title: 'Condição atualizada com sucesso!' });
+            } else {
+                 await addDoc(collection(db, 'paymentConditions'), {
+                    ...data,
+                    organizationId: user.organizationId
+                });
+                toast({ title: 'Condição de pagamento adicionada!' });
+            }
+            setIsFormOpen(false);
         } catch (error) {
-            toast({ title: 'Erro ao adicionar condição', variant: 'destructive' });
+             toast({ title: 'Erro ao salvar condição', variant: 'destructive' });
         }
     };
 
@@ -629,6 +700,16 @@ function PaymentConditions() {
             toast({ title: 'Erro ao remover condição', variant: 'destructive' });
         }
     };
+
+    const openEditDialog = (condition: PaymentCondition) => {
+        setEditingCondition(condition);
+        setIsFormOpen(true);
+    }
+
+    const openNewDialog = () => {
+        setEditingCondition(undefined);
+        setIsFormOpen(true);
+    }
     
     const getTypeName = (type: PaymentConditionType) => {
         const names = { credit: 'Crédito', debit: 'Débito', cash: 'Dinheiro', pix: 'Pix' };
@@ -638,67 +719,15 @@ function PaymentConditions() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Condições de Pagamento</CardTitle>
-                <CardDescription>Gerencie as formas de pagamento aceitas na Frente de Caixa, incluindo tipos, taxas e parcelamento.</CardDescription>
+                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                    <div>
+                        <CardTitle>Condições de Pagamento</CardTitle>
+                        <CardDescription>Gerencie as formas de pagamento aceitas na Frente de Caixa, incluindo tipos, taxas e parcelamento.</CardDescription>
+                    </div>
+                    <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar</Button>
+                </div>
             </CardHeader>
             <CardContent>
-                <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg">
-                    <div className="space-y-2">
-                        <Label htmlFor="name">Nome da Condição</Label>
-                        <Input 
-                            id="name"
-                            name="name"
-                            value={newCondition.name} 
-                            onChange={handleInputChange}
-                            placeholder="Ex: Cartão de Crédito"
-                        />
-                    </div>
-                     <div className="space-y-2">
-                        <Label htmlFor="type">Tipo</Label>
-                        <Select name="type" value={newCondition.type} onValueChange={(value: PaymentConditionType) => handleSelectChange('type', value)}>
-                            <SelectTrigger id="type">
-                                <SelectValue placeholder="Selecione um tipo" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="credit">Crédito</SelectItem>
-                                <SelectItem value="debit">Débito</SelectItem>
-                                <SelectItem value="cash">Dinheiro</SelectItem>
-                                <SelectItem value="pix">Pix</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label htmlFor="fee">Taxa</Label>
-                        <Input 
-                            id="fee"
-                            name="fee"
-                            type="number"
-                            step="0.01"
-                            value={newCondition.fee} 
-                            onChange={handleInputChange}
-                            placeholder="Ex: 2.5"
-                            disabled={newCondition.type === 'cash'}
-                        />
-                    </div>
-
-                     {newCondition.type === 'credit' && (
-                         <div className="space-y-2">
-                            <Label htmlFor="maxInstallments">Máximo de Parcelas</Label>
-                            <Input 
-                                id="maxInstallments"
-                                name="maxInstallments"
-                                type="number"
-                                value={newCondition.maxInstallments} 
-                                onChange={handleInputChange}
-                            />
-                        </div>
-                     )}
-                    
-                    <div className="col-span-full flex justify-end">
-                       <Button type="submit" className="w-full md:w-auto"><PlusCircle className="mr-2 h-4 w-4" /> Adicionar</Button>
-                    </div>
-                </form>
                 <Table>
                     <TableHeader>
                         <TableRow>
@@ -719,16 +748,24 @@ function PaymentConditions() {
                                     <TableCell><Badge variant="outline">{getTypeName(c.type)}</Badge></TableCell>
                                     <TableCell>
                                         {c.fee > 0 
-                                            ? `${c.fee.toLocaleString('pt-BR')} ${c.feeType === 'percentage' ? '%' : 'R$'}` 
+                                            ? `${c.fee.toLocaleString('pt-BR')} %`
                                             : 'Sem taxa'}
                                     </TableCell>
                                     <TableCell>
                                         {c.type === 'credit' ? c.maxInstallments : 'N/A'}
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        <Button variant="ghost" size="icon" onClick={() => handleDelete(c.id)}>
-                                            <Trash2 className="h-4 w-4 text-destructive" />
-                                        </Button>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
+                                                     <MoreHorizontal className="h-4 w-4" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent>
+                                                <DropdownMenuItem onSelect={() => openEditDialog(c)}>Editar</DropdownMenuItem>
+                                                <DropdownMenuItem onSelect={() => handleDelete(c.id)} className="text-destructive focus:text-destructive">Excluir</DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
                                     </TableCell>
                                 </TableRow>
                             ))
@@ -736,6 +773,18 @@ function PaymentConditions() {
                     </TableBody>
                 </Table>
             </CardContent>
+             <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{editingCondition ? 'Editar' : 'Adicionar'} Condição de Pagamento</DialogTitle>
+                    </DialogHeader>
+                    <PaymentConditionForm 
+                        condition={editingCondition}
+                        onSave={handleSave}
+                        onDone={() => setIsFormOpen(false)}
+                    />
+                </DialogContent>
+            </Dialog>
         </Card>
     );
 }
@@ -1249,3 +1298,5 @@ export default function SettingsPage() {
         </React.Suspense>
     )
 }
+
+    

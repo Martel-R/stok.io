@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter } from 'lucide-react';
+import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle } from 'lucide-react';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Sale, Branch, User, PaymentDetail } from '@/lib/types';
+import type { Sale, Branch, User, PaymentDetail, Product, StockEntry } from '@/lib/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -216,6 +216,282 @@ function SalesReport() {
     );
 }
 
+// --- Top Selling Products Report ---
+function TopSellingProductsReport() {
+    const { user } = useAuth();
+    const [loading, setLoading] = useState(true);
+    const [sales, setSales] = useState<Sale[]>([]);
+    const [branches, setBranches] = useState<Branch[]>([]);
+
+    const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+      from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+      to: new Date(),
+    });
+
+    useEffect(() => {
+        if (!user?.organizationId) return;
+
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const orgId = user.organizationId;
+                const salesQuery = query(collection(db, 'sales'), where('organizationId', '==', orgId));
+                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', orgId));
+
+                const [salesSnap, branchesSnap] = await Promise.all([
+                    getDocs(salesQuery),
+                    getDocs(branchesQuery),
+                ]);
+
+                const salesData = salesSnap.docs.map(doc => {
+                    const data = doc.data();
+                    const date = data.date instanceof Timestamp ? data.date.toDate() : new Date();
+                    return { ...data, id: doc.id, date } as Sale;
+                });
+                const branchesData = branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+                
+                setSales(salesData);
+                setBranches(branchesData);
+                setSelectedBranchIds(branchesData.map(b => b.id));
+
+            } catch (error) {
+                console.error("Error fetching report data:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, [user]);
+
+    const topProducts = useMemo(() => {
+        const filteredSales = sales.filter(sale => {
+            const saleDate = sale.date;
+            const isAfterStart = dateRange?.from ? saleDate >= startOfDay(dateRange.from) : true;
+            const isBeforeEnd = dateRange?.to ? saleDate <= endOfDay(dateRange.to) : true;
+            const inDateRange = isAfterStart && isBeforeEnd;
+            const inBranch = selectedBranchIds.length === 0 || selectedBranchIds.includes(sale.branchId);
+            return inDateRange && inBranch;
+        });
+
+        const productSales = new Map<string, { name: string; quantity: number; revenue: number }>();
+
+        filteredSales.forEach(sale => {
+            sale.items.forEach(item => {
+                if(item.type !== 'service'){
+                    const existing = productSales.get(item.id);
+                    if (existing) {
+                        existing.quantity += item.quantity;
+                        existing.revenue += (item.price || item.finalPrice || 0) * item.quantity;
+                    } else {
+                        productSales.set(item.id, {
+                            name: item.name,
+                            quantity: item.quantity,
+                            revenue: (item.price || item.finalPrice || 0) * item.quantity,
+                        });
+                    }
+                }
+            });
+        });
+
+        return Array.from(productSales.values()).sort((a, b) => b.quantity - a.quantity);
+    }, [sales, dateRange, selectedBranchIds]);
+
+    const exportToPDF = () => {
+        const doc = new jsPDF();
+        doc.text("Relatório de Produtos Mais Vendidos", 14, 16);
+        autoTable(doc, {
+            head: [['Produto', 'Quantidade Vendida', 'Receita Gerada']],
+            body: topProducts.map(p => [
+                p.name,
+                p.quantity,
+                `R$ ${p.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+            ]),
+            startY: 20
+        });
+        doc.save('relatorio_mais_vendidos.pdf');
+    };
+
+    const exportToExcel = () => {
+        const data = topProducts.map(p => ({
+            'Produto': p.name,
+            'Quantidade Vendida': p.quantity,
+            'Receita Gerada': p.revenue
+        }));
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(data);
+        XLSX.utils.book_append_sheet(wb, ws, 'Mais Vendidos');
+        XLSX.writeFile(wb, 'relatorio_mais_vendidos.xlsx');
+    };
+
+    if (loading) return <Skeleton className="h-96 w-full" />;
+
+    return (
+        <Card>
+            <CardHeader>
+                <div className="flex flex-col md:flex-row justify-between gap-4">
+                    <div className="flex flex-wrap gap-2">
+                        <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
+                        <DateRangePicker date={dateRange} onSelect={setDateRange} />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={exportToPDF}><FileDown className="mr-2" /> PDF</Button>
+                      <Button variant="outline" size="sm" onClick={exportToExcel}><FileDown className="mr-2" /> Excel</Button>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent>
+                 <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Produto</TableHead>
+                            <TableHead className="text-right">Quantidade Vendida</TableHead>
+                            <TableHead className="text-right">Receita Gerada</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {topProducts.map(product => (
+                            <TableRow key={product.name}>
+                                <TableCell className="font-medium">{product.name}</TableCell>
+                                <TableCell className="text-right">{product.quantity}</TableCell>
+                                <TableCell className="text-right font-medium">R$ {product.revenue.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+                {topProducts.length === 0 && <p className="text-center text-muted-foreground py-10">Nenhum produto vendido no período selecionado.</p>}
+            </CardContent>
+        </Card>
+    );
+}
+
+// --- Low Stock Report ---
+function LowStockReport() {
+    const { user } = useAuth();
+    const [loading, setLoading] = useState(true);
+    const [products, setProducts] = useState<Product[]>([]);
+    const [stockEntries, setStockEntries] = useState<StockEntry[]>([]);
+    const [branches, setBranches] = useState<Branch[]>([]);
+    const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
+    
+    useEffect(() => {
+        if (!user?.organizationId) return;
+
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const orgId = user.organizationId;
+                const productsQuery = query(collection(db, 'products'), where('organizationId', '==', orgId));
+                const stockEntriesQuery = query(collection(db, 'stockEntries'), where('organizationId', '==', orgId));
+                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', orgId));
+
+                const [productsSnap, stockEntriesSnap, branchesSnap] = await Promise.all([
+                    getDocs(productsQuery),
+                    getDocs(stockEntriesQuery),
+                    getDocs(branchesQuery)
+                ]);
+
+                setProducts(productsSnap.docs.map(d => ({id: d.id, ...d.data()}) as Product));
+                setStockEntries(stockEntriesSnap.docs.map(d => d.data() as StockEntry));
+                const branchesData = branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+                setBranches(branchesData);
+                setSelectedBranchIds(branchesData.map(b => b.id));
+
+            } catch (error) {
+                console.error("Error fetching low stock data:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, [user]);
+
+    const lowStockProducts = useMemo(() => {
+        const filteredProducts = products.filter(p => selectedBranchIds.includes(p.branchId));
+
+        return filteredProducts.map(product => {
+            const stock = stockEntries
+                .filter(e => e.productId === product.id)
+                .reduce((sum, e) => sum + (Number(e.quantity) || 0), 0);
+            return { ...product, stock };
+        })
+        .filter(p => p.stock <= p.lowStockThreshold)
+        .sort((a,b) => (a.stock - a.lowStockThreshold) - (b.stock - b.lowStockThreshold));
+    }, [products, stockEntries, selectedBranchIds]);
+    
+    const exportToPDF = () => {
+        const doc = new jsPDF();
+        doc.text("Relatório de Estoque Baixo", 14, 16);
+        autoTable(doc, {
+            head: [['Filial', 'Produto', 'Estoque Atual', 'Estoque Mínimo']],
+            body: lowStockProducts.map(p => [
+                branches.find(b => b.id === p.branchId)?.name || 'N/A',
+                p.name,
+                p.stock,
+                p.lowStockThreshold
+            ]),
+            startY: 20
+        });
+        doc.save('relatorio_estoque_baixo.pdf');
+    };
+
+    const exportToExcel = () => {
+        const data = lowStockProducts.map(p => ({
+            'Filial': branches.find(b => b.id === p.branchId)?.name || 'N/A',
+            'Produto': p.name,
+            'Estoque Atual': p.stock,
+            'Estoque Mínimo': p.lowStockThreshold
+        }));
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(data);
+        XLSX.utils.book_append_sheet(wb, ws, 'Estoque Baixo');
+        XLSX.writeFile(wb, 'relatorio_estoque_baixo.xlsx');
+    };
+
+    if (loading) return <Skeleton className="h-96 w-full" />;
+
+    return (
+        <Card>
+            <CardHeader>
+                 <div className="flex flex-col md:flex-row justify-between gap-4">
+                    <div className="flex flex-wrap gap-2">
+                        <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={exportToPDF}><FileDown className="mr-2" /> PDF</Button>
+                      <Button variant="outline" size="sm" onClick={exportToExcel}><FileDown className="mr-2" /> Excel</Button>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent>
+                 <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Filial</TableHead>
+                            <TableHead>Produto</TableHead>
+                            <TableHead className="text-right">Estoque Atual</TableHead>
+                            <TableHead className="text-right">Estoque Mínimo</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {lowStockProducts.map(product => (
+                            <TableRow key={product.id} className="text-destructive">
+                                <TableCell>{branches.find(b => b.id === product.branchId)?.name || 'N/A'}</TableCell>
+                                <TableCell className="font-medium">{product.name}</TableCell>
+                                <TableCell className="text-right font-bold">{product.stock}</TableCell>
+                                <TableCell className="text-right">{product.lowStockThreshold}</TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+                {lowStockProducts.length === 0 && <p className="text-center text-muted-foreground py-10">Nenhum produto com estoque baixo.</p>}
+            </CardContent>
+        </Card>
+    )
+}
+
 
 // --- Main Page Component ---
 export default function ReportsPage() {
@@ -262,13 +538,17 @@ export default function ReportsPage() {
                         <SelectValue placeholder="Selecione um relatório..." />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="sales">Relatório de Vendas</SelectItem>
-                        {/* Outros relatórios podem ser adicionados aqui no futuro */}
+                        <SelectItem value="sales"><FileDown className="mr-2"/>Relatório de Vendas</SelectItem>
+                        <SelectItem value="top-selling"><TrendingUp className="mr-2"/>Produtos Mais Vendidos</SelectItem>
+                        <SelectItem value="low-stock"><AlertTriangle className="mr-2"/>Estoque Baixo</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
 
             {reportType === 'sales' && <SalesReport />}
+            {reportType === 'top-selling' && <TopSellingProductsReport />}
+            {reportType === 'low-stock' && <LowStockReport />}
+
 
             <style jsx global>{`
                 @media print {

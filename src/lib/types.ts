@@ -166,6 +166,7 @@ export interface PaymentCondition {
     fee: number;
     feeType: 'percentage' | 'fixed';
     organizationId: string;
+    maxInstallments?: number;
 }
 
 export interface PaymentDetail {
@@ -177,6 +178,7 @@ export interface PaymentDetail {
     receiptCode?: string;
 }
 
+export type SaleStatus = 'completed' | 'cancelled';
 
 export interface Sale {
   id:string;
@@ -187,6 +189,7 @@ export interface Sale {
   branchId: string;
   organizationId: string;
   payments: PaymentDetail[];
+  status: SaleStatus;
   attendanceId?: string; // Link to the attendance if sale came from one
   customerId?: string; // Link to customer for direct sales
 }
@@ -201,7 +204,7 @@ export interface Branch {
     organizationId: string;
 }
 
-export type StockEntryType = 'entry' | 'adjustment' | 'sale' | 'transfer';
+export type StockEntryType = 'entry' | 'adjustment' | 'sale' | 'transfer' | 'cancellation';
 
 export interface StockEntry {
     id: string;

@@ -576,6 +576,7 @@ function PaymentConditions() {
         type: 'credit' as PaymentConditionType,
         fee: 0,
         feeType: 'percentage' as FeeType,
+        maxInstallments: 12,
     });
     const { toast } = useToast();
 
@@ -613,7 +614,7 @@ function PaymentConditions() {
                 ...newCondition,
                 organizationId: user.organizationId
             });
-            setNewCondition({ name: '', type: 'credit', fee: 0, feeType: 'percentage' });
+            setNewCondition({ name: '', type: 'credit', fee: 0, feeType: 'percentage', maxInstallments: 12 });
             toast({ title: 'Condição de pagamento adicionada!' });
         } catch (error) {
             toast({ title: 'Erro ao adicionar condição', variant: 'destructive' });
@@ -638,23 +639,23 @@ function PaymentConditions() {
         <Card>
             <CardHeader>
                 <CardTitle>Condições de Pagamento</CardTitle>
-                <CardDescription>Gerencie as formas de pagamento aceitas na Frente de Caixa, incluindo tipos e taxas.</CardDescription>
+                <CardDescription>Gerencie as formas de pagamento aceitas na Frente de Caixa, incluindo tipos, taxas e parcelamento.</CardDescription>
             </CardHeader>
             <CardContent>
-                <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg">
-                    <div className="space-y-2 col-span-3 md:col-span-1">
+                <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg">
+                    <div className="space-y-2">
                         <Label htmlFor="name">Nome da Condição</Label>
                         <Input 
                             id="name"
                             name="name"
                             value={newCondition.name} 
                             onChange={handleInputChange}
-                            placeholder="Ex: Cartão de Débito"
+                            placeholder="Ex: Cartão de Crédito"
                         />
                     </div>
-                     <div className="space-y-2 col-span-3 md:col-span-1">
+                     <div className="space-y-2">
                         <Label htmlFor="type">Tipo</Label>
-                        <Select name="type" value={newCondition.type} onValueChange={(value) => handleSelectChange('type', value)}>
+                        <Select name="type" value={newCondition.type} onValueChange={(value: PaymentConditionType) => handleSelectChange('type', value)}>
                             <SelectTrigger id="type">
                                 <SelectValue placeholder="Selecione um tipo" />
                             </SelectTrigger>
@@ -666,41 +667,35 @@ function PaymentConditions() {
                             </SelectContent>
                         </Select>
                     </div>
-                    {newCondition.type !== 'cash' && (
-                        <>
-                            <div className="space-y-2 col-span-3 md:col-span-1">
-                                <Label htmlFor="fee">Taxa</Label>
-                                <Input 
-                                    id="fee"
-                                    name="fee"
-                                    type="number"
-                                    step="0.01"
-                                    value={newCondition.fee} 
-                                    onChange={handleInputChange}
-                                    placeholder="Ex: 2.5"
-                                />
-                            </div>
-                            <div className="space-y-2 col-span-3 md:col-span-1">
-                                <Label>Tipo de Taxa</Label>
-                                <RadioGroup
-                                    name="feeType"
-                                    value={newCondition.feeType}
-                                    onValueChange={(value) => handleSelectChange('feeType', value)}
-                                    className="flex items-center space-x-4"
-                                >
-                                    <div className="flex items-center space-x-2">
-                                        <RadioGroupItem value="percentage" id="percentage" />
-                                        <Label htmlFor="percentage">% (Percentual)</Label>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                        <RadioGroupItem value="fixed" id="fixed" />
-                                        <Label htmlFor="fixed">R$ (Fixo)</Label>
-                                    </div>
-                                </RadioGroup>
-                            </div>
-                        </>
-                    )}
-                    <div className="col-span-3 md:col-span-3 flex items-end">
+
+                    <div className="space-y-2">
+                        <Label htmlFor="fee">Taxa</Label>
+                        <Input 
+                            id="fee"
+                            name="fee"
+                            type="number"
+                            step="0.01"
+                            value={newCondition.fee} 
+                            onChange={handleInputChange}
+                            placeholder="Ex: 2.5"
+                            disabled={newCondition.type === 'cash'}
+                        />
+                    </div>
+
+                     {newCondition.type === 'credit' && (
+                         <div className="space-y-2">
+                            <Label htmlFor="maxInstallments">Máximo de Parcelas</Label>
+                            <Input 
+                                id="maxInstallments"
+                                name="maxInstallments"
+                                type="number"
+                                value={newCondition.maxInstallments} 
+                                onChange={handleInputChange}
+                            />
+                        </div>
+                     )}
+                    
+                    <div className="col-span-full flex justify-end">
                        <Button type="submit" className="w-full md:w-auto"><PlusCircle className="mr-2 h-4 w-4" /> Adicionar</Button>
                     </div>
                 </form>
@@ -710,12 +705,13 @@ function PaymentConditions() {
                             <TableHead>Nome</TableHead>
                             <TableHead>Tipo</TableHead>
                              <TableHead>Taxa</TableHead>
+                             <TableHead>Max. Parcelas</TableHead>
                             <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {loading ? (
-                            <TableRow><TableCell colSpan={4}><Skeleton className="h-5 w-full" /></TableCell></TableRow>
+                            <TableRow><TableCell colSpan={5}><Skeleton className="h-5 w-full" /></TableCell></TableRow>
                         ) : (
                             conditions.map(c => (
                                 <TableRow key={c.id}>
@@ -725,6 +721,9 @@ function PaymentConditions() {
                                         {c.fee > 0 
                                             ? `${c.fee.toLocaleString('pt-BR')} ${c.feeType === 'percentage' ? '%' : 'R$'}` 
                                             : 'Sem taxa'}
+                                    </TableCell>
+                                    <TableCell>
+                                        {c.type === 'credit' ? c.maxInstallments : 'N/A'}
                                     </TableCell>
                                     <TableCell className="text-right">
                                         <Button variant="ghost" size="icon" onClick={() => handleDelete(c.id)}>

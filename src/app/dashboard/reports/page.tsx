@@ -370,9 +370,9 @@ function TopSellingProductsReport() {
 function LowStockReport() {
     const { user } = useAuth();
     const [loading, setLoading] = useState(true);
-    const [products, setProducts] = useState<Product[]>([]);
-    const [stockEntries, setStockEntries] = useState<StockEntry[]>([]);
-    const [branches, setBranches] = useState<Branch[]>([]);
+    const [allProducts, setAllProducts] = useState<Product[]>([]);
+    const [allStockEntries, setAllStockEntries] = useState<StockEntry[]>([]);
+    const [allBranches, setAllBranches] = useState<Branch[]>([]);
     const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
     
     useEffect(() => {
@@ -392,10 +392,10 @@ function LowStockReport() {
                     getDocs(branchesQuery)
                 ]);
 
-                setProducts(productsSnap.docs.map(d => ({id: d.id, ...d.data()}) as Product));
-                setStockEntries(stockEntriesSnap.docs.map(d => d.data() as StockEntry));
+                setAllProducts(productsSnap.docs.map(d => ({id: d.id, ...d.data()}) as Product));
+                setAllStockEntries(stockEntriesSnap.docs.map(d => d.data() as StockEntry));
                 const branchesData = branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
-                setBranches(branchesData);
+                setAllBranches(branchesData);
                 setSelectedBranchIds(branchesData.map(b => b.id));
 
             } catch (error) {
@@ -408,44 +408,83 @@ function LowStockReport() {
         fetchData();
     }, [user]);
 
-    const lowStockProducts = useMemo(() => {
-        const filteredProducts = products.filter(p => selectedBranchIds.includes(p.branchId));
+    const lowStockData = useMemo(() => {
+        const productMap = new Map<string, {
+            name: string;
+            lowStockThreshold: number;
+            totalStock: number;
+            branchStock: { [key: string]: number };
+        }>();
 
-        return filteredProducts.map(product => {
-            const stock = stockEntries
-                .filter(e => e.productId === product.id)
-                .reduce((sum, e) => sum + (Number(e.quantity) || 0), 0);
-            return { ...product, stock };
-        })
-        .filter(p => p.stock <= p.lowStockThreshold)
-        .sort((a,b) => (a.stock - a.lowStockThreshold) - (b.stock - b.lowStockThreshold));
-    }, [products, stockEntries, selectedBranchIds]);
+        // 1. Calculate stock for each product in each branch
+        const stockByProductAndBranch = new Map<string, number>(); // key: `${productId}_${branchId}`
+        for (const entry of allStockEntries) {
+            const key = `${entry.productId}_${entry.branchId}`;
+            const currentStock = stockByProductAndBranch.get(key) || 0;
+            stockByProductAndBranch.set(key, currentStock + (Number(entry.quantity) || 0));
+        }
+
+        // 2. Group by product name across all branches
+        for (const product of allProducts) {
+            if (!productMap.has(product.name)) {
+                productMap.set(product.name, {
+                    name: product.name,
+                    lowStockThreshold: product.lowStockThreshold, // Note: this assumes threshold is consistent
+                    totalStock: 0,
+                    branchStock: {},
+                });
+            }
+
+            const stock = stockByProductAndBranch.get(`${product.id}_${product.branchId}`) || 0;
+            const productData = productMap.get(product.name)!;
+            
+            productData.totalStock += stock;
+            productData.branchStock[product.branchId] = stock;
+        }
+
+        // 3. Filter for low stock and sort
+        return Array.from(productMap.values())
+            .filter(p => p.totalStock <= p.lowStockThreshold)
+            .sort((a, b) => (a.totalStock - a.lowStockThreshold) - (b.totalStock - b.lowStockThreshold));
+
+    }, [allProducts, allStockEntries]);
+
+    const filteredBranches = useMemo(() => {
+        return allBranches.filter(b => selectedBranchIds.includes(b.id));
+    }, [allBranches, selectedBranchIds]);
     
     const exportToPDF = () => {
         const doc = new jsPDF();
         doc.text("Relatório de Estoque Baixo", 14, 16);
-        autoTable(doc, {
-            head: [['Filial', 'Produto', 'Estoque Atual', 'Estoque Mínimo']],
-            body: lowStockProducts.map(p => [
-                branches.find(b => b.id === p.branchId)?.name || 'N/A',
-                p.name,
-                p.stock,
-                p.lowStockThreshold
-            ]),
-            startY: 20
-        });
+        const head = [
+            ['Produto', 'Est. Mínimo', 'Est. Total'],
+            ...filteredBranches.map(b => [b.name])
+        ];
+        const body = lowStockData.map(p => [
+            p.name,
+            p.lowStockThreshold,
+            p.totalStock,
+            ...filteredBranches.map(b => p.branchStock[b.id] ?? 0)
+        ]);
+        autoTable(doc, { head, body, startY: 20 });
         doc.save('relatorio_estoque_baixo.pdf');
     };
 
     const exportToExcel = () => {
-        const data = lowStockProducts.map(p => ({
-            'Filial': branches.find(b => b.id === p.branchId)?.name || 'N/A',
-            'Produto': p.name,
-            'Estoque Atual': p.stock,
-            'Estoque Mínimo': p.lowStockThreshold
-        }));
-        const wb = XLSX.utils.book_new();
+        const data = lowStockData.map(p => {
+            const row: { [key: string]: any } = {
+                'Produto': p.name,
+                'Estoque Mínimo': p.lowStockThreshold,
+                'Estoque Total': p.totalStock,
+            };
+            filteredBranches.forEach(b => {
+                row[b.name] = p.branchStock[b.id] ?? 0;
+            });
+            return row;
+        });
+
         const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Estoque Baixo');
         XLSX.writeFile(wb, 'relatorio_estoque_baixo.xlsx');
     };
@@ -457,7 +496,7 @@ function LowStockReport() {
             <CardHeader>
                  <div className="flex flex-col md:flex-row justify-between gap-4">
                     <div className="flex flex-wrap gap-2">
-                        <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
+                        <MultiSelectPopover title="Filiais" items={allBranches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
                     </div>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" onClick={exportToPDF}><FileDown className="mr-2" /> PDF</Button>
@@ -469,24 +508,30 @@ function LowStockReport() {
                  <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Filial</TableHead>
                             <TableHead>Produto</TableHead>
-                            <TableHead className="text-right">Estoque Atual</TableHead>
-                            <TableHead className="text-right">Estoque Mínimo</TableHead>
+                            <TableHead className="text-right">Est. Mínimo</TableHead>
+                            <TableHead className="text-right">Est. Total</TableHead>
+                            {filteredBranches.map(branch => (
+                                <TableHead key={branch.id} className="text-right">{branch.name}</TableHead>
+                            ))}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {lowStockProducts.map(product => (
-                            <TableRow key={product.id} className="text-destructive">
-                                <TableCell>{branches.find(b => b.id === product.branchId)?.name || 'N/A'}</TableCell>
+                        {lowStockData.map(product => (
+                            <TableRow key={product.name} className={product.totalStock <= 0 ? "text-destructive font-bold" : "text-yellow-600"}>
                                 <TableCell className="font-medium">{product.name}</TableCell>
-                                <TableCell className="text-right font-bold">{product.stock}</TableCell>
                                 <TableCell className="text-right">{product.lowStockThreshold}</TableCell>
+                                <TableCell className="text-right font-semibold">{product.totalStock}</TableCell>
+                                {filteredBranches.map(branch => (
+                                    <TableCell key={branch.id} className="text-right">
+                                        {product.branchStock[branch.id] ?? 0}
+                                    </TableCell>
+                                ))}
                             </TableRow>
                         ))}
                     </TableBody>
                 </Table>
-                {lowStockProducts.length === 0 && <p className="text-center text-muted-foreground py-10">Nenhum produto com estoque baixo.</p>}
+                {lowStockData.length === 0 && <p className="text-center text-muted-foreground py-10">Nenhum produto com estoque baixo.</p>}
             </CardContent>
         </Card>
     )

@@ -3,14 +3,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType, StockEntry, Kit, Attendance, AttendanceItem, Customer } from '@/lib/types';
+import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType, StockEntry, Kit, Attendance, AttendanceItem, Customer, SaleStatus } from '@/lib/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History, Minus, Component, DollarSign, UserCheck, Search, UserPlus } from 'lucide-react';
+import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History, Minus, Component, DollarSign, UserCheck, Search, UserPlus, MoreHorizontal, Ban } from 'lucide-react';
 import Image from 'next/image';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -27,6 +27,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 
 type CartItem = 
@@ -344,65 +345,11 @@ function PendingAttendancesTab({ onSelect }: { onSelect: (attendance: Attendance
     );
 }
 
-function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
-    const totalsByPaymentType = useMemo(() => {
-        const totals: Record<PaymentConditionType, number> = {
-            cash: 0,
-            credit: 0,
-            debit: 0,
-            pix: 0,
-        };
-
-        salesHistory.forEach(sale => {
-            sale.payments?.forEach(payment => {
-                if (totals.hasOwnProperty(payment.type)) {
-                    totals[payment.type] += payment.amount;
-                }
-            });
-        });
-        return totals;
-    }, [salesHistory]);
-
+function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[], onCancelSale: (sale: Sale) => void }) {
+    const { user } = useAuth();
+   
     return (
         <div className="flex flex-col h-[calc(100vh-18rem)]">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Crédito</CardTitle>
-                        <CreditCard className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-lg font-bold">R$ {totalsByPaymentType.credit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                    </CardContent>
-                </Card>
-                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Débito</CardTitle>
-                        <CreditCard className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-lg font-bold">R$ {totalsByPaymentType.debit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                    </CardContent>
-                </Card>
-                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Pix</CardTitle>
-                        <DollarSign className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-lg font-bold">R$ {totalsByPaymentType.pix.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                    </CardContent>
-                </Card>
-                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Dinheiro</CardTitle>
-                        <DollarSign className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-lg font-bold">R$ {totalsByPaymentType.cash.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                    </CardContent>
-                </Card>
-            </div>
             <ScrollArea className="flex-grow">
                 <Table>
                     <TableHeader>
@@ -411,18 +358,19 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
                             <TableHead>Itens</TableHead>
                             <TableHead>Vendedor</TableHead>
                             <TableHead className="text-right">Total</TableHead>
+                            <TableHead className="text-center">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {salesHistory.length > 0 ? (
                             salesHistory.map(sale => (
-                                <TableRow key={sale.id}>
+                                <TableRow key={sale.id} className={cn(sale.status === 'cancelled' && 'text-muted-foreground line-through')}>
                                     <TableCell>{format(sale.date, 'dd/MM/yyyy HH:mm')}</TableCell>
                                     <TableCell className="font-medium">
                                         <div className="flex flex-col gap-1">
                                             {sale.items?.map((item: any, index: number) => (
                                                 <div key={item.id + index}>
-                                                    <span>{item.name}</span>
+                                                    <span className="font-semibold">{item.name}</span>
                                                     {item.type === 'kit' && item.chosenProducts && (
                                                         <span className="text-xs text-muted-foreground ml-1">
                                                             ({item.chosenProducts.map((p: any) => p.name).join(', ')})
@@ -434,11 +382,29 @@ function SalesHistoryTab({ salesHistory }: { salesHistory: Sale[] }) {
                                     </TableCell>
                                     <TableCell>{sale.cashier}</TableCell>
                                     <TableCell className="text-right">R${sale.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
+                                    <TableCell className="text-center">
+                                       {user?.role === 'admin' && sale.status !== 'cancelled' && (
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
+                                                        <MoreHorizontal />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent>
+                                                    <DropdownMenuItem onSelect={() => onCancelSale(sale)} className="text-destructive focus:text-destructive">
+                                                        <Ban className="mr-2"/>
+                                                        Cancelar Venda
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        )}
+                                        {sale.status === 'cancelled' && <Badge variant="destructive">Cancelada</Badge>}
+                                    </TableCell>
                                 </TableRow>
                             ))
                         ) : (
                             <TableRow>
-                                <TableCell colSpan={4} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
+                                <TableCell colSpan={5} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
                             </TableRow>
                         )}
                     </TableBody>
@@ -530,13 +496,13 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-4xl grid-rows-[auto_1fr_auto] max-h-[90vh]">
+            <DialogContent className="sm:max-w-4xl grid grid-rows-[auto_1fr_auto] h-[90vh] max-h-[90vh]">
                 <DialogHeader>
                     <DialogTitle>Monte seu Kit: {kit.name}</DialogTitle>
                     <DialogDescription>Selecione {kit.numberOfItems} dos produtos abaixo. Você pode selecionar o mesmo produto mais de uma vez.</DialogDescription>
                 </DialogHeader>
-                <div className="grid md:grid-cols-2 gap-6 overflow-y-auto pr-4">
-                    <div className="flex flex-col gap-4">
+                <div className="grid md:grid-cols-2 gap-6 min-h-0 flex-grow">
+                    <div className="flex flex-col gap-4 min-h-0">
                         <h3 className="font-semibold">Produtos Disponíveis</h3>
                         <div className="relative">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -569,7 +535,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                             </div>
                         </ScrollArea>
                     </div>
-                     <div className="flex flex-col gap-4">
+                     <div className="flex flex-col gap-4 min-h-0">
                         <h3 className="font-semibold">Sua Seleção ({selectedProducts.length} de {kit.numberOfItems})</h3>
                         <ScrollArea className="h-full rounded-md border p-4">
                            {selectedProducts.length === 0 ? (
@@ -910,6 +876,7 @@ export default function POSPage() {
             branchId: currentBranch.id,
             organizationId: user.organizationId,
             payments: payments,
+            status: 'completed',
             ...(attendanceId && { attendanceId: attendanceId }),
             ...(customerId && { customerId: customerId }),
         };
@@ -960,6 +927,86 @@ export default function POSPage() {
     setCurrentAttendanceId(undefined);
     setSelectedCustomer(null);
   };
+
+    const handleCancelSale = async (sale: Sale) => {
+        if (!user || !currentBranch || user.role !== 'admin') {
+            toast({ title: 'Ação não permitida', variant: 'destructive' });
+            return;
+        }
+
+        const batch = writeBatch(db);
+        const saleDate = serverTimestamp();
+
+        // Revert stock
+        for (const item of sale.items) {
+            let productId = item.id;
+            let quantityToReturn = item.quantity;
+            let notes = `Cancelamento Venda: ${sale.id}`;
+
+            if (item.type === 'product') {
+                 const entry: Omit<StockEntry, 'id'> = {
+                    productId: productId,
+                    productName: item.name,
+                    quantity: quantityToReturn,
+                    type: 'cancellation',
+                    date: saleDate,
+                    userId: user.id,
+                    userName: user.name,
+                    branchId: currentBranch.id,
+                    organizationId: user.organizationId,
+                    notes: notes,
+                };
+                batch.set(doc(collection(db, "stockEntries")), entry);
+            } else if (item.type === 'combo') {
+                const comboDoc = combos.find(c => c.id === item.id);
+                if (comboDoc) {
+                    for (const product of comboDoc.products) {
+                         const entry: Omit<StockEntry, 'id'> = {
+                            productId: product.productId,
+                            productName: product.productName,
+                            quantity: product.quantity * item.quantity,
+                            type: 'cancellation',
+                            date: saleDate,
+                            userId: user.id,
+                            userName: user.name,
+                            branchId: currentBranch.id,
+                            organizationId: user.organizationId,
+                            notes: `${notes} (Combo: ${item.name})`,
+                        };
+                        batch.set(doc(collection(db, "stockEntries")), entry);
+                    }
+                }
+            } else if (item.type === 'kit') {
+                for (const product of item.chosenProducts) {
+                     const entry: Omit<StockEntry, 'id'> = {
+                        productId: product.id,
+                        productName: product.name,
+                        quantity: 1 * item.quantity, // Each chosen product is one unit
+                        type: 'cancellation',
+                        date: saleDate,
+                        userId: user.id,
+                        userName: user.name,
+                        branchId: currentBranch.id,
+                        organizationId: user.organizationId,
+                        notes: `${notes} (Kit: ${item.name})`,
+                    };
+                    batch.set(doc(collection(db, "stockEntries")), entry);
+                }
+            }
+        }
+
+        // Update sale status
+        const saleRef = doc(db, 'sales', sale.id);
+        batch.update(saleRef, { status: 'cancelled' as SaleStatus });
+
+        try {
+            await batch.commit();
+            toast({ title: 'Venda cancelada e estoque revertido!' });
+        } catch (error) {
+            console.error("Error cancelling sale:", error);
+            toast({ title: 'Erro ao cancelar venda', variant: 'destructive' });
+        }
+    };
 
   if (!currentBranch && !authLoading) {
     return (
@@ -1102,7 +1149,7 @@ export default function POSPage() {
                     </ScrollArea>
                 </TabsContent>
                 <TabsContent value="history" className="mt-4 flex-grow">
-                        <SalesHistoryTab salesHistory={salesHistory} />
+                        <SalesHistoryTab salesHistory={salesHistory} onCancelSale={handleCancelSale} />
                 </TabsContent>
             </Tabs>
           </CardContent>
@@ -1211,3 +1258,5 @@ export default function POSPage() {
     </>
   );
 }
+
+

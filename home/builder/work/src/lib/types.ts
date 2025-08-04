@@ -278,3 +278,4 @@ export interface Organization {
     enabledModules: EnabledModules;
     branding?: BrandingSettings;
 }
+

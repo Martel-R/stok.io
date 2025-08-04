@@ -423,7 +423,6 @@ export default function ProductsPage() {
             return;
         }
         setIsProcessingBulkAction(true);
-        const batch = writeBatch(db);
         const productsToCopy = products.filter(p => selectedProductIds.includes(p.id));
 
         branchesToCopyTo.forEach(branchId => {
@@ -755,4 +754,3 @@ export default function ProductsPage() {
     </div>
   );
 }
-

@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter } from 'lucide-react';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Sale, Branch, User } from '@/lib/types';
+import type { Sale, Branch, User, PaymentDetail } from '@/lib/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -106,16 +106,25 @@ export default function ReportsPage() {
     
     const totalFilteredRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
 
+    const formatPayments = (payments: PaymentDetail[]) => {
+        if (!payments) return 'N/A';
+        return payments.map(p => {
+            const installments = p.installments > 1 ? ` (${p.installments}x)` : '';
+            return `${p.conditionName}${installments}: R$ ${p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+        }).join('; ');
+    };
+
     const exportToPDF = () => {
         const doc = new jsPDF();
         doc.text("Relatório de Vendas", 14, 16);
         autoTable(doc, {
-            head: [['Data', 'Filial', 'Vendedor', 'Itens', 'Total']],
+            head: [['Data', 'Filial', 'Vendedor', 'Itens', 'Pagamentos', 'Total']],
             body: filteredSales.map(s => [
                 format(s.date, 'dd/MM/yyyy HH:mm'),
                 branches.find(b => b.id === s.branchId)?.name || 'N/A',
                 s.cashier,
                 s.items.map(item => `${item.quantity}x ${item.name}`).join(', '),
+                formatPayments(s.payments),
                 `R$ ${s.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
             ]),
             startY: 20
@@ -123,36 +132,16 @@ export default function ReportsPage() {
         doc.save('relatorio_vendas.pdf');
     };
 
-    const exportToCSV = () => {
-        const headers = ['Data', 'Filial', 'Vendedor', 'Itens', 'Total'];
-        const data = filteredSales.map(s => [
-            format(s.date, 'dd/MM/yyyy HH:mm'),
-            branches.find(b => b.id === s.branchId)?.name || 'N/A',
-            s.cashier,
-            s.items.map(item => `${item.quantity}x ${item.name}`).join('; '),
-            s.total.toString().replace('.', ',')
-        ]);
-        const csvContent = [headers.join(','), ...data.map(row => row.join(','))].join('\n');
-        const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.setAttribute('download', 'relatorio_vendas.csv');
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
     const exportToExcel = () => {
-        const headers = ['Data', 'Filial', 'Vendedor', 'Itens', 'Total'];
         const data = filteredSales.map(s => ({
-            Data: format(s.date, 'dd/MM/yyyy HH:mm'),
-            Filial: branches.find(b => b.id === s.branchId)?.name || 'N/A',
-            Vendedor: s.cashier,
-            Itens: s.items.map(item => `${item.quantity}x ${item.name}`).join(', '),
-            Total: s.total
+            'Data': format(s.date, 'dd/MM/yyyy HH:mm'),
+            'Filial': branches.find(b => b.id === s.branchId)?.name || 'N/A',
+            'Vendedor': s.cashier,
+            'Itens': s.items.map(item => `${item.quantity}x ${item.name}`).join(', '),
+            'Pagamentos': formatPayments(s.payments),
+            'Total': s.total
         }));
-        const ws = XLSX.utils.json_to_sheet(data, { header: headers });
-        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(data);
         XLSX.utils.book_append_sheet(wb, ws, 'Vendas');
         XLSX.writeFile(wb, 'relatorio_vendas.xlsx');
     };
@@ -225,6 +214,7 @@ export default function ReportsPage() {
                                     <TableHead>Filial</TableHead>
                                     <TableHead>Vendedor</TableHead>
                                     <TableHead>Itens</TableHead>
+                                    <TableHead>Pagamentos</TableHead>
                                     <TableHead className="text-right">Total</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -237,6 +227,13 @@ export default function ReportsPage() {
                                         <TableCell>
                                             {sale.items.map((item: any) => (
                                                 <div key={item.id}>{item.quantity}x {item.name}</div>
+                                            ))}
+                                        </TableCell>
+                                        <TableCell>
+                                            {sale.payments?.map(p => (
+                                                <div key={p.conditionId} className="text-xs">
+                                                    {p.conditionName} ({p.installments}x): <span className="font-medium">R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                                </div>
                                             ))}
                                         </TableCell>
                                         <TableCell className="text-right font-medium">R$ {sale.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
@@ -275,7 +272,7 @@ function MultiSelectPopover({ title, items, selectedIds, setSelectedIds }: { tit
             <PopoverTrigger asChild>
                 <Button variant="outline">
                     <Filter className="mr-2" />
-                    {title} ({selectedIds.length || 'Todos'})
+                    {title} ({selectedIds.length === items.length ? 'Todos' : selectedIds.length})
                 </Button>
             </PopoverTrigger>
             <PopoverContent className="w-64 p-0">
@@ -316,7 +313,7 @@ function DateRangePicker({ date, onSelect, className }: { date: DateRange | unde
           <Button
             id="date"
             variant={"outline"}
-            className={cn("w-[300px] justify-start text-left font-normal", !date && "text-muted-foreground")}
+            className={cn("w-full sm:w-[300px] justify-start text-left font-normal", !date && "text-muted-foreground")}
           >
             <CalendarIcon className="mr-2 h-4 w-4" />
             {date?.from ? (
@@ -333,7 +330,7 @@ function DateRangePicker({ date, onSelect, className }: { date: DateRange | unde
             )}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
+        <PopoverContent className="w-auto p-0" align="end">
           <Calendar
             initialFocus
             mode="range"

@@ -155,6 +155,7 @@ export interface Product {
   organizationId: string;
   lowStockThreshold: number;
   isSalable: boolean;
+  barcode?: string;
 }
 
 export type PaymentConditionType = 'credit' | 'debit' | 'cash' | 'pix';

@@ -1,7 +1,7 @@
 
 
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query, where, runTransaction, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { Product, StockEntry, Branch } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp, ListChecks, Search, Trash2 } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp, ListChecks, Search, Trash2, Camera } from 'lucide-react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
@@ -29,15 +29,59 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { StockMovementForm } from '@/components/stock-movement-form';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 
 type ProductWithStock = Product & { stock: number };
 
 function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Product>>(
-    product || { name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true }
+    product || { name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '' }
   );
   const [isUploading, setIsUploading] = useState(false);
+  const [activeTab, setActiveTab] = useState('upload');
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [hasCameraPermission, setHasCameraPermission] = useState(true);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    const enableCamera = async () => {
+        if (activeTab !== 'camera') {
+            if (videoRef.current?.srcObject) {
+                const currentStream = videoRef.current.srcObject as MediaStream;
+                currentStream.getTracks().forEach(track => track.stop());
+                videoRef.current.srcObject = null;
+            }
+            return;
+        }
+
+        try {
+            if (!navigator.mediaDevices?.getUserMedia) {
+                setHasCameraPermission(false);
+                toast({ title: 'A câmera não é suportada neste navegador.', variant: 'destructive'});
+                return;
+            }
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            setHasCameraPermission(true);
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream;
+            }
+        } catch (err) {
+            console.error("Camera access error:", err);
+            setHasCameraPermission(false);
+        }
+    };
+    enableCamera();
+
+    return () => {
+         if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+         }
+    }
+  }, [activeTab, toast]);
+
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
@@ -56,6 +100,21 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
       reader.readAsDataURL(file);
     }
   };
+  
+  const handleCapture = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d');
+    context?.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+    
+    const dataUrl = canvas.toDataURL('image/png');
+    setFormData(prev => ({...prev, imageUrl: dataUrl}));
+    toast({title: "Imagem capturada!"});
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,14 +126,20 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-4">
       <div>
         <Label htmlFor="name">Nome do Produto</Label>
         <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
       </div>
-      <div>
-        <Label htmlFor="category">Categoria</Label>
-        <Input id="category" name="category" value={formData.category} onChange={handleChange} required />
+       <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="category">Categoria</Label>
+          <Input id="category" name="category" value={formData.category} onChange={handleChange} required />
+        </div>
+         <div>
+          <Label htmlFor="barcode">Código de Barras</Label>
+          <Input id="barcode" name="barcode" value={formData.barcode || ''} onChange={handleChange} />
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -87,10 +152,11 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
         </div>
       </div>
       
-       <Tabs defaultValue="upload" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+       <Tabs defaultValue={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="upload"><Upload className="mr-2 h-4 w-4" /> Upload</TabsTrigger>
             <TabsTrigger value="url"><LinkIcon className="mr-2 h-4 w-4" /> URL</TabsTrigger>
+            <TabsTrigger value="camera"><Camera className="mr-2 h-4 w-4" /> Câmera</TabsTrigger>
           </TabsList>
           <TabsContent value="upload">
              <div className="space-y-2 mt-4">
@@ -105,6 +171,24 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
               <Input id="imageUrl" name="imageUrl" value={formData.imageUrl} onChange={handleChange} placeholder="https://exemplo.com/imagem.png" />
             </div>
           </TabsContent>
+           <TabsContent value="camera">
+               <div className="space-y-2 mt-4">
+                  <video ref={videoRef} className={cn("w-full aspect-video rounded-md bg-muted", !hasCameraPermission && "hidden")} autoPlay muted playsInline />
+                  <canvas ref={canvasRef} className="hidden" />
+                  {!hasCameraPermission && (
+                      <Alert variant="destructive">
+                        <Camera className="h-4 w-4" />
+                        <AlertTitle>Acesso à câmera negado</AlertTitle>
+                        <AlertDescription>
+                            Para usar este recurso, permita o acesso à câmera nas configurações do seu navegador.
+                        </AlertDescription>
+                      </Alert>
+                  )}
+                  <Button type="button" onClick={handleCapture} disabled={!hasCameraPermission} className="w-full">
+                      <Camera className="mr-2 h-4 w-4" /> Capturar Foto
+                  </Button>
+               </div>
+           </TabsContent>
         </Tabs>
       
       {formData.imageUrl && (
@@ -125,10 +209,13 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
         <Label htmlFor="isSalable">Produto Comerciável</Label>
       </div>
 
-      <Button type="submit" disabled={isUploading}>
-        {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-        Salvar Produto
-      </Button>
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
+        <Button type="submit" disabled={isUploading}>
+            {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Salvar Produto
+        </Button>
+      </DialogFooter>
     </form>
   );
 }

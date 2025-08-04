@@ -1086,7 +1086,9 @@ export default function POSPage() {
                                 onClick={() => addToCart(product, 'product')} 
                                 className="cursor-pointer hover:shadow-lg transition-shadow relative"
                                 >
-                                {product.stock <= 0 && <Badge variant="destructive" className="absolute top-1 right-1">Esgotado</Badge>}
+                                <Badge className="absolute top-1 right-1" variant={product.stock > 0 ? "secondary" : "destructive"}>
+                                    {product.stock > 0 ? product.stock : 'Esgotado'}
+                                </Badge>
                                 <CardContent className="p-2 flex flex-col items-center justify-center">
                                     <Image src={product.imageUrl} alt={product.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="product image"/>
                                     <p className="font-semibold text-sm mt-2 text-center">{product.name}</p>
@@ -1258,4 +1260,5 @@ export default function POSPage() {
     </>
   );
 }
+
 

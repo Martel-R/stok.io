@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/auth';
@@ -275,54 +276,57 @@ function TopSellingProductsReport() {
             return inDateRange && inBranch;
         });
 
-        const productSales = new Map<string, { name: string; quantity: number; revenue: number }>();
+        const productSales = new Map<string, { name: string; salesContext: string[] }>();
 
         filteredSales.forEach(sale => {
-            sale.items.forEach(item => {
-                if(item.type !== 'service'){
-                    const existing = productSales.get(item.id);
-                    if (existing) {
-                        existing.quantity += item.quantity;
-                        existing.revenue += (item.price || item.finalPrice || 0) * item.quantity;
-                    } else {
-                        productSales.set(item.id, {
-                            name: item.name,
-                            quantity: item.quantity,
-                            revenue: (item.price || item.finalPrice || 0) * item.quantity,
-                        });
-                    }
+            sale.items.forEach((item: any) => {
+                 if (item.type === 'product') {
+                    const existing = productSales.get(item.id) || { name: item.name, salesContext: [] };
+                    existing.salesContext.push('Individual');
+                    productSales.set(item.id, existing);
+                } else if (item.type === 'combo' && item.products) {
+                    item.products.forEach((p: any) => {
+                         const existing = productSales.get(p.productId) || { name: p.productName, salesContext: [] };
+                         existing.salesContext.push(`Combo: ${item.name}`);
+                         productSales.set(p.productId, existing);
+                    });
+                } else if (item.type === 'kit' && item.chosenProducts) {
+                    item.chosenProducts.forEach((p: any) => {
+                         const existing = productSales.get(p.id) || { name: p.name, salesContext: [] };
+                         existing.salesContext.push(`Kit: ${item.name}`);
+                         productSales.set(p.id, existing);
+                    });
                 }
             });
         });
+        
+        return Array.from(productSales.entries()).map(([id, data]) => ({ id, ...data }));
 
-        return Array.from(productSales.values()).sort((a, b) => b.quantity - a.quantity);
     }, [sales, dateRange, selectedBranchIds]);
 
     const exportToPDF = () => {
         const doc = new jsPDF();
-        doc.text("Relatório de Produtos Mais Vendidos", 14, 16);
+        doc.text("Relatório de Produtos Vendidos", 14, 16);
         autoTable(doc, {
-            head: [['Produto', 'Quantidade Vendida', 'Receita Gerada']],
+            head: [['Produto', 'Contexto da Venda']],
             body: topProducts.map(p => [
                 p.name,
-                p.quantity,
-                `R$ ${p.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                p.salesContext.join(', ')
             ]),
             startY: 20
         });
-        doc.save('relatorio_mais_vendidos.pdf');
+        doc.save('relatorio_produtos_vendidos.pdf');
     };
 
     const exportToExcel = () => {
         const data = topProducts.map(p => ({
             'Produto': p.name,
-            'Quantidade Vendida': p.quantity,
-            'Receita Gerada': p.revenue
+            'Contexto da Venda': p.salesContext.join(', ')
         }));
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.json_to_sheet(data);
-        XLSX.utils.book_append_sheet(wb, ws, 'Mais Vendidos');
-        XLSX.writeFile(wb, 'relatorio_mais_vendidos.xlsx');
+        XLSX.utils.book_append_sheet(wb, ws, 'Produtos Vendidos');
+        XLSX.writeFile(wb, 'relatorio_produtos_vendidos.xlsx');
     };
 
     if (loading) return <Skeleton className="h-96 w-full" />;
@@ -346,16 +350,19 @@ function TopSellingProductsReport() {
                     <TableHeader>
                         <TableRow>
                             <TableHead>Produto</TableHead>
-                            <TableHead className="text-right">Quantidade Vendida</TableHead>
-                            <TableHead className="text-right">Receita Gerada</TableHead>
+                            <TableHead>Contexto da Venda</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {topProducts.map(product => (
-                            <TableRow key={product.name}>
+                            <TableRow key={product.id}>
                                 <TableCell className="font-medium">{product.name}</TableCell>
-                                <TableCell className="text-right">{product.quantity}</TableCell>
-                                <TableCell className="text-right font-medium">R$ {product.revenue.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
+                                <TableCell>
+                                    <div className="flex flex-wrap gap-1">
+                                        {product.salesContext.slice(0, 5).map((ctx, i) => <Badge key={i} variant="secondary">{ctx}</Badge>)}
+                                        {product.salesContext.length > 5 && <Badge variant="outline">...</Badge>}
+                                    </div>
+                                </TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
@@ -456,16 +463,21 @@ function LowStockReport() {
     const exportToPDF = () => {
         const doc = new jsPDF();
         doc.text("Relatório de Estoque Baixo", 14, 16);
-        const head = [
-            ['Produto', 'Est. Mínimo', 'Est. Total'],
-            ...filteredBranches.map(b => [b.name])
-        ];
-        const body = lowStockData.map(p => [
-            p.name,
-            p.lowStockThreshold,
-            p.totalStock,
-            ...filteredBranches.map(b => p.branchStock[b.id] ?? 0)
-        ]);
+        let head = [['Produto', 'Est. Mínimo', 'Est. Total']];
+        filteredBranches.forEach(b => head[0].push(b.name));
+
+        const body = lowStockData.map(p => {
+            let row = [
+                p.name,
+                p.lowStockThreshold.toString(),
+                p.totalStock.toString(),
+            ];
+            filteredBranches.forEach(b => {
+                 row.push((p.branchStock[b.id] ?? 0).toString());
+            });
+            return row;
+        });
+
         autoTable(doc, { head, body, startY: 20 });
         doc.save('relatorio_estoque_baixo.pdf');
     };
@@ -552,7 +564,7 @@ export default function ReportsPage() {
                 </div>
                 <Skeleton className="h-80 w-full" />
             </div>
-        )
+        );
     }
 
     if (!user || user.role !== 'admin') {
@@ -577,15 +589,21 @@ export default function ReportsPage() {
                 <p className="text-muted-foreground">Filtre e analise os dados de toda a organização.</p>
             </div>
             
-             <div className="w-full max-w-sm">
+            <div className="w-full max-w-sm">
                 <Select value={reportType} onValueChange={setReportType}>
                     <SelectTrigger>
                         <SelectValue placeholder="Selecione um relatório..." />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="sales"><FileDown className="mr-2"/>Relatório de Vendas</SelectItem>
-                        <SelectItem value="top-selling"><TrendingUp className="mr-2"/>Produtos Mais Vendidos</SelectItem>
-                        <SelectItem value="low-stock"><AlertTriangle className="mr-2"/>Estoque Baixo</SelectItem>
+                        <SelectItem value="sales">
+                            <span className="flex items-center"><FileDown className="mr-2 h-4 w-4"/>Relatório de Vendas</span>
+                        </SelectItem>
+                        <SelectItem value="top-selling">
+                             <span className="flex items-center"><TrendingUp className="mr-2 h-4 w-4"/>Produtos Mais Vendidos</span>
+                        </SelectItem>
+                        <SelectItem value="low-stock">
+                            <span className="flex items-center"><AlertTriangle className="mr-2 h-4 w-4"/>Estoque Baixo</span>
+                        </SelectItem>
                     </SelectContent>
                 </Select>
             </div>

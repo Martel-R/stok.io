@@ -22,10 +22,11 @@ import { format, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
-// --- Data Fetching and Main Component ---
-export default function ReportsPage() {
+// --- Sales Report Component ---
+function SalesReport() {
     const { user } = useAuth();
     const [loading, setLoading] = useState(true);
     const [sales, setSales] = useState<Sale[]>([]);
@@ -40,11 +41,8 @@ export default function ReportsPage() {
       to: new Date(),
     });
 
-    useEffect(() => {
-        if (!user?.organizationId || user.role !== 'admin') {
-            setLoading(false);
-            return;
-        }
+     useEffect(() => {
+        if (!user?.organizationId) return;
 
         const fetchData = async () => {
             setLoading(true);
@@ -72,7 +70,6 @@ export default function ReportsPage() {
                 setBranches(branchesData);
                 setUsers(usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
                 
-                // By default, select all branches
                 setSelectedBranchIds(branchesData.map(b => b.id));
 
             } catch (error) {
@@ -141,11 +138,101 @@ export default function ReportsPage() {
             'Pagamentos': formatPayments(s.payments),
             'Total': s.total
         }));
+        const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.json_to_sheet(data);
         XLSX.utils.book_append_sheet(wb, ws, 'Vendas');
         XLSX.writeFile(wb, 'relatorio_vendas.xlsx');
     };
 
+    if (loading) {
+        return <Skeleton className="h-96 w-full" />
+    }
+
+    return (
+        <Card>
+            <CardHeader>
+                <div className="flex flex-col md:flex-row justify-between gap-4">
+                     <div className="flex flex-wrap gap-2">
+                        <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
+                        <MultiSelectPopover title="Vendedores" items={cashiers} selectedIds={selectedCashierIds} setSelectedIds={setSelectedCashierIds} />
+                        <DateRangePicker date={dateRange} onSelect={setDateRange} />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => window.print()}>
+                        <Printer className="mr-2" /> Imprimir
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={exportToPDF}>
+                        <FileDown className="mr-2" /> PDF
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={exportToExcel}>
+                        <FileDown className="mr-2" /> Excel
+                      </Button>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <div className="mb-4 font-semibold">
+                   Exibindo {filteredSales.length} de {sales.length} vendas. Total Filtrado: R$ {totalFilteredRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </div>
+                <div className="printable-area">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Data</TableHead>
+                                <TableHead>Filial</TableHead>
+                                <TableHead>Vendedor</TableHead>
+                                <TableHead>Itens</TableHead>
+                                <TableHead>Pagamentos</TableHead>
+                                <TableHead className="text-right">Total</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {filteredSales.map(sale => (
+                                <TableRow key={sale.id}>
+                                    <TableCell>{format(sale.date, 'dd/MM/yyyy HH:mm')}</TableCell>
+                                    <TableCell>{branches.find(b => b.id === sale.branchId)?.name || 'N/A'}</TableCell>
+                                    <TableCell>{sale.cashier}</TableCell>
+                                    <TableCell>
+                                        {sale.items.map((item: any) => (
+                                            <div key={item.id}>{item.quantity}x {item.name}</div>
+                                        ))}
+                                    </TableCell>
+                                    <TableCell>
+                                        {sale.payments?.map(p => (
+                                            <div key={p.conditionId} className="text-xs">
+                                                {p.conditionName} ({p.installments}x): <span className="font-medium">R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                            </div>
+                                        ))}
+                                    </TableCell>
+                                    <TableCell className="text-right font-medium">R$ {sale.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                     {filteredSales.length === 0 && <p className="text-center text-muted-foreground py-10">Nenhum resultado encontrado para os filtros selecionados.</p>}
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+
+// --- Main Page Component ---
+export default function ReportsPage() {
+    const { user, loading } = useAuth();
+    const [reportType, setReportType] = useState('sales');
+
+    if (loading) {
+        return (
+            <div className="space-y-6">
+                <div className="space-y-2">
+                    <Skeleton className="h-8 w-64" />
+                    <Skeleton className="h-4 w-96" />
+                </div>
+                <Skeleton className="h-80 w-full" />
+            </div>
+        )
+    }
 
     if (!user || user.role !== 'admin') {
         return (
@@ -161,90 +248,27 @@ export default function ReportsPage() {
             </div>
         );
     }
-    
-    if (loading) {
-        return (
-            <div className="space-y-6">
-                <div className="space-y-2">
-                    <Skeleton className="h-8 w-64" />
-                    <Skeleton className="h-4 w-96" />
-                </div>
-                <Skeleton className="h-80 w-full" />
-            </div>
-        )
-    }
 
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-3xl font-bold">Relatório de Vendas</h1>
-                <p className="text-muted-foreground">Filtre e analise as vendas de toda a organização.</p>
+                <h1 className="text-3xl font-bold">Relatórios</h1>
+                <p className="text-muted-foreground">Filtre e analise os dados de toda a organização.</p>
             </div>
             
-            <Card>
-                <CardHeader>
-                    <div className="flex flex-col md:flex-row justify-between gap-4">
-                         <div className="flex flex-wrap gap-2">
-                            <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
-                            <MultiSelectPopover title="Vendedores" items={cashiers} selectedIds={selectedCashierIds} setSelectedIds={setSelectedCashierIds} />
-                            <DateRangePicker date={dateRange} onSelect={setDateRange} />
-                        </div>
-                        <div className="flex gap-2">
-                          <Button variant="outline" size="sm" onClick={() => window.print()}>
-                            <Printer className="mr-2" /> Imprimir
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={exportToPDF}>
-                            <FileDown className="mr-2" /> PDF
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={exportToExcel}>
-                            <FileDown className="mr-2" /> Excel
-                          </Button>
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    <div className="mb-4 font-semibold">
-                       Exibindo {filteredSales.length} de {sales.length} vendas. Total Filtrado: R$ {totalFilteredRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </div>
-                    <div className="printable-area">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Data</TableHead>
-                                    <TableHead>Filial</TableHead>
-                                    <TableHead>Vendedor</TableHead>
-                                    <TableHead>Itens</TableHead>
-                                    <TableHead>Pagamentos</TableHead>
-                                    <TableHead className="text-right">Total</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {filteredSales.map(sale => (
-                                    <TableRow key={sale.id}>
-                                        <TableCell>{format(sale.date, 'dd/MM/yyyy HH:mm')}</TableCell>
-                                        <TableCell>{branches.find(b => b.id === sale.branchId)?.name || 'N/A'}</TableCell>
-                                        <TableCell>{sale.cashier}</TableCell>
-                                        <TableCell>
-                                            {sale.items.map((item: any) => (
-                                                <div key={item.id}>{item.quantity}x {item.name}</div>
-                                            ))}
-                                        </TableCell>
-                                        <TableCell>
-                                            {sale.payments?.map(p => (
-                                                <div key={p.conditionId} className="text-xs">
-                                                    {p.conditionName} ({p.installments}x): <span className="font-medium">R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
-                                                </div>
-                                            ))}
-                                        </TableCell>
-                                        <TableCell className="text-right font-medium">R$ {sale.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                         {filteredSales.length === 0 && <p className="text-center text-muted-foreground py-10">Nenhum resultado encontrado para os filtros selecionados.</p>}
-                    </div>
-                </CardContent>
-            </Card>
+             <div className="w-full max-w-sm">
+                <Select value={reportType} onValueChange={setReportType}>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Selecione um relatório..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="sales">Relatório de Vendas</SelectItem>
+                        {/* Outros relatórios podem ser adicionados aqui no futuro */}
+                    </SelectContent>
+                </Select>
+            </div>
+
+            {reportType === 'sales' && <SalesReport />}
 
             <style jsx global>{`
                 @media print {

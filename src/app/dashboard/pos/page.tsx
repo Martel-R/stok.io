@@ -42,7 +42,7 @@ type ProductWithStock = Product & { stock: number };
 function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean; onOpenChange: (open: boolean) => void; onScan: (barcode: string) => void; }) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [hasPermission, setHasPermission] = useState(true);
-    const [isScanning, setIsScanning] = useState(false);
+    const isScanningRef = useRef(false);
     const { toast } = useToast();
 
     useEffect(() => {
@@ -50,32 +50,40 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
         let animationFrameId: number;
 
         const startScan = async () => {
-            if (!isOpen || !(window as any).BarcodeDetector) {
-                toast({ title: "Scanner de código de barras não suportado neste navegador.", variant: 'destructive' });
+            if (!isOpen || !(window as any).BarcodeDetector || isScanningRef.current) {
                 return;
             }
 
             try {
+                const barcodeDetector = new (window as any).BarcodeDetector({
+                    formats: ['ean_13', 'code_128', 'qr_code', 'upc_a', 'upc_e']
+                });
+                
                 stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
                 setHasPermission(true);
+
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
                     await videoRef.current.play();
                 }
 
-                const barcodeDetector = new (window as any).BarcodeDetector();
-                setIsScanning(true);
+                isScanningRef.current = true;
 
                 const detect = async () => {
-                    if (videoRef.current && videoRef.current.readyState === 4) {
-                        const barcodes = await barcodeDetector.detect(videoRef.current);
-                        if (barcodes.length > 0) {
-                            setIsScanning(false);
-                            onScan(barcodes[0].rawValue);
+                    if (!isScanningRef.current) return;
+                    try {
+                        if (videoRef.current && videoRef.current.readyState === 4) {
+                            const barcodes = await barcodeDetector.detect(videoRef.current);
+                            if (barcodes.length > 0) {
+                                isScanningRef.current = false;
+                                onScan(barcodes[0].rawValue);
+                            }
                         }
+                    } catch (error) {
+                       console.error("Barcode detection error:", error);
                     }
-                    if (isScanning) {
-                        animationFrameId = requestAnimationFrame(detect);
+                    if (isScanningRef.current) {
+                       animationFrameId = requestAnimationFrame(detect);
                     }
                 };
                 detect();
@@ -86,37 +94,40 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
                 toast({ title: "Permissão da câmera negada", description: "Por favor, permita o acesso à câmera.", variant: 'destructive' });
             }
         };
+        
+        const stopScan = () => {
+             cancelAnimationFrame(animationFrameId);
+             isScanningRef.current = false;
+             if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            if (videoRef.current) {
+                videoRef.current.srcObject = null;
+            }
+        };
 
         if (isOpen) {
             startScan();
         }
 
         return () => {
-            cancelAnimationFrame(animationFrameId);
-            setIsScanning(false);
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
+           stopScan();
         };
-    }, [isOpen, onScan, toast, isScanning]);
-    
-     useEffect(() => {
-        // Ensure isScanning is reset when modal closes
-        if (!isOpen) {
-            setIsScanning(false);
-        }
-    }, [isOpen]);
+    }, [isOpen, onScan, toast]);
 
     return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+        <Dialog open={isOpen} onOpenChange={(open) => {
+            if (!open) isScanningRef.current = false;
+            onOpenChange(open);
+        }}>
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Escanear Código de Barras</DialogTitle>
                     <DialogDescription>Aponte a câmera para o código de barras do produto.</DialogDescription>
                 </DialogHeader>
-                <div className="p-4">
+                <div className="p-4 bg-muted rounded-md">
                     {hasPermission ? (
-                        <video ref={videoRef} className="w-full rounded-md" />
+                        <video ref={videoRef} className="w-full rounded-md" playsInline />
                     ) : (
                         <Alert variant="destructive">
                             <AlertTitle>Acesso à Câmera Negado</AlertTitle>

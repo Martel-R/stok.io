@@ -162,7 +162,7 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
 
     useEffect(() => {
         const { purchasePrice = 0, marginValue = 0, marginType = 'percentage' } = formData;
-        if (purchasePrice > 0) {
+        if (purchasePrice > 0 && marginValue > 0) {
             let newPrice = 0;
             if (marginType === 'percentage') {
                 newPrice = purchasePrice * (1 + marginValue / 100);
@@ -213,20 +213,25 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
-    const numValue = parseFloat(value);
+    let numValue = parseFloat(value);
     
     setFormData(prev => {
-        const newForm = {...prev, [name]: type === 'number' ? (isNaN(numValue) ? 0 : numValue) : value};
+        let newForm = {...prev};
+        if (type === 'number') {
+            newForm = {...newForm, [name]: (isNaN(numValue) ? undefined : numValue)}
+        } else {
+            newForm = {...newForm, [name]: value};
+        }
         
         if (name === 'price') {
              const { purchasePrice = 0 } = newForm;
-             if (purchasePrice > 0) {
-                 const finalPrice = isNaN(numValue) ? 0 : numValue;
+             const finalPrice = isNaN(numValue) ? 0 : numValue;
+             if (purchasePrice > 0 && finalPrice > 0) {
                  const diff = finalPrice - purchasePrice;
                  if (newForm.marginType === 'percentage') {
-                     newForm.marginValue = (diff / purchasePrice) * 100;
+                     newForm.marginValue = parseFloat(((diff / purchasePrice) * 100).toFixed(2));
                  } else {
-                     newForm.marginValue = diff;
+                     newForm.marginValue = parseFloat(diff.toFixed(2));
                  }
              }
         }
@@ -697,7 +702,7 @@ export default function ProductsPage() {
   }
   
     const getMarginDisplay = (product: Product) => {
-        const margin = product.marginValue;
+        const margin = product.marginValue || 0;
         if (product.marginType === 'percentage') {
             return `${margin.toFixed(2)}%`;
         }
@@ -868,9 +873,9 @@ export default function ProductsPage() {
                         {product.isSalable ? "Sim" : "Não"}
                     </Badge>
                 </TableCell>
-                <TableCell className="text-right">{product.purchasePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
+                <TableCell className="text-right">{(product.purchasePrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
                 <TableCell className="text-right">{getMarginDisplay(product)}</TableCell>
-                <TableCell className="text-right font-semibold">{product.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
+                <TableCell className="text-right font-semibold">{(product.price || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
                 <TableCell className="text-right">{product.stock}</TableCell>
                 <TableCell className="text-center">
                   <DropdownMenu>
@@ -976,3 +981,4 @@ export default function ProductsPage() {
     </div>
   );
 }
+

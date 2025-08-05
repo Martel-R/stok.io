@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart } from 'lucide-react';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Sale, Branch, User, PaymentDetail, Product, StockEntry } from '@/lib/types';
+import type { Sale, Branch, User, PaymentDetail, Product, StockEntry, PaymentCondition } from '@/lib/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -549,6 +549,204 @@ function LowStockReport() {
     )
 }
 
+// --- Financial Summary Report ---
+function FinancialSummaryReport() {
+    const { user } = useAuth();
+    const [loading, setLoading] = useState(true);
+    const [sales, setSales] = useState<Sale[]>([]);
+    const [branches, setBranches] = useState<Branch[]>([]);
+    const [paymentConditions, setPaymentConditions] = useState<PaymentCondition[]>([]);
+
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+      from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+      to: new Date(),
+    });
+
+    useEffect(() => {
+        if (!user?.organizationId) return;
+
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const orgId = user.organizationId;
+                const salesQuery = query(collection(db, 'sales'), where('organizationId', '==', orgId));
+                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', orgId));
+                const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', orgId));
+
+                const [salesSnap, branchesSnap, conditionsSnap] = await Promise.all([
+                    getDocs(salesQuery),
+                    getDocs(branchesQuery),
+                    getDocs(conditionsQuery),
+                ]);
+
+                setSales(salesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Sale)));
+                setBranches(branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch)));
+                setPaymentConditions(conditionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition)));
+            } catch (error) {
+                console.error("Error fetching financial data:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, [user]);
+
+    const financialData = useMemo(() => {
+        const filteredSales = sales.filter(sale => {
+            const saleDate = sale.date;
+            const isAfterStart = dateRange?.from ? saleDate >= startOfDay(dateRange.from) : true;
+            const isBeforeEnd = dateRange?.to ? saleDate <= endOfDay(dateRange.to) : true;
+            return isAfterStart && isBeforeEnd;
+        });
+
+        const summary = branches.map(branch => {
+            const branchSales = filteredSales.filter(s => s.branchId === branch.id);
+            const grossRevenue = branchSales.reduce((sum, s) => sum + s.total, 0);
+            const salesCount = branchSales.length;
+
+            const paymentsSummary: { [key: string]: { gross: number, net: number } } = {};
+            let totalFees = 0;
+
+            branchSales.forEach(sale => {
+                sale.payments.forEach(payment => {
+                    const condition = paymentConditions.find(c => c.id === payment.conditionId);
+                    const fee = condition ? (condition.feeType === 'percentage' ? payment.amount * (condition.fee / 100) : condition.fee) : 0;
+                    totalFees += fee;
+                    
+                    const typeName = condition?.name || 'Desconhecido';
+                    if (!paymentsSummary[typeName]) paymentsSummary[typeName] = { gross: 0, net: 0 };
+                    paymentsSummary[typeName].gross += payment.amount;
+                    paymentsSummary[typeName].net += (payment.amount - fee);
+                });
+            });
+
+            return {
+                branchId: branch.id,
+                branchName: branch.name,
+                salesCount,
+                grossRevenue,
+                netRevenue: grossRevenue - totalFees,
+                payments: paymentsSummary
+            };
+        });
+
+        return summary;
+    }, [sales, branches, paymentConditions, dateRange]);
+
+    const uniquePaymentTypes = useMemo(() => {
+        const types = new Set<string>();
+        financialData.forEach(d => Object.keys(d.payments).forEach(p => types.add(p)));
+        return Array.from(types).sort();
+    }, [financialData]);
+
+    const formatCurrency = (value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    const exportToPDF = () => {
+         const doc = new jsPDF({ orientation: "landscape" });
+        doc.text("Relatório de Resumo Financeiro", 14, 16);
+        
+        let head = [['Filial', 'Vendas', 'Total Bruto', 'Total Líquido']];
+        uniquePaymentTypes.forEach(p => {
+            head[0].push(`${p} (Bruto)`);
+            head[0].push(`${p} (Líquido)`);
+        });
+
+        const body = financialData.map(d => {
+             let row = [
+                d.branchName,
+                d.salesCount.toString(),
+                formatCurrency(d.grossRevenue),
+                formatCurrency(d.netRevenue),
+            ];
+             uniquePaymentTypes.forEach(p => {
+                const payment = d.payments[p] || { gross: 0, net: 0 };
+                row.push(formatCurrency(payment.gross));
+                row.push(formatCurrency(payment.net));
+            });
+            return row;
+        });
+
+        autoTable(doc, { head, body, startY: 20 });
+        doc.save('relatorio_financeiro.pdf');
+    };
+
+     const exportToExcel = () => {
+        const data = financialData.map(d => {
+            const row: { [key: string]: any } = {
+                'Filial': d.branchName,
+                'Vendas': d.salesCount,
+                'Total Bruto': d.grossRevenue,
+                'Total Líquido': d.netRevenue
+            };
+             uniquePaymentTypes.forEach(p => {
+                const payment = d.payments[p] || { gross: 0, net: 0 };
+                row[`${p} (Bruto)`] = payment.gross;
+                row[`${p} (Líquido)`] = payment.net;
+            });
+            return row;
+        });
+
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Resumo Financeiro');
+        XLSX.writeFile(wb, 'relatorio_financeiro.xlsx');
+    };
+
+    if (loading) return <Skeleton className="h-96 w-full" />;
+
+    return (
+        <Card>
+            <CardHeader>
+                <div className="flex flex-col md:flex-row justify-between gap-4">
+                    <div className="flex flex-wrap gap-2">
+                        <DateRangePicker date={dateRange} onSelect={setDateRange} />
+                    </div>
+                    <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={exportToPDF}><FileDown className="mr-2" /> PDF</Button>
+                        <Button variant="outline" size="sm" onClick={exportToExcel}><FileDown className="mr-2" /> Excel</Button>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Filial</TableHead>
+                            <TableHead className="text-right">Vendas</TableHead>
+                            <TableHead className="text-right">Total Bruto</TableHead>
+                            <TableHead className="text-right">Total Líquido</TableHead>
+                            {uniquePaymentTypes.map(p => (
+                                <React.Fragment key={p}>
+                                    <TableHead className="text-right">{p} (Bruto)</TableHead>
+                                    <TableHead className="text-right">{p} (Líquido)</TableHead>
+                                </React.Fragment>
+                            ))}
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                         {financialData.map(d => (
+                             <TableRow key={d.branchId}>
+                                <TableCell className="font-medium">{d.branchName}</TableCell>
+                                <TableCell className="text-right">{d.salesCount}</TableCell>
+                                <TableCell className="text-right">{formatCurrency(d.grossRevenue)}</TableCell>
+                                <TableCell className="text-right font-semibold">{formatCurrency(d.netRevenue)}</TableCell>
+                                {uniquePaymentTypes.map(p => {
+                                    const payment = d.payments[p] || { gross: 0, net: 0 };
+                                    return (
+                                        <React.Fragment key={p}>
+                                            <TableCell className="text-right">{formatCurrency(payment.gross)}</TableCell>
+                                            <TableCell className="text-right text-green-600">{formatCurrency(payment.net)}</TableCell>
+                                        </React.Fragment>
+                                    )
+                                })}
+                             </TableRow>
+                         ))}
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+    );
+}
 
 // --- Main Page Component ---
 export default function ReportsPage() {
@@ -598,6 +796,9 @@ export default function ReportsPage() {
                         <SelectItem value="sales">
                             <span className="flex items-center"><FileDown className="mr-2 h-4 w-4"/>Relatório de Vendas</span>
                         </SelectItem>
+                         <SelectItem value="financial-summary">
+                            <span className="flex items-center"><FileBarChart className="mr-2 h-4 w-4"/>Resumo Financeiro</span>
+                        </SelectItem>
                         <SelectItem value="top-selling">
                              <span className="flex items-center"><TrendingUp className="mr-2 h-4 w-4"/>Produtos Mais Vendidos</span>
                         </SelectItem>
@@ -609,6 +810,7 @@ export default function ReportsPage() {
             </div>
 
             {reportType === 'sales' && <SalesReport />}
+            {reportType === 'financial-summary' && <FinancialSummaryReport />}
             {reportType === 'top-selling' && <TopSellingProductsReport />}
             {reportType === 'low-stock' && <LowStockReport />}
 

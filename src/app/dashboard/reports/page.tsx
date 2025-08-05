@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart } from 'lucide-react';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
@@ -640,6 +640,35 @@ function FinancialSummaryReport() {
         return Array.from(types).sort();
     }, [financialData]);
 
+    const totals = useMemo(() => {
+        const initialTotals = {
+            salesCount: 0,
+            grossRevenue: 0,
+            netRevenue: 0,
+            payments: {} as { [key: string]: { gross: number; net: number } },
+        };
+
+        uniquePaymentTypes.forEach(type => {
+            initialTotals.payments[type] = { gross: 0, net: 0 };
+        });
+
+        return financialData.reduce((acc, branchData) => {
+            acc.salesCount += branchData.salesCount;
+            acc.grossRevenue += branchData.grossRevenue;
+            acc.netRevenue += branchData.netRevenue;
+            
+            uniquePaymentTypes.forEach(type => {
+                const payment = branchData.payments[type] || { gross: 0, net: 0 };
+                if (!acc.payments[type]) acc.payments[type] = { gross: 0, net: 0 };
+                acc.payments[type].gross += payment.gross;
+                acc.payments[type].net += payment.net;
+            });
+
+            return acc;
+        }, initialTotals);
+    }, [financialData, uniquePaymentTypes]);
+
+
     const formatCurrency = (value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     const exportToPDF = () => {
@@ -743,6 +772,23 @@ function FinancialSummaryReport() {
                              </TableRow>
                          ))}
                     </TableBody>
+                    <TableFooter>
+                        <TableRow className="font-bold">
+                            <TableCell>Total</TableCell>
+                            <TableCell className="text-right">{totals.salesCount}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(totals.grossRevenue)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(totals.netRevenue)}</TableCell>
+                             {uniquePaymentTypes.map(p => {
+                                const payment = totals.payments[p] || { gross: 0, net: 0 };
+                                return (
+                                    <React.Fragment key={`total-${p}`}>
+                                        <TableCell className="text-right">{formatCurrency(payment.gross)}</TableCell>
+                                        <TableCell className="text-right">{formatCurrency(payment.net)}</TableCell>
+                                    </React.Fragment>
+                                )
+                            })}
+                        </TableRow>
+                    </TableFooter>
                 </Table>
             </CardContent>
         </Card>

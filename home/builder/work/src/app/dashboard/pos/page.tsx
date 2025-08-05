@@ -1,6 +1,6 @@
 
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType, StockEntry, Kit, Attendance, AttendanceItem, Customer, SaleStatus } from '@/lib/types';
@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History, Minus, Component, DollarSign, UserCheck, Search, UserPlus, MoreHorizontal, Ban } from 'lucide-react';
+import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History, Minus, Component, DollarSign, UserCheck, Search, UserPlus, MoreHorizontal, Ban, Barcode } from 'lucide-react';
 import Image from 'next/image';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -28,6 +28,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 
 type CartItem = 
@@ -37,6 +38,109 @@ type CartItem =
     | (AttendanceItem & { itemType: 'service' | 'product' });
 
 type ProductWithStock = Product & { stock: number };
+
+function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean; onOpenChange: (open: boolean) => void; onScan: (barcode: string) => void; }) {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const [hasPermission, setHasPermission] = useState(true);
+    const isScanningRef = useRef(false);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        let stream: MediaStream | null = null;
+        let animationFrameId: number;
+
+        const startScan = async () => {
+            if (!isOpen || !(window as any).BarcodeDetector || isScanningRef.current) {
+                return;
+            }
+
+            try {
+                const barcodeDetector = new (window as any).BarcodeDetector({
+                    formats: ['ean_13', 'code_128', 'qr_code', 'upc_a', 'upc_e']
+                });
+                
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                setHasPermission(true);
+
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    await videoRef.current.play();
+                }
+
+                isScanningRef.current = true;
+
+                const detect = async () => {
+                    if (!isScanningRef.current) return;
+                    try {
+                        if (videoRef.current && videoRef.current.readyState === 4) {
+                            const barcodes = await barcodeDetector.detect(videoRef.current);
+                            if (barcodes.length > 0) {
+                                isScanningRef.current = false;
+                                onScan(barcodes[0].rawValue);
+                            }
+                        }
+                    } catch (error) {
+                       console.error("Barcode detection error:", error);
+                    }
+                    if (isScanningRef.current) {
+                       animationFrameId = requestAnimationFrame(detect);
+                    }
+                };
+                detect();
+
+            } catch (err) {
+                console.error("Error accessing camera for barcode scanning:", err);
+                setHasPermission(false);
+                toast({ title: "Permissão da câmera negada", description: "Por favor, permita o acesso à câmera.", variant: 'destructive' });
+            }
+        };
+        
+        const stopScan = () => {
+             cancelAnimationFrame(animationFrameId);
+             isScanningRef.current = false;
+             if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            if (videoRef.current) {
+                videoRef.current.srcObject = null;
+            }
+        };
+
+        if (isOpen) {
+            startScan();
+        }
+
+        return () => {
+           stopScan();
+        };
+    }, [isOpen, onScan, toast]);
+
+    return (
+        <Dialog open={isOpen} onOpenChange={(open) => {
+            if (!open) isScanningRef.current = false;
+            onOpenChange(open);
+        }}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Escanear Código de Barras</DialogTitle>
+                    <DialogDescription>Aponte a câmera para o código de barras do produto.</DialogDescription>
+                </DialogHeader>
+                <div className="p-4 bg-muted rounded-md">
+                    {hasPermission ? (
+                        <video ref={videoRef} className="w-full rounded-md" playsInline />
+                    ) : (
+                        <Alert variant="destructive">
+                            <AlertTitle>Acesso à Câmera Negado</AlertTitle>
+                            <AlertDescription>
+                                Você precisa permitir o acesso à câmera para usar esta funcionalidade.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
 
 function CustomerSelector({ onSelect }: { onSelect: (customer: Customer) => void }) {
     const { user } = useAuth();
@@ -584,6 +688,7 @@ export default function POSPage() {
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [selectedKit, setSelectedKit] = useState<Kit | null>(null);
   const [currentAttendanceId, setCurrentAttendanceId] = useState<string | undefined>(undefined);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -617,7 +722,15 @@ export default function POSPage() {
                     .reduce((sum, e) => sum + e.quantity, 0);
                 return { ...p, stock: stock };
             });
-            setProducts(productsWithStock.sort((a,b) => a.name.localeCompare(b.name)));
+            const sortedProducts = productsWithStock.sort((a,b) => {
+                if (a.order !== undefined && b.order !== undefined) {
+                    return a.order - b.order;
+                }
+                if (a.order !== undefined) return -1;
+                if (b.order !== undefined) return 1;
+                return a.name.localeCompare(b.name);
+            });
+            setProducts(sortedProducts);
             setLoading(false);
         });
 
@@ -653,7 +766,7 @@ export default function POSPage() {
   }, [currentBranch, authLoading, user]);
 
   const filteredProducts = useMemo(() => {
-    return products.filter(p => p.isSalable && p.stock > 0 && p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    return products.filter(p => p.isSalable && p.name.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [products, searchQuery]);
   
   const filteredCombos = useMemo(() => {
@@ -741,6 +854,17 @@ export default function POSPage() {
             }
             return [...prev, {...combo, quantity: 1, itemType: 'combo'}];
         });
+    }
+  };
+  
+  const handleScan = (barcode: string) => {
+    setIsScannerOpen(false);
+    const product = products.find(p => p.barcode === barcode);
+    if (product) {
+        addToCart(product, 'product');
+        toast({ title: "Produto adicionado!", description: `${product.name} foi adicionado ao carrinho.` });
+    } else {
+        toast({ title: "Produto não encontrado", description: "Nenhum produto com este código de barras foi encontrado.", variant: 'destructive' });
     }
   };
   
@@ -1050,7 +1174,7 @@ export default function POSPage() {
                     {user?.enabledModules?.kits && <TabsTrigger value="kits"><Component className="mr-2 h-4 w-4"/> Kits</TabsTrigger>}
                     <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/> Histórico</TabsTrigger>
                 </TabsList>
-                <div className="relative pt-4">
+                <div className="relative pt-4 flex gap-2">
                     <Search className="absolute left-2.5 top-6.5 h-4 w-4 text-muted-foreground" />
                     <Input
                         type="search"
@@ -1059,6 +1183,9 @@ export default function POSPage() {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
+                    <Button variant="outline" size="icon" onClick={() => setIsScannerOpen(true)}>
+                        <Barcode />
+                    </Button>
                 </div>
 
                  <TabsContent value="pending" className="mt-4 flex-grow">
@@ -1257,8 +1384,11 @@ export default function POSPage() {
       attendanceId={currentAttendanceId}
       customerId={selectedCustomer?.id}
     />
+     <BarcodeScannerModal
+        isOpen={isScannerOpen}
+        onOpenChange={setIsScannerOpen}
+        onScan={handleScan}
+      />
     </>
   );
 }
-
-

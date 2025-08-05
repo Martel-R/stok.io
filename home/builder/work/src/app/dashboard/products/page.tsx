@@ -1,5 +1,4 @@
 
-
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -140,7 +139,7 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
 
 function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Product>>(
-    product || { name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '' }
+    product || { name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined }
   );
   const [isUploading, setIsUploading] = useState(false);
   const [activeTab, setActiveTab] = useState('upload');
@@ -190,7 +189,7 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: type === 'number' ? parseFloat(value) || 0 : value }));
+    setFormData((prev) => ({ ...prev, [name]: type === 'number' ? parseFloat(value) || undefined : value }));
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -259,14 +258,18 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
            </div>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div>
           <Label htmlFor="price">Preço</Label>
           <Input id="price" name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} required />
         </div>
         <div>
-          <Label htmlFor="lowStockThreshold">Limite para Estoque Baixo</Label>
+          <Label htmlFor="lowStockThreshold">Estoque Baixo</Label>
           <Input id="lowStockThreshold" name="lowStockThreshold" type="number" value={formData.lowStockThreshold} onChange={handleChange} required />
+        </div>
+         <div>
+          <Label htmlFor="order">Ordem</Label>
+          <Input id="order" name="order" type="number" value={formData.order || ''} onChange={handleChange} placeholder="Ex: 1" />
         </div>
       </div>
       
@@ -387,7 +390,16 @@ export default function ProductsPage() {
               return { ...product, stock };
           });
           
-          setProducts(productsWithStock.sort((a,b) => a.name.localeCompare(b.name)));
+          const sortedProducts = productsWithStock.sort((a,b) => {
+              if (a.order !== undefined && b.order !== undefined) {
+                  return a.order - b.order;
+              }
+              if (a.order !== undefined) return -1;
+              if (b.order !== undefined) return 1;
+              return a.name.localeCompare(b.name);
+          });
+
+          setProducts(sortedProducts);
           setLoading(false);
       });
       return () => unsubEntries();

@@ -155,6 +155,8 @@ export interface Product {
   organizationId: string;
   lowStockThreshold: number;
   isSalable: boolean;
+  barcode?: string;
+  order?: number;
 }
 
 export type PaymentConditionType = 'credit' | 'debit' | 'cash' | 'pix';
@@ -278,4 +280,3 @@ export interface Organization {
     enabledModules: EnabledModules;
     branding?: BrandingSettings;
 }
-

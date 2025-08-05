@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query, where, runTransaction, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { Product, StockEntry, Branch } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp, ListChecks, Search, Trash2, Camera, Barcode } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp, ListChecks, Search, Trash2, Camera, Barcode, Percent, Tag } from 'lucide-react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
@@ -29,6 +29,7 @@ import { Badge } from '@/components/ui/badge';
 import { StockMovementForm } from '@/components/stock-movement-form';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { RadioGroup } from '@/components/ui/radio-group';
 
 
 type ProductWithStock = Product & { stock: number };
@@ -139,7 +140,10 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
 
 function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Product>>(
-    product || { name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined }
+    product || { 
+        name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
+        purchasePrice: 0, marginValue: 0, marginType: 'percentage'
+    }
   );
   const [isUploading, setIsUploading] = useState(false);
   const [activeTab, setActiveTab] = useState('upload');
@@ -148,6 +152,26 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
   const [hasCameraPermission, setHasCameraPermission] = useState(true);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const { toast } = useToast();
+
+    useEffect(() => {
+        setFormData(product || { 
+            name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
+            purchasePrice: 0, marginValue: 0, marginType: 'percentage'
+        });
+    }, [product]);
+
+    useEffect(() => {
+        const { purchasePrice = 0, marginValue = 0, marginType = 'percentage' } = formData;
+        if (purchasePrice > 0) {
+            let newPrice = 0;
+            if (marginType === 'percentage') {
+                newPrice = purchasePrice * (1 + marginValue / 100);
+            } else {
+                newPrice = purchasePrice + marginValue;
+            }
+            setFormData(prev => ({...prev, price: newPrice}));
+        }
+    }, [formData.purchasePrice, formData.marginValue, formData.marginType]);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -189,7 +213,26 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: type === 'number' ? parseFloat(value) || undefined : value }));
+    const numValue = parseFloat(value);
+    
+    setFormData(prev => {
+        const newForm = {...prev, [name]: type === 'number' ? (isNaN(numValue) ? 0 : numValue) : value};
+        
+        if (name === 'price') {
+             const { purchasePrice = 0 } = newForm;
+             if (purchasePrice > 0) {
+                 const finalPrice = isNaN(numValue) ? 0 : numValue;
+                 const diff = finalPrice - purchasePrice;
+                 if (newForm.marginType === 'percentage') {
+                     newForm.marginValue = (diff / purchasePrice) * 100;
+                 } else {
+                     newForm.marginValue = diff;
+                 }
+             }
+        }
+
+        return newForm;
+    });
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -258,17 +301,44 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
            </div>
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-4">
+
+       <Card>
+        <CardHeader><CardTitle>Precificação</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 items-start">
+                 <div className="space-y-2">
+                    <Label htmlFor="purchasePrice">Preço de Compra</Label>
+                    <Input id="purchasePrice" name="purchasePrice" type="number" step="0.01" value={formData.purchasePrice || ''} onChange={handleChange} required />
+                 </div>
+                 <div className="space-y-2">
+                    <Label htmlFor="marginValue">Margem de Lucro</Label>
+                     <div className="flex items-center gap-2">
+                        <Input id="marginValue" name="marginValue" type="number" step="0.01" value={formData.marginValue || ''} onChange={handleChange} />
+                         <RadioGroup
+                            value={formData.marginType}
+                            onValueChange={(val: 'percentage' | 'fixed') => setFormData(prev => ({...prev, marginType: val}))}
+                            className="flex"
+                        >
+                           <Button type="button" variant={formData.marginType === 'percentage' ? 'secondary' : 'outline'} size="icon" onClick={() => setFormData(prev => ({...prev, marginType: 'percentage'}))}><Percent/></Button>
+                           <Button type="button" variant={formData.marginType === 'fixed' ? 'secondary' : 'outline'} size="icon" onClick={() => setFormData(prev => ({...prev, marginType: 'fixed'}))}><Tag/></Button>
+                        </RadioGroup>
+                    </div>
+                 </div>
+            </div>
+             <div>
+                <Label htmlFor="price">Preço de Venda (Calculado)</Label>
+                <Input id="price" name="price" type="number" step="0.01" value={formData.price || ''} onChange={handleChange} required />
+             </div>
+        </CardContent>
+      </Card>
+      
+      <div className="grid grid-cols-2 gap-4">
         <div>
-          <Label htmlFor="price">Preço</Label>
-          <Input id="price" name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} required />
-        </div>
-        <div>
-          <Label htmlFor="lowStockThreshold">Estoque Baixo</Label>
+          <Label htmlFor="lowStockThreshold">Alerta de Estoque Baixo</Label>
           <Input id="lowStockThreshold" name="lowStockThreshold" type="number" value={formData.lowStockThreshold} onChange={handleChange} required />
         </div>
          <div>
-          <Label htmlFor="order">Ordem</Label>
+          <Label htmlFor="order">Ordem de Exibição</Label>
           <Input id="order" name="order" type="number" value={formData.order || ''} onChange={handleChange} placeholder="Ex: 1" />
         </div>
       </div>
@@ -355,7 +425,6 @@ export default function ProductsPage() {
   const { user, currentBranch, branches, loading: authLoading } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   
-  // States for new bulk actions
   const [isChangeCategoryDialogOpen, setIsChangeCategoryDialogOpen] = useState(false);
   const [newCategory, setNewCategory] = useState("");
   const [isCopyProductsDialogOpen, setIsCopyProductsDialogOpen] = useState(false);
@@ -384,7 +453,7 @@ export default function ProductsPage() {
               const stock = entriesData
                   .filter(e => e.productId === product.id)
                   .reduce((sum, e) => {
-                      const quantity = e.quantity || 0; // Ensure quantity is a number
+                      const quantity = e.quantity || 0;
                       return sum + quantity;
                   }, 0);
               return { ...product, stock };
@@ -561,9 +630,9 @@ export default function ProductsPage() {
             return;
         }
         setIsProcessingBulkAction(true);
-        const batch = writeBatch(db);
         const productsToCopy = products.filter(p => selectedProductIds.includes(p.id));
 
+        const batch = writeBatch(db);
         branchesToCopyTo.forEach(branchId => {
             productsToCopy.forEach(p => {
                 const { id, stock, branchId: sourceBranchId, ...productData } = p;
@@ -626,6 +695,14 @@ export default function ProductsPage() {
         </Card>
     )
   }
+  
+    const getMarginDisplay = (product: Product) => {
+        const margin = product.marginValue;
+        if (product.marginType === 'percentage') {
+            return `${margin.toFixed(2)}%`;
+        }
+        return `R$ ${margin.toFixed(2)}`;
+    }
 
   return (
     <div className="space-y-6">
@@ -712,7 +789,7 @@ export default function ProductsPage() {
                         Adicionar Produto
                     </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-[480px]">
+                <DialogContent className="sm:max-w-xl">
                     <DialogHeader>
                         <DialogTitle>{editingProduct ? 'Editar Produto' : 'Adicionar Novo Produto'}</DialogTitle>
                     </DialogHeader>
@@ -748,7 +825,9 @@ export default function ProductsPage() {
             <TableHead>Nome</TableHead>
             <TableHead>Categoria</TableHead>
             <TableHead>Comerciável</TableHead>
-            <TableHead className="text-right">Preço</TableHead>
+            <TableHead className="text-right">Preço de Compra</TableHead>
+            <TableHead className="text-right">Margem</TableHead>
+            <TableHead className="text-right">Preço de Venda</TableHead>
             <TableHead className="text-right">Estoque</TableHead>
             <TableHead className="text-center">Ações</TableHead>
           </TableRow>
@@ -762,6 +841,8 @@ export default function ProductsPage() {
                     <TableCell><Skeleton className="h-5 w-48" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-center"><Skeleton className="h-8 w-8 mx-auto rounded-full" /></TableCell>
@@ -787,7 +868,9 @@ export default function ProductsPage() {
                         {product.isSalable ? "Sim" : "Não"}
                     </Badge>
                 </TableCell>
-                <TableCell className="text-right">R${product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
+                <TableCell className="text-right">{product.purchasePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
+                <TableCell className="text-right">{getMarginDisplay(product)}</TableCell>
+                <TableCell className="text-right font-semibold">{product.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
                 <TableCell className="text-right">{product.stock}</TableCell>
                 <TableCell className="text-center">
                   <DropdownMenu>
@@ -811,7 +894,7 @@ export default function ProductsPage() {
             ))
           ) : (
              <TableRow>
-                <TableCell colSpan={8} className="h-24 text-center">
+                <TableCell colSpan={10} className="h-24 text-center">
                     Nenhum produto encontrado. Adicione produtos para começar.
                 </TableCell>
             </TableRow>

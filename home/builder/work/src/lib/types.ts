@@ -157,6 +157,9 @@ export interface Product {
   isSalable: boolean;
   barcode?: string;
   order?: number;
+  purchasePrice: number;
+  marginValue: number;
+  marginType: 'percentage' | 'fixed';
 }
 
 export type PaymentConditionType = 'credit' | 'debit' | 'cash' | 'pix';

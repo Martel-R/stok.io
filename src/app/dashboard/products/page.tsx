@@ -189,7 +189,7 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: type === 'number' ? parseFloat(value) || undefined : value }));
+    setFormData((prev) => ({ ...prev, [name]: type === 'number' ? (value === '' ? undefined : parseFloat(value)) : value }));
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -269,7 +269,7 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
         </div>
          <div>
           <Label htmlFor="order">Ordem</Label>
-          <Input id="order" name="order" type="number" value={formData.order || ''} onChange={handleChange} placeholder="Ex: 1" />
+          <Input id="order" name="order" type="number" value={formData.order ?? ''} onChange={handleChange} placeholder="Ex: 1" />
         </div>
       </div>
       
@@ -561,9 +561,9 @@ export default function ProductsPage() {
             return;
         }
         setIsProcessingBulkAction(true);
-        const batch = writeBatch(db);
         const productsToCopy = products.filter(p => selectedProductIds.includes(p.id));
 
+        const batch = writeBatch(db);
         branchesToCopyTo.forEach(branchId => {
             productsToCopy.forEach(p => {
                 const { id, stock, branchId: sourceBranchId, ...productData } = p;

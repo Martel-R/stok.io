@@ -1,17 +1,16 @@
 
-
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query, where, runTransaction, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { Product, StockEntry, Branch } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp, ListChecks, Search, Trash2, Camera } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp, ListChecks, Search, Trash2, Camera, Barcode } from 'lucide-react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
@@ -34,6 +33,110 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 type ProductWithStock = Product & { stock: number };
 
+function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean; onOpenChange: (open: boolean) => void; onScan: (barcode: string) => void; }) {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const [hasPermission, setHasPermission] = useState(true);
+    const isScanningRef = useRef(false);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        let stream: MediaStream | null = null;
+        let animationFrameId: number;
+
+        const startScan = async () => {
+            if (!isOpen || !(window as any).BarcodeDetector || isScanningRef.current) {
+                return;
+            }
+
+            try {
+                const barcodeDetector = new (window as any).BarcodeDetector({
+                    formats: ['ean_13', 'code_128', 'qr_code', 'upc_a', 'upc_e']
+                });
+                
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                setHasPermission(true);
+
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    await videoRef.current.play();
+                }
+
+                isScanningRef.current = true;
+
+                const detect = async () => {
+                    if (!isScanningRef.current) return;
+                    try {
+                        if (videoRef.current && videoRef.current.readyState === 4) {
+                            const barcodes = await barcodeDetector.detect(videoRef.current);
+                            if (barcodes.length > 0) {
+                                isScanningRef.current = false;
+                                onScan(barcodes[0].rawValue);
+                            }
+                        }
+                    } catch (error) {
+                       console.error("Barcode detection error:", error);
+                    }
+                    if (isScanningRef.current) {
+                       animationFrameId = requestAnimationFrame(detect);
+                    }
+                };
+                detect();
+
+            } catch (err) {
+                console.error("Error accessing camera for barcode scanning:", err);
+                setHasPermission(false);
+                toast({ title: "Permissão da câmera negada", description: "Por favor, permita o acesso à câmera.", variant: 'destructive' });
+            }
+        };
+        
+        const stopScan = () => {
+             cancelAnimationFrame(animationFrameId);
+             isScanningRef.current = false;
+             if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            if (videoRef.current) {
+                videoRef.current.srcObject = null;
+            }
+        };
+
+        if (isOpen) {
+            startScan();
+        }
+
+        return () => {
+           stopScan();
+        };
+    }, [isOpen, onScan, toast]);
+
+    return (
+        <Dialog open={isOpen} onOpenChange={(open) => {
+            if (!open) isScanningRef.current = false;
+            onOpenChange(open);
+        }}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Escanear Código de Barras</DialogTitle>
+                    <DialogDescription>Aponte a câmera para o código de barras do produto.</DialogDescription>
+                </DialogHeader>
+                <div className="p-4 bg-muted rounded-md">
+                    {hasPermission ? (
+                        <video ref={videoRef} className="w-full rounded-md" playsInline />
+                    ) : (
+                        <Alert variant="destructive">
+                            <AlertTitle>Acesso à Câmera Negado</AlertTitle>
+                            <AlertDescription>
+                                Você precisa permitir o acesso à câmera para usar esta funcionalidade.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+
 function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Product>>(
     product || { name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '' }
@@ -43,6 +146,7 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hasCameraPermission, setHasCameraPermission] = useState(true);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -116,6 +220,12 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
     toast({title: "Imagem capturada!"});
   }
 
+  const handleScan = (barcodeValue: string) => {
+    setFormData(prev => ({...prev, barcode: barcodeValue}));
+    setIsScannerOpen(false);
+    toast({ title: "Código de barras lido com sucesso!"});
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave({
@@ -126,6 +236,8 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
   };
 
   return (
+    <>
+    <BarcodeScannerModal isOpen={isScannerOpen} onOpenChange={setIsScannerOpen} onScan={handleScan} />
     <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-4">
       <div>
         <Label htmlFor="name">Nome do Produto</Label>
@@ -138,7 +250,12 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
         </div>
          <div>
           <Label htmlFor="barcode">Código de Barras</Label>
-          <Input id="barcode" name="barcode" value={formData.barcode || ''} onChange={handleChange} />
+           <div className="flex items-center gap-2">
+            <Input id="barcode" name="barcode" value={formData.barcode || ''} onChange={handleChange} />
+            <Button type="button" variant="outline" size="icon" onClick={() => setIsScannerOpen(true)}>
+                <Barcode className="h-4 w-4"/>
+            </Button>
+           </div>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
@@ -217,6 +334,7 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
         </Button>
       </DialogFooter>
     </form>
+    </>
   );
 }
 

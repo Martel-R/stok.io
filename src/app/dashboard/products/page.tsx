@@ -148,22 +148,6 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
   const [hasCameraPermission, setHasCameraPermission] = useState(true);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const { toast } = useToast();
-  
-  const [displayPrice, setDisplayPrice] = useState(() => formatCurrency(product?.price || 0));
-
-    function formatCurrency(value: number | undefined) {
-        if (typeof value !== 'number') return '';
-        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-    }
-
-    function parseCurrency(value: string): number {
-        const numberString = value.replace(/[R$\s.]/g, '').replace(',', '.');
-        return parseFloat(numberString) || 0;
-    }
-
-    useEffect(() => {
-        setDisplayPrice(formatCurrency(formData.price));
-    }, [formData.price]);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -207,18 +191,6 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
     const { name, value, type } = e.target;
     setFormData((prev) => ({ ...prev, [name]: type === 'number' ? (value === '' ? undefined : parseFloat(value)) : value }));
   };
-  
-    const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const rawValue = e.target.value;
-        const numericValue = parseCurrency(rawValue);
-        setFormData(prev => ({ ...prev, price: numericValue }));
-        setDisplayPrice(rawValue); // Keep user input as is while typing for better UX
-    };
-
-    const handlePriceBlur = () => {
-        setDisplayPrice(formatCurrency(formData.price));
-    };
-
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -258,6 +230,7 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
     e.preventDefault();
     onSave({
       ...formData,
+      price: formData.price || 0,
       imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png'
     } as Omit<Product, 'id' | 'branchId' | 'organizationId'>);
     onDone();
@@ -288,16 +261,8 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
       </div>
       <div className="grid grid-cols-3 gap-4">
         <div>
-            <Label htmlFor="price">Preço</Label>
-            <Input 
-                id="price" 
-                name="price" 
-                type="text" 
-                value={displayPrice} 
-                onChange={handlePriceChange} 
-                onBlur={handlePriceBlur} 
-                required 
-            />
+          <Label htmlFor="price">Preço</Label>
+          <Input id="price" name="price" type="number" step="0.01" value={formData.price ?? ''} onChange={handleChange} required />
         </div>
         <div>
           <Label htmlFor="lowStockThreshold">Estoque Baixo</Label>

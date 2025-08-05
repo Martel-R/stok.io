@@ -192,6 +192,24 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
     setFormData((prev) => ({ ...prev, [name]: type === 'number' ? (value === '' ? undefined : parseFloat(value)) : value }));
   };
 
+  const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value.replace(/\D/g, '');
+    if (rawValue) {
+        const numericValue = parseFloat(rawValue) / 100;
+        setFormData(prev => ({...prev, price: numericValue}));
+    } else {
+        setFormData(prev => ({...prev, price: 0}));
+    }
+  }
+
+  const formatCurrency = (value: number | undefined) => {
+    if (value === undefined || value === null) return '';
+    return new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+    }).format(value);
+  }
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -262,7 +280,14 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
       <div className="grid grid-cols-3 gap-4">
         <div>
           <Label htmlFor="price">Preço</Label>
-          <Input id="price" name="price" type="number" step="0.01" value={formData.price ?? ''} onChange={handleChange} required />
+          <Input 
+            id="price"
+            name="price"
+            value={formatCurrency(formData.price)} 
+            onChange={handlePriceChange}
+            required 
+            placeholder="R$ 0,00"
+          />
         </div>
         <div>
           <Label htmlFor="lowStockThreshold">Estoque Baixo</Label>

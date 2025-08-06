@@ -529,6 +529,7 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
 function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: { kit: Kit; products: ProductWithStock[]; isOpen: boolean; onOpenChange: (isOpen: boolean) => void; onConfirm: (chosenProducts: Product[]) => void; }) {
     const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
     const { toast } = useToast();
 
     useEffect(() => {
@@ -574,6 +575,17 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
             toast({ title: `Limite de ${kit.numberOfItems} produtos atingido.`, variant: "destructive" });
         }
     };
+    
+     const handleScan = (barcode: string) => {
+        setIsScannerOpen(false);
+        const product = eligibleProducts.find(p => p.barcode === barcode);
+        if (product) {
+            addProduct(product);
+            toast({ title: "Produto adicionado!", description: `${product.name} foi adicionado à sua seleção.` });
+        } else {
+            toast({ title: "Produto não encontrado", description: "Nenhum produto elegível com este código de barras foi encontrado.", variant: 'destructive' });
+        }
+    };
 
     const removeProduct = (productId: string) => {
         setSelectedProducts(prev => {
@@ -616,7 +628,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                 <div className="grid md:grid-cols-2 gap-6 min-h-0 flex-grow">
                     <div className="flex flex-col gap-4 min-h-0">
                         <h3 className="font-semibold">Produtos Disponíveis</h3>
-                        <div className="relative">
+                         <div className="relative flex gap-2">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
                                 type="search"
@@ -625,6 +637,9 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
+                             <Button variant="outline" size="icon" onClick={() => setIsScannerOpen(true)}>
+                                <Barcode />
+                            </Button>
                         </div>
                         <ScrollArea className="h-full rounded-md border">
                             <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -682,6 +697,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
                     <Button onClick={handleConfirm}>Confirmar Seleção</Button>
                 </DialogFooter>
+                 <BarcodeScannerModal isOpen={isScannerOpen} onOpenChange={setIsScannerOpen} onScan={handleScan} />
             </DialogContent>
         </Dialog>
     );

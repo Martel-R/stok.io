@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart, CalendarIcon, DollarSign, Package, Users, Trophy } from 'lucide-react';
+import { BarChart, CalendarIcon, DollarSign, Package, Users, Trophy, TrendingUp } from 'lucide-react';
 import { Bar, BarChart as RechartsBarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { addDays, format, fromUnixTime, startOfDay, endOfDay, eachDayOfInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -78,11 +78,12 @@ export default function DashboardPage() {
         if (!dateRange?.from) return [];
         const start = startOfDay(dateRange.from);
         const end = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from);
-        return allSales.filter(s => s.date >= start && s.date <= end);
+        return allSales.filter(s => s.date >= start && s.date <= end && s.status !== 'cancelled');
     }, [allSales, dateRange]);
     
     const totalRevenue = filteredSales.reduce((acc, sale) => acc + sale.total, 0);
     const totalSalesCount = filteredSales.length;
+    const averageTicket = totalSalesCount > 0 ? totalRevenue / totalSalesCount : 0;
     const totalProducts = allProducts.length;
 
     const totalStock = useMemo(() => {
@@ -132,8 +133,8 @@ export default function DashboardPage() {
                     <Skeleton className="h-9 w-1/2" />
                     <Skeleton className="h-10 w-64" />
                  </div>
-                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                     {Array.from({length: 4}).map((_, i) => (
+                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+                     {Array.from({length: 5}).map((_, i) => (
                          <Card key={i}>
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                 <Skeleton className="h-5 w-24"/>
@@ -213,7 +214,7 @@ export default function DashboardPage() {
                 </Popover>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Receita Total</CardTitle>
@@ -234,12 +235,20 @@ export default function DashboardPage() {
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Ticket Médio</CardTitle>
+                        <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">R${averageTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Total de Produtos</CardTitle>
-                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <Package className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{totalProducts}</div>
-                        <p className="text-xs text-muted-foreground">em {allProducts.map(p => p.category).filter((v,i,a)=>a.indexOf(v)===i).length} categorias</p>
                     </CardContent>
                 </Card>
                  <Card>
@@ -249,7 +258,6 @@ export default function DashboardPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{totalStock.toLocaleString('pt-BR')}</div>
-                        <p className="text-xs text-muted-foreground">Unidades de produtos para venda</p>
                     </CardContent>
                 </Card>
             </div>
@@ -307,4 +315,5 @@ export default function DashboardPage() {
             </div>
         </div>
     );
-}
+
+    

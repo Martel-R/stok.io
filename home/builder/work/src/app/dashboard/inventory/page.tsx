@@ -51,6 +51,8 @@ export default function InventoryPage() {
     const [selectedHistoryItem, setSelectedHistoryItem] = useState<DailyStockSummary | null>(null);
     const { toast } = useToast();
     const [searchQuery, setSearchQuery] = useState("");
+    const [historySearchQuery, setHistorySearchQuery] = useState("");
+
 
     useEffect(() => {
         if (authLoading || !currentBranch) {
@@ -144,6 +146,13 @@ export default function InventoryPage() {
 
         return fullHistory.reverse();
     }, [allStockEntries]);
+    
+    const filteredDailyStockHistory = useMemo(() => {
+        if (!historySearchQuery) return dailyStockHistory;
+        return dailyStockHistory.filter(item =>
+            item.productName.toLowerCase().includes(historySearchQuery.toLowerCase())
+        );
+    }, [dailyStockHistory, historySearchQuery]);
 
     const handleOpenForm = (type: 'entry' | 'adjustment' | 'transfer') => {
         setFormType(type);
@@ -319,14 +328,24 @@ export default function InventoryPage() {
                         <CardHeader>
                             <CardTitle>Histórico de Movimentações</CardTitle>
                             <CardDescription>Visão completa de todas as movimentações de estoque da filial.</CardDescription>
+                             <div className="relative pt-4 no-print">
+                                <Search className="absolute left-2.5 top-6.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    type="search"
+                                    placeholder="Buscar por nome do produto..."
+                                    className="w-full rounded-lg bg-background pl-8"
+                                    value={historySearchQuery}
+                                    onChange={(e) => setHistorySearchQuery(e.target.value)}
+                                />
+                            </div>
                         </CardHeader>
                         <CardContent>
                             {/* Mobile View */}
                             <div className="md:hidden space-y-4">
                                 {loading ? (
                                     Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-32 w-full" />)
-                                ) : dailyStockHistory.length > 0 ? (
-                                    dailyStockHistory.map((item, index) => (
+                                ) : filteredDailyStockHistory.length > 0 ? (
+                                    filteredDailyStockHistory.map((item, index) => (
                                         <Card key={`${item.date}-${item.productId}`} onClick={() => setSelectedHistoryItem(item)} className="cursor-pointer">
                                             <CardHeader>
                                                 <CardTitle className="text-base">{item.productName}</CardTitle>
@@ -370,8 +389,8 @@ export default function InventoryPage() {
                                                     <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                                                 </TableRow>
                                             ))
-                                        ) : dailyStockHistory.length > 0 ? (
-                                            dailyStockHistory.map((item, index) => (
+                                        ) : filteredDailyStockHistory.length > 0 ? (
+                                            filteredDailyStockHistory.map((item, index) => (
                                                 <TableRow key={`${item.date}-${item.productId}`} onClick={() => setSelectedHistoryItem(item)} className="cursor-pointer">
                                                     <TableCell className="font-medium">{format(parseISO(item.date), 'dd/MM/yyyy')}</TableCell>
                                                     <TableCell>{item.productName}</TableCell>

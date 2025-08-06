@@ -162,7 +162,7 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
 
     useEffect(() => {
         const { purchasePrice = 0, marginValue = 0, marginType = 'percentage' } = formData;
-        if (purchasePrice > 0 && marginValue > 0) {
+        if (purchasePrice > 0) {
             let newPrice = 0;
             if (marginType === 'percentage') {
                 newPrice = purchasePrice * (1 + marginValue / 100);
@@ -213,25 +213,20 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
-    let numValue = parseFloat(value);
+    const numValue = parseFloat(value);
     
     setFormData(prev => {
-        let newForm = {...prev};
-        if (type === 'number') {
-            newForm = {...newForm, [name]: (isNaN(numValue) ? undefined : numValue)}
-        } else {
-            newForm = {...newForm, [name]: value};
-        }
+        const newForm = {...prev, [name]: type === 'number' ? (isNaN(numValue) ? 0 : numValue) : value};
         
         if (name === 'price') {
              const { purchasePrice = 0 } = newForm;
-             const finalPrice = isNaN(numValue) ? 0 : numValue;
-             if (purchasePrice > 0 && finalPrice > 0) {
+             if (purchasePrice > 0) {
+                 const finalPrice = isNaN(numValue) ? 0 : numValue;
                  const diff = finalPrice - purchasePrice;
                  if (newForm.marginType === 'percentage') {
-                     newForm.marginValue = parseFloat(((diff / purchasePrice) * 100).toFixed(2));
+                     newForm.marginValue = (diff / purchasePrice) * 100;
                  } else {
-                     newForm.marginValue = parseFloat(diff.toFixed(2));
+                     newForm.marginValue = diff;
                  }
              }
         }
@@ -432,6 +427,8 @@ export default function ProductsPage() {
   
   const [isChangeCategoryDialogOpen, setIsChangeCategoryDialogOpen] = useState(false);
   const [newCategory, setNewCategory] = useState("");
+  const [isChangeStockThresholdDialogOpen, setIsChangeStockThresholdDialogOpen] = useState(false);
+  const [newLowStockThreshold, setNewLowStockThreshold] = useState(10);
   const [isCopyProductsDialogOpen, setIsCopyProductsDialogOpen] = useState(false);
   const [branchesToCopyTo, setBranchesToCopyTo] = useState<string[]>([]);
   const [isProcessingBulkAction, setIsProcessingBulkAction] = useState(false);
@@ -686,6 +683,28 @@ export default function ProductsPage() {
         }
     };
 
+     const handleBulkChangeStockThreshold = async () => {
+        if (selectedProductIds.length === 0 || newLowStockThreshold < 0) {
+            toast({ title: 'Nenhum produto selecionado ou valor inválido', variant: 'destructive' });
+            return;
+        }
+        setIsProcessingBulkAction(true);
+        const batch = writeBatch(db);
+        selectedProductIds.forEach(id => {
+            batch.update(doc(db, 'products', id), { lowStockThreshold: newLowStockThreshold });
+        });
+        try {
+            await batch.commit();
+            toast({ title: 'Limite de estoque atualizado com sucesso!' });
+            setSelectedProductIds([]);
+            setIsChangeStockThresholdDialogOpen(false);
+        } catch (error) {
+            toast({ title: 'Erro ao atualizar limite de estoque', variant: 'destructive' });
+        } finally {
+            setIsProcessingBulkAction(false);
+        }
+    };
+
 
   if (!currentBranch && !authLoading) {
     return (
@@ -732,6 +751,9 @@ export default function ProductsPage() {
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => setIsChangeCategoryDialogOpen(true)}>
                                 Alterar Categoria
+                            </DropdownMenuItem>
+                             <DropdownMenuItem onClick={() => setIsChangeStockThresholdDialogOpen(true)}>
+                                Alterar Limite de Estoque
                             </DropdownMenuItem>
                              <DropdownMenuItem onClick={() => setIsCopyProductsDialogOpen(true)}>
                                 Copiar para Filial(is)
@@ -932,6 +954,32 @@ export default function ProductsPage() {
             </DialogContent>
         </Dialog>
         
+        {/* Dialog for Changing Stock Threshold */}
+        <Dialog open={isChangeStockThresholdDialogOpen} onOpenChange={setIsChangeStockThresholdDialogOpen}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Alterar Limite de Estoque Baixo em Lote</DialogTitle>
+                </DialogHeader>
+                <div className="py-4">
+                    <Label htmlFor="newLowStockThreshold">Novo Limite</Label>
+                    <Input
+                        id="newLowStockThreshold"
+                        type="number"
+                        value={newLowStockThreshold}
+                        onChange={(e) => setNewLowStockThreshold(parseInt(e.target.value, 10) || 0)}
+                        placeholder="Ex: 10"
+                    />
+                </div>
+                <DialogFooter>
+                    <Button variant="ghost" onClick={() => setIsChangeStockThresholdDialogOpen(false)}>Cancelar</Button>
+                    <Button onClick={handleBulkChangeStockThreshold} disabled={isProcessingBulkAction}>
+                        {isProcessingBulkAction && <Loader2 className="mr-2 animate-spin"/>}
+                        Alterar Limite
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+        
         {/* Dialog for Copying Products */}
         <Dialog open={isCopyProductsDialogOpen} onOpenChange={setIsCopyProductsDialogOpen}>
             <DialogContent>
@@ -981,4 +1029,5 @@ export default function ProductsPage() {
     </div>
   );
 }
+
 

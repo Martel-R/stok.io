@@ -152,7 +152,7 @@ function SalesReport() {
 
     return (
         <Card>
-            <CardHeader>
+            <CardHeader className="no-print">
                 <div className="flex flex-col md:flex-row justify-between gap-4">
                      <div className="flex flex-wrap gap-2">
                         <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
@@ -173,10 +173,14 @@ function SalesReport() {
                 </div>
             </CardHeader>
             <CardContent>
-                <div className="mb-4 font-semibold">
+                <div className="mb-4 font-semibold no-print">
                    Exibindo {filteredSales.length} de {sales.length} vendas. Total Filtrado: R$ {totalFilteredRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </div>
                 <div className="printable-area">
+                    <div className="print-header hidden print:block mb-4">
+                        <h2 className="text-xl font-bold">Relatório de Vendas</h2>
+                        <p className="text-sm">Período: {dateRange?.from && format(dateRange.from, 'dd/MM/yy')} - {dateRange?.to && format(dateRange.to, 'dd/MM/yy')}</p>
+                    </div>
                     <Table>
                         <TableHeader>
                             <TableRow>
@@ -864,9 +868,18 @@ export default function ReportsPage() {
 
             <style jsx global>{`
                 @media print {
-                    body * { visibility: hidden; }
                     .printable-area, .printable-area * { visibility: visible; }
-                    .printable-area { position: absolute; left: 0; top: 0; width: 100%; }
+                    .no-print, .no-print * { visibility: hidden; display: none; }
+                    body {
+                        margin: 0;
+                        padding: 1rem;
+                    }
+                    .printable-area { 
+                        position: absolute; 
+                        left: 0; 
+                        top: 0; 
+                        width: 100%;
+                    }
                 }
             `}</style>
         </div>

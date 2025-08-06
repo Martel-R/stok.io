@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import Link from 'next/link';
 import { format, startOfDay, endOfDay, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, ArrowRightLeft, MinusCircle, Package, History, Search, Printer, FileDown } from 'lucide-react';
+import { PlusCircle, ArrowRightLeft, MinusCircle, Package, History, Search, Printer, FileDown, Calendar as CalendarIcon } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { StockMovementForm } from '@/components/stock-movement-form';
 import { useToast } from '@/hooks/use-toast';
@@ -21,7 +21,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-
+import { DateRange } from 'react-day-picker';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { cn } from '@/lib/utils';
+import { ptBR } from 'date-fns/locale';
 
 const convertDate = (dateField: any): Date => {
     if (dateField instanceof Timestamp) return dateField.toDate();
@@ -51,6 +55,12 @@ export default function InventoryPage() {
     const [selectedHistoryItem, setSelectedHistoryItem] = useState<DailyStockSummary | null>(null);
     const { toast } = useToast();
     const [searchQuery, setSearchQuery] = useState("");
+    const [historySearchQuery, setHistorySearchQuery] = useState("");
+    const [historyDateRange, setHistoryDateRange] = useState<DateRange | undefined>({
+      from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+      to: new Date(),
+    });
+
 
     useEffect(() => {
         if (authLoading || !currentBranch) {
@@ -144,6 +154,20 @@ export default function InventoryPage() {
 
         return fullHistory.reverse();
     }, [allStockEntries]);
+    
+    const filteredDailyStockHistory = useMemo(() => {
+        return dailyStockHistory.filter(item => {
+            const inDateRange = historyDateRange?.from 
+                ? (parseISO(item.date) >= startOfDay(historyDateRange.from) && parseISO(item.date) <= endOfDay(historyDateRange.to || historyDateRange.from))
+                : true;
+            
+            const matchesSearch = historySearchQuery
+                ? item.productName.toLowerCase().includes(historySearchQuery.toLowerCase())
+                : true;
+
+            return inDateRange && matchesSearch;
+        });
+    }, [dailyStockHistory, historySearchQuery, historyDateRange]);
 
     const handleOpenForm = (type: 'entry' | 'adjustment' | 'transfer') => {
         setFormType(type);
@@ -319,14 +343,60 @@ export default function InventoryPage() {
                         <CardHeader>
                             <CardTitle>Histórico de Movimentações</CardTitle>
                             <CardDescription>Visão completa de todas as movimentações de estoque da filial.</CardDescription>
+                             <div className="flex flex-col sm:flex-row gap-2 pt-4 no-print">
+                                <div className="relative flex-grow">
+                                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        type="search"
+                                        placeholder="Buscar por nome do produto..."
+                                        className="w-full rounded-lg bg-background pl-8"
+                                        value={historySearchQuery}
+                                        onChange={(e) => setHistorySearchQuery(e.target.value)}
+                                    />
+                                </div>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                    <Button
+                                        id="date"
+                                        variant={"outline"}
+                                        className={cn("w-full sm:w-[300px] justify-start text-left font-normal", !historyDateRange && "text-muted-foreground")}
+                                    >
+                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                        {historyDateRange?.from ? (
+                                        historyDateRange.to ? (
+                                            <>
+                                            {format(historyDateRange.from, "LLL dd, y", { locale: ptBR })} -{" "}
+                                            {format(historyDateRange.to, "LLL dd, y", { locale: ptBR })}
+                                            </>
+                                        ) : (
+                                            format(historyDateRange.from, "LLL dd, y", { locale: ptBR })
+                                        )
+                                        ) : (
+                                        <span>Escolha um período</span>
+                                        )}
+                                    </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0" align="end">
+                                    <Calendar
+                                        initialFocus
+                                        mode="range"
+                                        defaultMonth={historyDateRange?.from}
+                                        selected={historyDateRange}
+                                        onSelect={setHistoryDateRange}
+                                        numberOfMonths={2}
+                                        locale={ptBR}
+                                    />
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
                         </CardHeader>
                         <CardContent>
                             {/* Mobile View */}
                             <div className="md:hidden space-y-4">
                                 {loading ? (
                                     Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-32 w-full" />)
-                                ) : dailyStockHistory.length > 0 ? (
-                                    dailyStockHistory.map((item, index) => (
+                                ) : filteredDailyStockHistory.length > 0 ? (
+                                    filteredDailyStockHistory.map((item, index) => (
                                         <Card key={`${item.date}-${item.productId}`} onClick={() => setSelectedHistoryItem(item)} className="cursor-pointer">
                                             <CardHeader>
                                                 <CardTitle className="text-base">{item.productName}</CardTitle>
@@ -370,8 +440,8 @@ export default function InventoryPage() {
                                                     <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                                                 </TableRow>
                                             ))
-                                        ) : dailyStockHistory.length > 0 ? (
-                                            dailyStockHistory.map((item, index) => (
+                                        ) : filteredDailyStockHistory.length > 0 ? (
+                                            filteredDailyStockHistory.map((item, index) => (
                                                 <TableRow key={`${item.date}-${item.productId}`} onClick={() => setSelectedHistoryItem(item)} className="cursor-pointer">
                                                     <TableCell className="font-medium">{format(parseISO(item.date), 'dd/MM/yyyy')}</TableCell>
                                                     <TableCell>{item.productName}</TableCell>

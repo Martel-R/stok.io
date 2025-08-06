@@ -12,13 +12,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import Link from 'next/link';
 import { format, startOfDay, endOfDay, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, ArrowRightLeft, MinusCircle, Package, History, Search } from 'lucide-react';
+import { PlusCircle, ArrowRightLeft, MinusCircle, Package, History, Search, Printer, FileDown } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { StockMovementForm } from '@/components/stock-movement-form';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
 
 const convertDate = (dateField: any): Date => {
     if (dateField instanceof Timestamp) return dateField.toDate();
@@ -92,6 +95,11 @@ export default function InventoryPage() {
         );
     }, [productsWithStock, searchQuery]);
 
+    const totalStockCount = useMemo(() => {
+        return productsWithStock.reduce((sum, product) => sum + product.stock, 0);
+    }, [productsWithStock]);
+
+
     const dailyStockHistory = useMemo(() => {
         const sortedEntries = [...allStockEntries].sort((a,b) => a.date.getTime() - b.date.getTime());
 
@@ -153,6 +161,24 @@ export default function InventoryPage() {
         }
     }
     
+    const exportCurrentStockToPDF = () => {
+        const doc = new jsPDF();
+        doc.text(`Relatório de Estoque Atual - Filial: ${currentBranch?.name}`, 14, 16);
+        doc.text(`Data: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, 22);
+        
+        autoTable(doc, {
+            head: [['Produto', 'Categoria', 'Quantidade']],
+            body: filteredProductsWithStock.map(p => [
+                p.name,
+                p.category,
+                p.stock.toString()
+            ]),
+            startY: 28
+        });
+
+        doc.save(`estoque_atual_${currentBranch?.name}.pdf`);
+    };
+
     if (!currentBranch && !authLoading) {
         return (
             <Card className="m-auto">
@@ -168,8 +194,9 @@ export default function InventoryPage() {
     const canManageStock = user?.role === 'admin' || user?.role === 'manager';
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        <>
+        <div className="space-y-6 printable-area">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 no-print">
                 <h1 className="text-3xl font-bold">Gestão de Estoque</h1>
                 {canManageStock && (
                     <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
@@ -201,17 +228,25 @@ export default function InventoryPage() {
             </div>
 
             <Tabs defaultValue="current">
-                <TabsList className="grid w-full grid-cols-2">
+                <TabsList className="grid w-full grid-cols-2 no-print">
                     <TabsTrigger value="current"><Package className="mr-2"/> Estoque Atual</TabsTrigger>
                     <TabsTrigger value="history"><History className="mr-2"/> Histórico de Movimentações</TabsTrigger>
                 </TabsList>
                 <TabsContent value="current" className="mt-4">
                      <Card>
                         <CardHeader>
-                            <CardTitle>Estoque Atual</CardTitle>
-                            <CardDescription>Visão geral das quantidades de cada produto na filial.</CardDescription>
-                            <div className="relative pt-2">
-                                <Search className="absolute left-2.5 top-4.5 h-4 w-4 text-muted-foreground" />
+                            <div className="flex flex-col sm:flex-row justify-between gap-4">
+                                <div>
+                                    <CardTitle>Estoque Atual</CardTitle>
+                                    <CardDescription>Visão geral das quantidades de cada produto na filial. Total de Itens em Estoque: <span className="font-bold text-foreground">{totalStockCount.toLocaleString('pt-BR')}</span></CardDescription>
+                                </div>
+                                <div className="flex gap-2 no-print">
+                                    <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="mr-2" /> Imprimir</Button>
+                                    <Button variant="outline" size="sm" onClick={exportCurrentStockToPDF}><FileDown className="mr-2" /> PDF</Button>
+                                </div>
+                            </div>
+                            <div className="relative pt-4 no-print">
+                                <Search className="absolute left-2.5 top-6.5 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     type="search"
                                     placeholder="Buscar produto por nome ou categoria..."
@@ -396,5 +431,25 @@ export default function InventoryPage() {
                 </DialogContent>
             </Dialog>
         </div>
+        <style jsx global>{`
+                @media print {
+                    body * {
+                        visibility: hidden;
+                    }
+                    .printable-area, .printable-area * {
+                        visibility: visible;
+                    }
+                    .printable-area {
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                        width: 100%;
+                    }
+                    .no-print {
+                        display: none;
+                    }
+                }
+            `}</style>
+        </>
     );
 }

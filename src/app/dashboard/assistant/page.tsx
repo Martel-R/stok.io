@@ -59,16 +59,19 @@ export default function AssistantPage() {
 
     const userMessage: Message = { sender: 'user', text: input };
     setMessages((prev) => [...prev, userMessage]);
+    const currentInput = input;
     setInput('');
     setLoading(true);
 
     try {
-      const fullQuestion = `Dado o contexto do estoque: [${inventoryContext}], responda à seguinte pergunta: ${input}`;
-
-      const response = await answerInventoryQuestion({ question: fullQuestion });
+      const response = await answerInventoryQuestion({ 
+        question: currentInput,
+        context: inventoryContext
+      });
       const botMessage: Message = { sender: 'bot', text: response.answer };
       setMessages((prev) => [...prev, botMessage]);
     } catch (error) {
+      console.error("AI Error:", error);
       const errorMessage: Message = {
         sender: 'bot',
         text: 'Desculpe, encontrei um erro. Por favor, tente novamente.',
@@ -134,7 +137,7 @@ export default function AssistantPage() {
               {loading && (
                 <div className="flex items-start gap-3">
                     <Avatar className="h-8 w-8">
-                        <AvatarFallback>IA</AvatarFallback>
+                        <AvatarFallback>AI</AvatarFallback>
                     </Avatar>
                     <div className="bg-muted rounded-lg p-3 flex items-center">
                         <Loader2 className="h-4 w-4 animate-spin"/>

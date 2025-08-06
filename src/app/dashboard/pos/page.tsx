@@ -756,7 +756,8 @@ export default function POSPage() {
     });
 
     const unsubscribeKits = onSnapshot(kitsQuery, (querySnapshot) => {
-      setKits(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kit)));
+      const kitsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kit));
+      setKits(kitsData.sort((a,b) => a.name.localeCompare(b.name)));
     });
     
     const unsubscribeConditions = onSnapshot(conditionsQuery, (snapshot) => {

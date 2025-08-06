@@ -501,7 +501,7 @@ export default function InventoryPage() {
                 </DialogContent>
             </Dialog>
         </div>
-        <style jsx global>{`
+        <style jsx global>{\`
                 @media print {
                     body * {
                         visibility: hidden;
@@ -519,7 +519,7 @@ export default function InventoryPage() {
                         display: none;
                     }
                 }
-            `}</style>
+            \`}</style>
         </>
     );
 }

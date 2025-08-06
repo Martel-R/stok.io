@@ -461,6 +461,7 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                             <TableHead>Data</TableHead>
                             <TableHead>Itens</TableHead>
                             <TableHead>Vendedor</TableHead>
+                            <TableHead>Pagamento</TableHead>
                             <TableHead className="text-right">Total</TableHead>
                             <TableHead className="text-center">Ações</TableHead>
                         </TableRow>
@@ -485,6 +486,13 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                                         </div>
                                     </TableCell>
                                     <TableCell>{sale.cashier}</TableCell>
+                                    <TableCell>
+                                        <div className="flex flex-col gap-1">
+                                            {sale.payments?.map((payment, idx) => (
+                                                <Badge key={idx} variant="outline">{payment.conditionName}</Badge>
+                                            ))}
+                                        </div>
+                                    </TableCell>
                                     <TableCell className="text-right">R${sale.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
                                     <TableCell className="text-center">
                                        {user?.role === 'admin' && sale.status !== 'cancelled' && (
@@ -508,7 +516,7 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                             ))
                         ) : (
                             <TableRow>
-                                <TableCell colSpan={5} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
+                                <TableCell colSpan={6} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
                             </TableRow>
                         )}
                     </TableBody>

@@ -201,8 +201,15 @@ function SalesReport() {
                                     <TableCell>{branches.find(b => b.id === sale.branchId)?.name || 'N/A'}</TableCell>
                                     <TableCell>{sale.cashier}</TableCell>
                                     <TableCell>
-                                        {sale.items.map((item: any) => (
-                                            <div key={item.id}>{item.quantity}x {item.name}</div>
+                                        {sale.items.map((item: any, index: number) => (
+                                            <div key={item.id + index}>
+                                                <span className="font-semibold">{item.quantity}x {item.name}</span>
+                                                {item.type === 'kit' && item.chosenProducts && (
+                                                     <div className="pl-4 text-xs text-muted-foreground">
+                                                        {item.chosenProducts.map((p: any) => p.name).join(', ')}
+                                                     </div>
+                                                )}
+                                            </div>
                                         ))}
                                     </TableCell>
                                     <TableCell>

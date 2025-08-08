@@ -658,7 +658,6 @@ function LowStockReport() {
             branchStock: { [key: string]: number };
         }>();
 
-        // 1. Calculate stock for each product in each branch
         const stockByProductAndBranch = new Map<string, number>(); // key: `${productId}_${branchId}`
         for (const entry of allStockEntries) {
             const key = `${entry.productId}_${entry.branchId}`;
@@ -666,30 +665,29 @@ function LowStockReport() {
             stockByProductAndBranch.set(key, currentStock + (Number(entry.quantity) || 0));
         }
 
-        // 2. Group by product name across all branches
         for (const product of allProducts) {
+            const stockInBranch = stockByProductAndBranch.get(`${product.id}_${product.branchId}`) || 0;
+
             if (!productMap.has(product.name)) {
                 productMap.set(product.name, {
                     name: product.name,
-                    lowStockThreshold: product.lowStockThreshold, // Note: this assumes threshold is consistent
+                    lowStockThreshold: product.lowStockThreshold,
                     totalStock: 0,
                     branchStock: {},
                 });
             }
 
-            const stock = stockByProductAndBranch.get(`${product.id}_${product.branchId}`) || 0;
             const productData = productMap.get(product.name)!;
-            
-            productData.totalStock += stock;
-            productData.branchStock[product.branchId] = stock;
+            productData.totalStock += stockInBranch;
+            productData.branchStock[product.branchId] = stockInBranch;
         }
 
-        // 3. Filter for low stock and sort
         return Array.from(productMap.values())
             .filter(p => p.totalStock <= p.lowStockThreshold)
             .sort((a, b) => (a.totalStock - a.lowStockThreshold) - (b.totalStock - b.lowStockThreshold));
 
     }, [allProducts, allStockEntries]);
+
 
     const filteredBranches = useMemo(() => {
         return allBranches.filter(b => selectedBranchIds.includes(b.id));

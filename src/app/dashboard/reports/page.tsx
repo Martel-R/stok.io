@@ -91,6 +91,8 @@ function SalesReport() {
 
     const filteredSales = useMemo(() => {
         return sales.filter(sale => {
+            if (sale.status === 'cancelled') return false;
+            
             const saleDate = sale.date;
             const isAfterStart = dateRange?.from ? saleDate >= startOfDay(dateRange.from) : true;
             const isBeforeEnd = dateRange?.to ? saleDate <= endOfDay(dateRange.to) : true;
@@ -152,7 +154,7 @@ function SalesReport() {
 
     return (
         <Card>
-            <CardHeader>
+            <CardHeader className="no-print">
                 <div className="flex flex-col md:flex-row justify-between gap-4">
                      <div className="flex flex-wrap gap-2">
                         <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
@@ -173,10 +175,14 @@ function SalesReport() {
                 </div>
             </CardHeader>
             <CardContent>
-                <div className="mb-4 font-semibold">
+                <div className="mb-4 font-semibold no-print">
                    Exibindo {filteredSales.length} de {sales.length} vendas. Total Filtrado: R$ {totalFilteredRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </div>
                 <div className="printable-area">
+                    <div className="print-header hidden print:block mb-4">
+                        <h2 className="text-xl font-bold">Relatório de Vendas</h2>
+                        <p className="text-sm">Período: {dateRange?.from && format(dateRange.from, 'dd/MM/yy')} - {dateRange?.to && format(dateRange.to, 'dd/MM/yy')}</p>
+                    </div>
                     <Table>
                         <TableHeader>
                             <TableRow>
@@ -269,6 +275,8 @@ function TopSellingProductsReport() {
 
     const topProducts = useMemo(() => {
         const filteredSales = sales.filter(sale => {
+            if (sale.status === 'cancelled') return false;
+            
             const saleDate = sale.date;
             const isAfterStart = dateRange?.from ? saleDate >= startOfDay(dateRange.from) : true;
             const isBeforeEnd = dateRange?.to ? saleDate <= endOfDay(dateRange.to) : true;
@@ -594,6 +602,8 @@ function FinancialSummaryReport() {
 
     const financialData = useMemo(() => {
         const filteredSales = sales.filter(sale => {
+            if (sale.status === 'cancelled') return false;
+            
             const saleDate = sale.date;
             const isAfterStart = dateRange?.from ? saleDate >= startOfDay(dateRange.from) : true;
             const isBeforeEnd = dateRange?.to ? saleDate <= endOfDay(dateRange.to) : true;
@@ -867,6 +877,7 @@ export default function ReportsPage() {
                     body * { visibility: hidden; }
                     .printable-area, .printable-area * { visibility: visible; }
                     .printable-area { position: absolute; left: 0; top: 0; width: 100%; }
+                    .no-print, .no-print * { display: none !important; }
                 }
             `}</style>
         </div>

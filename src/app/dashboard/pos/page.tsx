@@ -463,7 +463,7 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                             <TableHead>Vendedor</TableHead>
                             <TableHead>Pagamento</TableHead>
                             <TableHead className="text-right">Total</TableHead>
-                            <TableHead className="text-center">Ações</TableHead>
+                            <TableHead className="text-center">Status</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -486,7 +486,7 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                                         </div>
                                     </TableCell>
                                     <TableCell>{sale.cashier}</TableCell>
-                                    <TableCell>
+                                     <TableCell>
                                         <div className="flex flex-col gap-1">
                                             {sale.payments?.map((payment, idx) => (
                                                 <Badge key={idx} variant="outline">{payment.conditionName}</Badge>
@@ -495,7 +495,7 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                                     </TableCell>
                                     <TableCell className="text-right">R${sale.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
                                     <TableCell className="text-center">
-                                       {user?.role === 'admin' && sale.status !== 'cancelled' && (
+                                       {user?.role === 'admin' && sale.status !== 'cancelled' ? (
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
                                                     <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
@@ -509,8 +509,11 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                                                     </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
+                                        ) : (
+                                            <Badge variant={sale.status === 'cancelled' ? 'destructive' : 'secondary'}>
+                                                {sale.status === 'cancelled' ? 'Cancelada' : 'Concluída'}
+                                            </Badge>
                                         )}
-                                        {sale.status === 'cancelled' && <Badge variant="destructive">Cancelada</Badge>}
                                     </TableCell>
                                 </TableRow>
                             ))

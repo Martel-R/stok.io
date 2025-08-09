@@ -128,7 +128,7 @@ function GeneralReport() {
         };
 
         filteredSales.forEach(sale => {
-            sale.items.forEach((item: any) => {
+            (sale.items || []).forEach((item: any) => {
                  if (item.type === 'product') {
                      const product = products.find(p => p.id === item.id);
                      if (product) {
@@ -136,10 +136,10 @@ function GeneralReport() {
                         processProduct(item.id, item.name, item.quantity, value, value);
                      }
                  } else if (item.type === 'kit') {
-                     const originalKitPrice = item.chosenProducts.reduce((sum: number, p: any) => sum + p.price, 0);
+                     const originalKitPrice = (item.chosenProducts || []).reduce((sum: number, p: any) => sum + (p.price || 0), 0);
                      const discountRatio = (originalKitPrice > 0 && !isNaN(item.total)) ? item.total / originalKitPrice : 1;
                      
-                     item.chosenProducts.forEach((p: any) => {
+                     (item.chosenProducts || []).forEach((p: any) => {
                          const product = products.find(prod => prod.id === p.id);
                          if (product) {
                              const originalValue = item.quantity * product.price;
@@ -1140,28 +1140,30 @@ function ABCCurveReport() {
                 if (item.type === 'product') {
                     const product = products.find(p => p.id === item.id);
                     if (product && !isNaN(product.price)) {
-                        const current = productRevenue.get(item.id) || { name: item.name, total: 0 };
+                        const current = productRevenue.get(item.name) || { name: item.name, total: 0 };
                         current.total += item.quantity * product.price;
-                        productRevenue.set(item.id, current);
+                        productRevenue.set(item.name, current);
                     }
                 } else if (item.type === 'combo' && item.products && !isNaN(item.originalPrice) && !isNaN(item.finalPrice)) {
-                    const ratio = item.originalPrice > 0 ? item.finalPrice / item.originalPrice : 1;
+                    const ratio = (item.originalPrice > 0 && !isNaN(item.finalPrice)) ? item.finalPrice / item.originalPrice : 1;
+                    if(isNaN(ratio)) return; // Skip if ratio is invalid
                     item.products.forEach((p: any) => {
                         const productInfo = products.find(prod => prod.id === p.productId);
                         if(productInfo && !isNaN(productInfo.price) && !isNaN(p.quantity)) {
-                           const current = productRevenue.get(p.productId) || { name: p.productName, total: 0 };
+                           const current = productRevenue.get(p.productName) || { name: p.productName, total: 0 };
                            current.total += p.quantity * item.quantity * productInfo.price * ratio;
-                           productRevenue.set(p.productId, current);
+                           productRevenue.set(p.productName, current);
                         }
                     });
                 } else if (item.type === 'kit' && item.chosenProducts && !isNaN(item.total)) {
                      const originalPrice = item.chosenProducts.reduce((sum: number, p: any) => sum + (p.price || 0), 0);
                      const ratio = (originalPrice > 0 && !isNaN(item.total)) ? item.total / originalPrice : 1;
+                     if(isNaN(ratio)) return; // Skip if ratio is invalid
                      item.chosenProducts.forEach((p: any) => {
                          if (!isNaN(p.price)) {
-                             const current = productRevenue.get(p.id) || { name: p.name, total: 0 };
+                             const current = productRevenue.get(p.name) || { name: p.name, total: 0 };
                              current.total += item.quantity * p.price * ratio;
-                             productRevenue.set(p.id, current);
+                             productRevenue.set(p.name, current);
                          }
                      });
                 }

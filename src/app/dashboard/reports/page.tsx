@@ -135,7 +135,7 @@ function GeneralReport() {
                      }
                  } else if (item.type === 'kit') {
                      const originalKitPrice = item.chosenProducts.reduce((sum: number, p: any) => sum + p.price, 0);
-                     const ratio = (originalKitPrice > 0 && item.total > 0) ? item.total / originalKitPrice : 1;
+                     const ratio = (originalKitPrice > 0 && item.total > 0 && !isNaN(item.total)) ? item.total / originalKitPrice : 1;
                      const discountRatio = isNaN(ratio) ? 1 : ratio;
 
                      item.chosenProducts.forEach((p: any) => {
@@ -147,7 +147,7 @@ function GeneralReport() {
                          }
                      });
                  } else if (item.type === 'combo') {
-                    const ratio = (item.originalPrice > 0 && item.finalPrice > 0) ? item.finalPrice / item.originalPrice : 1;
+                    const ratio = (item.originalPrice > 0 && item.finalPrice > 0 && !isNaN(item.finalPrice)) ? item.finalPrice / item.originalPrice : 1;
                     const discountRatio = isNaN(ratio) ? 1 : ratio;
 
                      item.products.forEach((p: any) => {
@@ -163,7 +163,7 @@ function GeneralReport() {
         });
         
         return Array.from(productMap.values()).sort((a,b) => b.quantity - a.quantity);
-    }, [filteredSales, products, combos]);
+    }, [filteredSales, products, combos, kits]);
 
     if (loading) return <Skeleton className="h-[500px] w-full" />;
     
@@ -1135,29 +1135,34 @@ function ABCCurveReport() {
 
         filteredSales.forEach(sale => {
             sale.items.forEach((item: any) => {
-                // This logic correctly calculates the final value considering discounts for kits/combos
-                const product = products.find(p => p.id === item.id);
-                if (item.type === 'product' && product) {
-                    const current = productRevenue.get(item.id) || { name: item.name, total: 0 };
-                    current.total += item.quantity * product.price;
-                    productRevenue.set(item.id, current);
-                } else if (item.type === 'combo' && item.products) {
-                    const ratio = (item.originalPrice > 0) ? item.finalPrice / item.originalPrice : 1;
+                if (!item || isNaN(item.quantity)) return;
+
+                if (item.type === 'product') {
+                    const product = products.find(p => p.id === item.id);
+                    if (product && !isNaN(product.price)) {
+                        const current = productRevenue.get(item.id) || { name: item.name, total: 0 };
+                        current.total += item.quantity * product.price;
+                        productRevenue.set(item.id, current);
+                    }
+                } else if (item.type === 'combo' && item.products && !isNaN(item.originalPrice) && !isNaN(item.finalPrice)) {
+                    const ratio = item.originalPrice > 0 ? item.finalPrice / item.originalPrice : 1;
                     item.products.forEach((p: any) => {
                         const productInfo = products.find(prod => prod.id === p.productId);
-                        if(productInfo) {
+                        if(productInfo && !isNaN(productInfo.price) && !isNaN(p.quantity)) {
                            const current = productRevenue.get(p.productId) || { name: p.productName, total: 0 };
                            current.total += p.quantity * item.quantity * productInfo.price * ratio;
                            productRevenue.set(p.productId, current);
                         }
                     });
-                } else if (item.type === 'kit' && item.chosenProducts) {
-                     const originalPrice = item.chosenProducts.reduce((sum: number, p: any) => sum + p.price, 0);
-                     const ratio = (originalPrice > 0) ? item.total / originalPrice : 1;
+                } else if (item.type === 'kit' && item.chosenProducts && !isNaN(item.total)) {
+                     const originalPrice = item.chosenProducts.reduce((sum: number, p: any) => sum + (p.price || 0), 0);
+                     const ratio = originalPrice > 0 ? item.total / originalPrice : 1;
                      item.chosenProducts.forEach((p: any) => {
-                         const current = productRevenue.get(p.id) || { name: p.name, total: 0 };
-                         current.total += item.quantity * p.price * ratio;
-                         productRevenue.set(p.id, current);
+                         if (!isNaN(p.price)) {
+                             const current = productRevenue.get(p.id) || { name: p.name, total: 0 };
+                             current.total += item.quantity * p.price * ratio;
+                             productRevenue.set(p.id, current);
+                         }
                      });
                 }
             });

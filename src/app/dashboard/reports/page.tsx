@@ -136,30 +136,29 @@ function GeneralReport() {
                      }
                  } else if (item.type === 'kit') {
                      const originalKitPrice = item.chosenProducts.reduce((sum: number, p: any) => sum + p.price, 0);
-                     if (originalKitPrice > 0) {
-                        const discountRatio = item.total / originalKitPrice;
-                         item.chosenProducts.forEach((p: any) => {
-                             const product = products.find(prod => prod.id === p.id);
-                             if (product) {
-                                 const originalValue = item.quantity * product.price;
-                                 const finalValue = originalValue * discountRatio;
-                                 processProduct(p.id, p.name, item.quantity, originalValue, finalValue);
-                             }
-                         });
-                     }
+                     const ratio = (originalKitPrice > 0 && item.total > 0) ? item.total / originalKitPrice : 1;
+                     const discountRatio = isNaN(ratio) ? 1 : ratio;
+
+                     item.chosenProducts.forEach((p: any) => {
+                         const product = products.find(prod => prod.id === p.id);
+                         if (product) {
+                             const originalValue = item.quantity * product.price;
+                             const finalValue = originalValue * discountRatio;
+                             processProduct(p.id, p.name, item.quantity, originalValue, finalValue);
+                         }
+                     });
                  } else if (item.type === 'combo') {
-                    const comboDef = combos.find(c => c.id === item.id);
-                    if (comboDef) {
-                        const discountRatio = comboDef.finalPrice / comboDef.originalPrice;
-                         comboDef.products.forEach(p => {
-                             const product = products.find(prod => prod.id === p.productId);
-                             if (product) {
-                                const originalValue = item.quantity * p.quantity * product.price;
-                                const finalValue = originalValue * discountRatio;
-                                processProduct(p.productId, p.productName, p.quantity * item.quantity, originalValue, finalValue);
-                             }
-                         })
-                    }
+                    const ratio = (item.originalPrice > 0 && item.finalPrice > 0) ? item.finalPrice / item.originalPrice : 1;
+                    const discountRatio = isNaN(ratio) ? 1 : ratio;
+
+                     item.products.forEach((p: any) => {
+                         const product = products.find(prod => prod.id === p.productId);
+                         if (product) {
+                            const originalValue = item.quantity * p.quantity * product.price;
+                            const finalValue = originalValue * discountRatio;
+                            processProduct(p.productId, p.productName, p.quantity * item.quantity, originalValue, finalValue);
+                         }
+                     })
                  }
             });
         });
@@ -237,7 +236,7 @@ function GeneralReport() {
                                     <TableCell>{p.name}</TableCell>
                                     <TableCell className="text-right">{p.quantity}</TableCell>
                                     <TableCell className="text-right">{formatCurrency(p.originalValue)}</TableCell>
-                                    <TableCell className="text-right text-destructive">{formatCurrency(p.originalValue - p.finalValue)}</TableCell>
+                                    <TableCell className="text-right text-destructive">-{formatCurrency(p.originalValue - p.finalValue)}</TableCell>
                                     <TableCell className="text-right font-semibold">{formatCurrency(p.finalValue)}</TableCell>
                                 </TableRow>
                             ))}

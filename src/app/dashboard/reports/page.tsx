@@ -116,26 +116,37 @@ function GeneralReport() {
     }, [filteredSales, paymentConditions]);
     
     const productsSold = useMemo(() => {
-        const productMap = new Map<string, { name: string, quantity: number, totalValue: number }>();
+        const productMap = new Map<string, { id: string; name: string, quantity: number, totalValue: number }>();
         
         const processProduct = (productId: string, name: string, quantity: number, price: number) => {
-            const existing = productMap.get(productId) || { name, quantity: 0, totalValue: 0 };
+            const key = name; // Group by name
+            const existing = productMap.get(key) || { id: productId, name, quantity: 0, totalValue: 0 };
             existing.quantity += quantity;
             existing.totalValue += (price * quantity);
-            productMap.set(productId, existing);
+            productMap.set(key, existing);
         };
 
         filteredSales.forEach(sale => {
             sale.items.forEach((item: any) => {
                  if (item.type === 'product') {
-                     processProduct(item.id, item.name, item.quantity, item.price);
+                     const product = products.find(p => p.id === item.id);
+                     if (product) {
+                        processProduct(item.id, item.name, item.quantity, product.price);
+                     }
                  } else if (item.type === 'kit') {
-                     item.chosenProducts.forEach((p: any) => processProduct(p.id, p.name, item.quantity, p.price));
+                     item.chosenProducts.forEach((p: any) => {
+                         const product = products.find(prod => prod.id === p.id);
+                         if (product) {
+                             processProduct(p.id, p.name, item.quantity, product.price);
+                         }
+                     });
                  } else if (item.type === 'combo') {
                      const comboDef = combos.find(c => c.id === item.id);
                      comboDef?.products.forEach(p => {
                          const product = products.find(prod => prod.id === p.productId);
-                         processProduct(p.productId, p.productName, p.quantity * item.quantity, product?.price || p.productPrice);
+                         if (product) {
+                             processProduct(p.productId, p.productName, p.quantity * item.quantity, product.price);
+                         }
                      })
                  }
             });
@@ -202,7 +213,7 @@ function GeneralReport() {
                         <TableHeader><TableRow><TableHead>Produto</TableHead><TableHead className="text-right">Quantidade</TableHead><TableHead className="text-right">Valor Total</TableHead></TableRow></TableHeader>
                         <TableBody>
                             {productsSold.map(p => (
-                                <TableRow key={p.name}>
+                                <TableRow key={p.id}>
                                     <TableCell>{p.name}</TableCell>
                                     <TableCell className="text-right">{p.quantity}</TableCell>
                                     <TableCell className="text-right">{formatCurrency(p.totalValue)}</TableCell>

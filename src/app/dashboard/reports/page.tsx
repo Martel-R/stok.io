@@ -120,11 +120,11 @@ function GeneralReport() {
         const productMap = new Map<string, { id: string; name: string, quantity: number, originalValue: number, finalValue: number }>();
         
         const processProduct = (productId: string, name: string, quantity: number, originalValue: number, finalValue: number) => {
-            const existing = productMap.get(productId) || { id: productId, name, quantity: 0, originalValue: 0, finalValue: 0 };
+            const existing = productMap.get(name) || { id: productId, name, quantity: 0, originalValue: 0, finalValue: 0 };
             existing.quantity += quantity;
             existing.originalValue += originalValue;
             existing.finalValue += finalValue;
-            productMap.set(productId, existing);
+            productMap.set(name, existing);
         };
 
         filteredSales.forEach(sale => {
@@ -137,7 +137,8 @@ function GeneralReport() {
                      }
                  } else if (item.type === 'kit') {
                      const originalKitPrice = (item.chosenProducts || []).reduce((sum: number, p: any) => sum + (p.price || 0), 0);
-                     const discountRatio = (originalKitPrice > 0 && !isNaN(item.total)) ? item.total / originalKitPrice : 1;
+                     let discountRatio = (originalKitPrice > 0 && typeof item.total === 'number' && !isNaN(item.total)) ? item.total / originalKitPrice : 1;
+                     if (isNaN(discountRatio)) discountRatio = 1;
                      
                      (item.chosenProducts || []).forEach((p: any) => {
                          const product = products.find(prod => prod.id === p.id);
@@ -148,7 +149,7 @@ function GeneralReport() {
                          }
                      });
                  } else if (item.type === 'combo') {
-                    const discountRatio = (item.originalPrice > 0 && !isNaN(item.finalPrice)) ? item.finalPrice / item.originalPrice : 1;
+                    const discountRatio = (item.originalPrice > 0 && typeof item.finalPrice === 'number' && !isNaN(item.finalPrice)) ? item.finalPrice / item.originalPrice : 1;
                     
                     (item.products || []).forEach((p: any) => {
                          const product = products.find(prod => prod.id === p.productId);
@@ -1145,8 +1146,8 @@ function ABCCurveReport() {
                         productRevenue.set(item.name, current);
                     }
                 } else if (item.type === 'combo' && item.products && !isNaN(item.originalPrice) && !isNaN(item.finalPrice)) {
-                    const ratio = (item.originalPrice > 0 && !isNaN(item.finalPrice)) ? item.finalPrice / item.originalPrice : 1;
-                    if(isNaN(ratio)) return; // Skip if ratio is invalid
+                    let ratio = (item.originalPrice > 0 && !isNaN(item.finalPrice)) ? item.finalPrice / item.originalPrice : 1;
+                    if(isNaN(ratio)) ratio = 1;
                     item.products.forEach((p: any) => {
                         const productInfo = products.find(prod => prod.id === p.productId);
                         if(productInfo && !isNaN(productInfo.price) && !isNaN(p.quantity)) {
@@ -1157,8 +1158,8 @@ function ABCCurveReport() {
                     });
                 } else if (item.type === 'kit' && item.chosenProducts && !isNaN(item.total)) {
                      const originalPrice = item.chosenProducts.reduce((sum: number, p: any) => sum + (p.price || 0), 0);
-                     const ratio = (originalPrice > 0 && !isNaN(item.total)) ? item.total / originalPrice : 1;
-                     if(isNaN(ratio)) return; // Skip if ratio is invalid
+                     let ratio = (originalPrice > 0 && !isNaN(item.total)) ? item.total / originalPrice : 1;
+                     if(isNaN(ratio)) ratio = 1;
                      item.chosenProducts.forEach((p: any) => {
                          if (!isNaN(p.price)) {
                              const current = productRevenue.get(p.name) || { name: p.name, total: 0 };

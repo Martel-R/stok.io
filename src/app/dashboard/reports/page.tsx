@@ -25,6 +25,8 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from "recharts";
+
 
 // --- General Report Component ---
 function GeneralReport() {
@@ -135,9 +137,8 @@ function GeneralReport() {
                      }
                  } else if (item.type === 'kit') {
                      const originalKitPrice = item.chosenProducts.reduce((sum: number, p: any) => sum + p.price, 0);
-                     const ratio = (originalKitPrice > 0 && item.total > 0 && !isNaN(item.total)) ? item.total / originalKitPrice : 1;
-                     const discountRatio = isNaN(ratio) ? 1 : ratio;
-
+                     const discountRatio = (originalKitPrice > 0 && !isNaN(item.total)) ? item.total / originalKitPrice : 1;
+                     
                      item.chosenProducts.forEach((p: any) => {
                          const product = products.find(prod => prod.id === p.id);
                          if (product) {
@@ -147,10 +148,9 @@ function GeneralReport() {
                          }
                      });
                  } else if (item.type === 'combo') {
-                    const ratio = (item.originalPrice > 0 && item.finalPrice > 0 && !isNaN(item.finalPrice)) ? item.finalPrice / item.originalPrice : 1;
-                    const discountRatio = isNaN(ratio) ? 1 : ratio;
-
-                     item.products.forEach((p: any) => {
+                    const discountRatio = (item.originalPrice > 0 && !isNaN(item.finalPrice)) ? item.finalPrice / item.originalPrice : 1;
+                    
+                    (item.products || []).forEach((p: any) => {
                          const product = products.find(prod => prod.id === p.productId);
                          if (product) {
                             const originalValue = item.quantity * p.quantity * product.price;
@@ -1122,7 +1122,7 @@ function ABCCurveReport() {
         fetchData();
     }, [user]);
 
-    const abcData = useMemo(() => {
+    const { abcData, chartData, totalRevenue } = useMemo(() => {
         const filteredSales = sales.filter(sale => {
             const saleDate = sale.date;
             const isAfterStart = dateRange?.from ? saleDate >= startOfDay(dateRange.from) : true;
@@ -1156,7 +1156,7 @@ function ABCCurveReport() {
                     });
                 } else if (item.type === 'kit' && item.chosenProducts && !isNaN(item.total)) {
                      const originalPrice = item.chosenProducts.reduce((sum: number, p: any) => sum + (p.price || 0), 0);
-                     const ratio = originalPrice > 0 ? item.total / originalPrice : 1;
+                     const ratio = (originalPrice > 0 && !isNaN(item.total)) ? item.total / originalPrice : 1;
                      item.chosenProducts.forEach((p: any) => {
                          if (!isNaN(p.price)) {
                              const current = productRevenue.get(p.id) || { name: p.name, total: 0 };
@@ -1169,12 +1169,12 @@ function ABCCurveReport() {
         });
 
         const sortedProducts = Array.from(productRevenue.values()).sort((a, b) => b.total - a.total);
-        const totalRevenue = sortedProducts.reduce((acc, p) => acc + p.total, 0);
-        if (totalRevenue === 0) return [];
+        const totalRevenueValue = sortedProducts.reduce((acc, p) => acc + p.total, 0);
+        if (totalRevenueValue === 0) return { abcData: [], chartData: [], totalRevenue: 0 };
 
         let cumulativePercentage = 0;
-        return sortedProducts.map(p => {
-            const percentage = (p.total / totalRevenue) * 100;
+        const finalAbcData = sortedProducts.map(p => {
+            const percentage = (p.total / totalRevenueValue) * 100;
             cumulativePercentage += percentage;
             let curve: 'A' | 'B' | 'C';
             if (cumulativePercentage <= 80) {
@@ -1186,6 +1186,14 @@ function ABCCurveReport() {
             }
             return { ...p, percentage, cumulativePercentage, curve };
         });
+
+        const finalChartData = [
+            { curve: 'A', "Quantidade de Itens": finalAbcData.filter(p => p.curve === 'A').length, "Faturamento (%)": finalAbcData.filter(p => p.curve === 'A').reduce((acc, p) => acc + p.percentage, 0) },
+            { curve: 'B', "Quantidade de Itens": finalAbcData.filter(p => p.curve === 'B').length, "Faturamento (%)": finalAbcData.filter(p => p.curve === 'B').reduce((acc, p) => acc + p.percentage, 0) },
+            { curve: 'C', "Quantidade de Itens": finalAbcData.filter(p => p.curve === 'C').length, "Faturamento (%)": finalAbcData.filter(p => p.curve === 'C').reduce((acc, p) => acc + p.percentage, 0) },
+        ]
+
+        return { abcData: finalAbcData, chartData: finalChartData, totalRevenue: totalRevenueValue };
     }, [sales, products, dateRange, selectedBranchIds]);
 
     if (loading) return <Skeleton className="h-96 w-full" />;
@@ -1209,6 +1217,22 @@ function ABCCurveReport() {
                 </div>
             </CardHeader>
             <CardContent>
+                {abcData.length > 0 && (
+                     <div className="h-[250px] mb-8">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="curve" />
+                                <YAxis yAxisId="left" orientation="left" stroke="#8884d8" label={{ value: 'Qtd. Itens', angle: -90, position: 'insideLeft' }}/>
+                                <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" label={{ value: 'Faturamento (%)', angle: -90, position: 'insideRight' }} unit="%"/>
+                                <Tooltip formatter={(value, name) => name === 'Faturamento (%)' ? `${(value as number).toFixed(2)}%` : value} />
+                                <Legend />
+                                <Bar yAxisId="left" dataKey="Quantidade de Itens" fill="#8884d8" />
+                                <Bar yAxisId="right" dataKey="Faturamento (%)" fill="#82ca9d" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                )}
                 <Table>
                     <TableHeader>
                         <TableRow>

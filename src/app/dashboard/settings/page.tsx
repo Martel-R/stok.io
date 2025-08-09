@@ -614,39 +614,19 @@ function PaymentConditionForm({ condition, onSave, onDone }: { condition?: Payme
                     </SelectContent>
                 </Select>
             </div>
-            <div className="grid grid-cols-2 gap-4 items-end">
-                <div className="space-y-2">
-                    <Label htmlFor="fee">Taxa</Label>
-                    <Input 
-                        id="fee"
-                        name="fee"
-                        type="number"
-                        step="0.01"
-                        value={formData.fee} 
-                        onChange={handleInputChange}
-                        placeholder="Ex: 2.5"
-                        disabled={formData.type === 'cash'}
-                    />
-                </div>
-                 <div className="space-y-2">
-                    <Label>Tipo da Taxa</Label>
-                    <RadioGroup 
-                        name="feeType" 
-                        value={formData.feeType} 
-                        onValueChange={(val: 'percentage' | 'fixed') => handleSelectChange('feeType', val)}
-                        className="flex space-x-2"
-                        disabled={formData.type === 'cash'}
-                    >
-                       <div className="flex items-center space-x-2">
-                           <RadioGroupItem value="percentage" id="percentage" />
-                           <Label htmlFor="percentage">%</Label>
-                       </div>
-                       <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="fixed" id="fixed" />
-                            <Label htmlFor="fixed">R$</Label>
-                       </div>
-                    </RadioGroup>
-                </div>
+
+            <div className="space-y-2">
+                <Label htmlFor="fee">Taxa (%)</Label>
+                <Input 
+                    id="fee"
+                    name="fee"
+                    type="number"
+                    step="0.01"
+                    value={formData.fee} 
+                    onChange={handleInputChange}
+                    placeholder="Ex: 2.5"
+                    disabled={formData.type === 'cash'}
+                />
             </div>
 
              {formData.type === 'credit' && (
@@ -768,7 +748,7 @@ function PaymentConditions() {
                                     <TableCell><Badge variant="outline">{getTypeName(c.type)}</Badge></TableCell>
                                     <TableCell>
                                         {c.fee > 0 
-                                            ? `${c.fee.toLocaleString('pt-BR')} ${c.feeType === 'percentage' ? '%' : 'R$'}`
+                                            ? `${c.fee.toLocaleString('pt-BR')} %`
                                             : 'Sem taxa'}
                                     </TableCell>
                                     <TableCell>
@@ -1274,7 +1254,7 @@ function SettingsPageContent() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-3xl font-bold">Ajustes</h1>
+                <h1 className="text-3xl font-bold">Configurações</h1>
                 <p className="text-muted-foreground">Gerencie as configurações gerais do sistema.</p>
             </div>
             <Tabs defaultValue={tab} className="space-y-4">

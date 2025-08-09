@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart, Book, Activity } from 'lucide-react';
+import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart, Book, Activity, Package } from 'lucide-react';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Sale, Branch, User, PaymentDetail, Product, StockEntry, PaymentCondition, Combo, Kit } from '@/lib/types';
@@ -131,33 +131,38 @@ function GeneralReport() {
             (sale.items || []).forEach((item: any) => {
                  if (item.type === 'product') {
                      const product = products.find(p => p.id === item.id);
-                     if (product) {
+                     if (product && product.price && item.quantity) {
                         const value = item.quantity * product.price;
                         processProduct(item.id, item.name, item.quantity, value, value);
                      }
                  } else if (item.type === 'kit') {
                      const originalKitPrice = (item.chosenProducts || []).reduce((sum: number, p: any) => sum + (p.price || 0), 0);
-                     let discountRatio = (originalKitPrice > 0 && typeof item.total === 'number' && !isNaN(item.total)) ? item.total / originalKitPrice : 1;
+                     let discountRatio = 1;
+                     if (originalKitPrice > 0 && typeof item.total === 'number' && !isNaN(item.total)) {
+                         discountRatio = item.total / originalKitPrice;
+                     }
                      if (isNaN(discountRatio)) discountRatio = 1;
                      
                      (item.chosenProducts || []).forEach((p: any) => {
-                         const product = products.find(prod => prod.id === p.id);
-                         if (product) {
-                             const originalValue = item.quantity * product.price;
+                         if (p.price) {
+                             const originalValue = item.quantity * p.price;
                              const finalValue = originalValue * discountRatio;
                              processProduct(p.id, p.name, item.quantity, originalValue, finalValue);
                          }
                      });
                  } else if (item.type === 'combo') {
-                    const discountRatio = (item.originalPrice > 0 && typeof item.finalPrice === 'number' && !isNaN(item.finalPrice)) ? item.finalPrice / item.originalPrice : 1;
+                    let discountRatio = 1;
+                    if (item.originalPrice > 0 && typeof item.finalPrice === 'number' && !isNaN(item.finalPrice)) {
+                        discountRatio = item.finalPrice / item.originalPrice;
+                    }
+                    if (isNaN(discountRatio)) discountRatio = 1;
                     
                     (item.products || []).forEach((p: any) => {
-                         const product = products.find(prod => prod.id === p.productId);
-                         if (product) {
-                            const originalValue = item.quantity * p.quantity * product.price;
-                            const finalValue = originalValue * discountRatio;
-                            processProduct(p.productId, p.productName, p.quantity * item.quantity, originalValue, finalValue);
-                         }
+                        if (p.productPrice && p.quantity && item.quantity) {
+                           const originalValue = item.quantity * p.quantity * p.productPrice;
+                           const finalValue = originalValue * discountRatio;
+                           processProduct(p.productId, p.productName, p.quantity * item.quantity, originalValue, finalValue);
+                        }
                      })
                  }
             });
@@ -165,6 +170,15 @@ function GeneralReport() {
         
         return Array.from(productMap.values()).sort((a,b) => b.quantity - a.quantity);
     }, [filteredSales, products, combos, kits]);
+
+     const productTotals = useMemo(() => {
+        return productsSold.reduce((acc, p) => {
+            acc.quantity += p.quantity;
+            acc.originalValue += p.originalValue;
+            acc.finalValue += p.finalValue;
+            return acc;
+        }, { quantity: 0, originalValue: 0, finalValue: 0 });
+    }, [productsSold]);
 
     if (loading) return <Skeleton className="h-[500px] w-full" />;
     
@@ -188,13 +202,20 @@ function GeneralReport() {
                     <CardTitle>Resumo Financeiro</CardTitle>
                     <CardDescription>Visão geral das finanças no período selecionado.</CardDescription>
                 </CardHeader>
-                <CardContent className="grid gap-4 md:grid-cols-3">
+                <CardContent className="grid gap-4 md:grid-cols-4">
                     <Card>
                         <CardHeader><CardTitle>Receitas</CardTitle></CardHeader>
                         <CardContent>
                             <p>Vendas: {financialData.salesCount}</p>
                             <p>Receita Bruta: {formatCurrency(financialData.grossRevenue)}</p>
                             <p className="font-semibold">Receita Líquida: {formatCurrency(financialData.netRevenue)}</p>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader><CardTitle>Produtos</CardTitle></CardHeader>
+                        <CardContent>
+                            <p>Produtos Únicos: {productsSold.length}</p>
+                            <p>Unidades Vendidas: {productTotals.quantity.toLocaleString('pt-BR')}</p>
                         </CardContent>
                     </Card>
                     <Card className="md:col-span-2">
@@ -241,6 +262,15 @@ function GeneralReport() {
                                 </TableRow>
                             ))}
                         </TableBody>
+                        <TableFooter>
+                            <TableRow className="font-bold">
+                                <TableCell>Total</TableCell>
+                                <TableCell className="text-right">{productTotals.quantity.toLocaleString('pt-BR')}</TableCell>
+                                <TableCell className="text-right">{formatCurrency(productTotals.originalValue)}</TableCell>
+                                <TableCell className="text-right text-destructive">-{formatCurrency(productTotals.originalValue - productTotals.finalValue)}</TableCell>
+                                <TableCell className="text-right">{formatCurrency(productTotals.finalValue)}</TableCell>
+                            </TableRow>
+                        </TableFooter>
                     </Table>
                 </CardContent>
             </Card>
@@ -1145,8 +1175,8 @@ function ABCCurveReport() {
                         current.total += item.quantity * product.price;
                         productRevenue.set(item.name, current);
                     }
-                } else if (item.type === 'combo' && item.products && !isNaN(item.originalPrice) && !isNaN(item.finalPrice)) {
-                    let ratio = (item.originalPrice > 0 && !isNaN(item.finalPrice)) ? item.finalPrice / item.originalPrice : 1;
+                } else if (item.type === 'combo' && item.products) {
+                    let ratio = (item.originalPrice > 0 && typeof item.finalPrice === 'number' && !isNaN(item.finalPrice)) ? item.finalPrice / item.originalPrice : 1;
                     if(isNaN(ratio)) ratio = 1;
                     item.products.forEach((p: any) => {
                         const productInfo = products.find(prod => prod.id === p.productId);
@@ -1156,9 +1186,9 @@ function ABCCurveReport() {
                            productRevenue.set(p.productName, current);
                         }
                     });
-                } else if (item.type === 'kit' && item.chosenProducts && !isNaN(item.total)) {
+                } else if (item.type === 'kit' && item.chosenProducts) {
                      const originalPrice = item.chosenProducts.reduce((sum: number, p: any) => sum + (p.price || 0), 0);
-                     let ratio = (originalPrice > 0 && !isNaN(item.total)) ? item.total / originalPrice : 1;
+                     let ratio = (originalPrice > 0 && typeof item.total === 'number' && !isNaN(item.total)) ? item.total / originalPrice : 1;
                      if(isNaN(ratio)) ratio = 1;
                      item.chosenProducts.forEach((p: any) => {
                          if (!isNaN(p.price)) {

@@ -116,14 +116,14 @@ function GeneralReport() {
     }, [filteredSales, paymentConditions]);
     
     const productsSold = useMemo(() => {
-        const productMap = new Map<string, { id: string; name: string, quantity: number, totalValue: number }>();
+        const productMap = new Map<string, { id: string; name: string, quantity: number, originalValue: number, finalValue: number }>();
         
-        const processProduct = (productId: string, name: string, quantity: number, value: number) => {
-            const key = name; // Group by name
-            const existing = productMap.get(key) || { id: productId, name, quantity: 0, totalValue: 0 };
+        const processProduct = (productId: string, name: string, quantity: number, originalValue: number, finalValue: number) => {
+            const existing = productMap.get(productId) || { id: productId, name, quantity: 0, originalValue: 0, finalValue: 0 };
             existing.quantity += quantity;
-            existing.totalValue += value;
-            productMap.set(key, existing);
+            existing.originalValue += originalValue;
+            existing.finalValue += finalValue;
+            productMap.set(productId, existing);
         };
 
         filteredSales.forEach(sale => {
@@ -131,7 +131,8 @@ function GeneralReport() {
                  if (item.type === 'product') {
                      const product = products.find(p => p.id === item.id);
                      if (product) {
-                        processProduct(item.id, item.name, item.quantity, item.quantity * product.price);
+                        const value = item.quantity * product.price;
+                        processProduct(item.id, item.name, item.quantity, value, value);
                      }
                  } else if (item.type === 'kit') {
                      const originalKitPrice = item.chosenProducts.reduce((sum: number, p: any) => sum + p.price, 0);
@@ -140,9 +141,9 @@ function GeneralReport() {
                          item.chosenProducts.forEach((p: any) => {
                              const product = products.find(prod => prod.id === p.id);
                              if (product) {
-                                 // Apply the kit's discount ratio to each product's price
-                                 const discountedValue = item.quantity * product.price * discountRatio;
-                                 processProduct(p.id, p.name, item.quantity, discountedValue);
+                                 const originalValue = item.quantity * product.price;
+                                 const finalValue = originalValue * discountRatio;
+                                 processProduct(p.id, p.name, item.quantity, originalValue, finalValue);
                              }
                          });
                      }
@@ -153,8 +154,9 @@ function GeneralReport() {
                          comboDef.products.forEach(p => {
                              const product = products.find(prod => prod.id === p.productId);
                              if (product) {
-                                const discountedValue = item.quantity * p.quantity * product.price * discountRatio;
-                                processProduct(p.productId, p.productName, p.quantity * item.quantity, discountedValue);
+                                const originalValue = item.quantity * p.quantity * product.price;
+                                const finalValue = originalValue * discountRatio;
+                                processProduct(p.productId, p.productName, p.quantity * item.quantity, originalValue, finalValue);
                              }
                          })
                     }
@@ -220,13 +222,23 @@ function GeneralReport() {
                 <CardHeader><CardTitle>Produtos Vendidos</CardTitle></CardHeader>
                 <CardContent>
                     <Table>
-                        <TableHeader><TableRow><TableHead>Produto</TableHead><TableHead className="text-right">Quantidade</TableHead><TableHead className="text-right">Valor Total</TableHead></TableRow></TableHeader>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Produto</TableHead>
+                                <TableHead className="text-right">Quantidade</TableHead>
+                                <TableHead className="text-right">Valor Bruto</TableHead>
+                                <TableHead className="text-right text-destructive">Descontos</TableHead>
+                                <TableHead className="text-right">Valor Final</TableHead>
+                            </TableRow>
+                        </TableHeader>
                         <TableBody>
                             {productsSold.map(p => (
                                 <TableRow key={p.id}>
                                     <TableCell>{p.name}</TableCell>
                                     <TableCell className="text-right">{p.quantity}</TableCell>
-                                    <TableCell className="text-right">{formatCurrency(p.totalValue)}</TableCell>
+                                    <TableCell className="text-right">{formatCurrency(p.originalValue)}</TableCell>
+                                    <TableCell className="text-right text-destructive">{formatCurrency(p.originalValue - p.finalValue)}</TableCell>
+                                    <TableCell className="text-right font-semibold">{formatCurrency(p.finalValue)}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>

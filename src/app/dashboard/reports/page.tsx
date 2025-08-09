@@ -118,15 +118,15 @@ function GeneralReport() {
     const productsSold = useMemo(() => {
         const productMap = new Map<string, { name: string, quantity: number, totalValue: number }>();
         
+        const processProduct = (productId: string, name: string, quantity: number, price: number) => {
+            const existing = productMap.get(productId) || { name, quantity: 0, totalValue: 0 };
+            existing.quantity += quantity;
+            existing.totalValue += (price * quantity);
+            productMap.set(productId, existing);
+        };
+
         filteredSales.forEach(sale => {
             sale.items.forEach((item: any) => {
-                 const processProduct = (productId: string, name: string, quantity: number, price: number) => {
-                    const existing = productMap.get(productId) || { name, quantity: 0, totalValue: 0 };
-                    existing.quantity += quantity;
-                    existing.totalValue += (price * quantity);
-                    productMap.set(productId, existing);
-                 };
-                 
                  if (item.type === 'product') {
                      processProduct(item.id, item.name, item.quantity, item.price);
                  } else if (item.type === 'kit') {
@@ -658,6 +658,7 @@ function LowStockReport() {
             branchStock: { [key: string]: number };
         }>();
 
+        // 1. Calculate stock for each product in each branch
         const stockByProductAndBranch = new Map<string, number>(); // key: `${productId}_${branchId}`
         for (const entry of allStockEntries) {
             const key = `${entry.productId}_${entry.branchId}`;
@@ -665,29 +666,30 @@ function LowStockReport() {
             stockByProductAndBranch.set(key, currentStock + (Number(entry.quantity) || 0));
         }
 
+        // 2. Group by product name across all branches
         for (const product of allProducts) {
-            const stockInBranch = stockByProductAndBranch.get(`${product.id}_${product.branchId}`) || 0;
-
             if (!productMap.has(product.name)) {
                 productMap.set(product.name, {
                     name: product.name,
-                    lowStockThreshold: product.lowStockThreshold,
+                    lowStockThreshold: product.lowStockThreshold, // Note: this assumes threshold is consistent
                     totalStock: 0,
                     branchStock: {},
                 });
             }
 
+            const stock = stockByProductAndBranch.get(`${product.id}_${product.branchId}`) || 0;
             const productData = productMap.get(product.name)!;
-            productData.totalStock += stockInBranch;
-            productData.branchStock[product.branchId] = stockInBranch;
+            
+            productData.totalStock += stock;
+            productData.branchStock[product.branchId] = stock;
         }
 
+        // 3. Filter for low stock and sort
         return Array.from(productMap.values())
             .filter(p => p.totalStock <= p.lowStockThreshold)
             .sort((a, b) => (a.totalStock - a.lowStockThreshold) - (b.totalStock - b.lowStockThreshold));
 
     }, [allProducts, allStockEntries]);
-
 
     const filteredBranches = useMemo(() => {
         return allBranches.filter(b => selectedBranchIds.includes(b.id));

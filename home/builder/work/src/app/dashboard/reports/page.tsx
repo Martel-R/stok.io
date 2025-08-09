@@ -1,5 +1,4 @@
 
-
 'use client';
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
@@ -8,10 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart } from 'lucide-react';
+import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart, Book } from 'lucide-react';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Sale, Branch, User, PaymentDetail, Product, StockEntry, PaymentCondition } from '@/lib/types';
+import type { Sale, Branch, User, PaymentDetail, Product, StockEntry, PaymentCondition, Combo, Kit } from '@/lib/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -25,7 +24,226 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 
+// --- General Report Component ---
+function GeneralReport() {
+    const { user } = useAuth();
+    const [loading, setLoading] = useState(true);
+    const [sales, setSales] = useState<Sale[]>([]);
+    const [branches, setBranches] = useState<Branch[]>([]);
+    const [paymentConditions, setPaymentConditions] = useState<PaymentCondition[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
+    const [combos, setCombos] = useState<Combo[]>([]);
+    const [kits, setKits] = useState<Kit[]>([]);
+
+    const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+        from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+        to: new Date(),
+    });
+
+    useEffect(() => {
+        if (!user?.organizationId) return;
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const orgId = user.organizationId;
+                const queries = {
+                    sales: getDocs(query(collection(db, 'sales'), where('organizationId', '==', orgId))),
+                    branches: getDocs(query(collection(db, 'branches'), where('organizationId', '==', orgId))),
+                    paymentConditions: getDocs(query(collection(db, 'paymentConditions'), where('organizationId', '==', orgId))),
+                    products: getDocs(query(collection(db, 'products'), where('organizationId', '==', orgId))),
+                    combos: getDocs(query(collection(db, 'combos'), where('organizationId', '==', orgId))),
+                    kits: getDocs(query(collection(db, 'kits'), where('organizationId', '==', orgId))),
+                };
+                const [salesSnap, branchesSnap, conditionsSnap, productsSnap, combosSnap, kitsSnap] = await Promise.all(Object.values(queries));
+
+                const branchesData = branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+                setSales(salesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Sale)));
+                setBranches(branchesData);
+                setPaymentConditions(conditionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition)));
+                setProducts(productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+                setCombos(combosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Combo)));
+                setKits(kitsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kit)));
+                
+                setSelectedBranchIds(branchesData.map(b => b.id));
+            } catch (error) {
+                console.error("Error fetching general report data:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, [user]);
+
+    const filteredSales = useMemo(() => {
+        return sales.filter(sale => {
+            if (sale.status === 'cancelled') return false;
+            const saleDate = sale.date;
+            const isAfterStart = dateRange?.from ? saleDate >= startOfDay(dateRange.from) : true;
+            const isBeforeEnd = dateRange?.to ? saleDate <= endOfDay(dateRange.to) : true;
+            return isAfterStart && isBeforeEnd && (selectedBranchIds.length === 0 || selectedBranchIds.includes(sale.branchId));
+        }).sort((a, b) => b.date.getTime() - a.date.getTime());
+    }, [sales, dateRange, selectedBranchIds]);
+
+    const financialData = useMemo(() => {
+        const summary: { [key: string]: any } = {
+            salesCount: filteredSales.length,
+            grossRevenue: 0,
+            netRevenue: 0,
+            payments: {}
+        };
+        
+        filteredSales.forEach(sale => {
+            summary.grossRevenue += sale.total;
+            let saleFee = 0;
+            sale.payments?.forEach(p => {
+                const condition = paymentConditions.find(c => c.id === p.conditionId);
+                const fee = condition ? (condition.feeType === 'percentage' ? p.amount * (condition.fee / 100) : condition.fee) : 0;
+                saleFee += fee;
+                
+                const typeName = condition?.name || 'Desconhecido';
+                if (!summary.payments[typeName]) summary.payments[typeName] = { gross: 0, net: 0 };
+                summary.payments[typeName].gross += p.amount;
+                summary.payments[typeName].net += (p.amount - fee);
+            });
+            summary.netRevenue += (sale.total - saleFee);
+        });
+
+        return summary;
+    }, [filteredSales, paymentConditions]);
+    
+    const productsSold = useMemo(() => {
+        const productMap = new Map<string, { id: string; name: string, quantity: number, totalValue: number }>();
+        
+        const processProduct = (productId: string, name: string, quantity: number, price: number) => {
+            const existing = productMap.get(productId) || { id: productId, name, quantity: 0, totalValue: 0 };
+            existing.quantity += quantity;
+            existing.totalValue += (price * quantity);
+            productMap.set(productId, existing);
+        };
+
+        filteredSales.forEach(sale => {
+            sale.items.forEach((item: any) => {
+                 if (item.type === 'product') {
+                     processProduct(item.id, item.name, item.quantity, item.price);
+                 } else if (item.type === 'kit') {
+                     item.chosenProducts.forEach((p: any) => processProduct(p.id, p.name, item.quantity, p.price));
+                 } else if (item.type === 'combo') {
+                     const comboDef = combos.find(c => c.id === item.id);
+                     comboDef?.products.forEach(p => {
+                         const product = products.find(prod => prod.id === p.productId);
+                         processProduct(p.productId, p.productName, p.quantity * item.quantity, product?.price || p.productPrice);
+                     })
+                 }
+            });
+        });
+        
+        return Array.from(productMap.values()).sort((a,b) => b.quantity - a.quantity);
+    }, [filteredSales, products, combos]);
+
+    if (loading) return <Skeleton className="h-[500px] w-full" />;
+    
+    const formatCurrency = (value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    return (
+        <div className="space-y-6">
+            <Card>
+                <CardHeader>
+                    <div className="flex flex-col md:flex-row justify-between gap-4">
+                         <div className="flex flex-wrap gap-2">
+                            <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
+                            <DateRangePicker date={dateRange} onSelect={setDateRange} />
+                        </div>
+                    </div>
+                </CardHeader>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Resumo Financeiro</CardTitle>
+                    <CardDescription>Visão geral das finanças no período selecionado.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4 md:grid-cols-3">
+                    <Card>
+                        <CardHeader><CardTitle>Receitas</CardTitle></CardHeader>
+                        <CardContent>
+                            <p>Vendas: {financialData.salesCount}</p>
+                            <p>Receita Bruta: {formatCurrency(financialData.grossRevenue)}</p>
+                            <p className="font-semibold">Receita Líquida: {formatCurrency(financialData.netRevenue)}</p>
+                        </CardContent>
+                    </Card>
+                    <Card className="md:col-span-2">
+                        <CardHeader><CardTitle>Detalhes por Pagamento</CardTitle></CardHeader>
+                        <CardContent>
+                             <Table>
+                                <TableHeader><TableRow><TableHead>Método</TableHead><TableHead className="text-right">Bruto</TableHead><TableHead className="text-right">Líquido</TableHead></TableRow></TableHeader>
+                                <TableBody>
+                                    {Object.entries(financialData.payments).map(([name, values]: [string, any]) => (
+                                        <TableRow key={name}>
+                                            <TableCell>{name}</TableCell>
+                                            <TableCell className="text-right">{formatCurrency(values.gross)}</TableCell>
+                                            <TableCell className="text-right">{formatCurrency(values.net)}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                </CardContent>
+            </Card>
+            
+            <Card>
+                <CardHeader><CardTitle>Produtos Vendidos</CardTitle></CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader><TableRow><TableHead>Produto</TableHead><TableHead className="text-right">Quantidade</TableHead><TableHead className="text-right">Valor Total</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                            {productsSold.map(p => (
+                                <TableRow key={p.id}>
+                                    <TableCell>{p.name}</TableCell>
+                                    <TableCell className="text-right">{p.quantity}</TableCell>
+                                    <TableCell className="text-right">{formatCurrency(p.totalValue)}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+
+             <Card>
+                <CardHeader><CardTitle>Vendas Detalhadas</CardTitle></CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Data</TableHead>
+                                <TableHead>Filial</TableHead>
+                                <TableHead>Itens</TableHead>
+                                <TableHead className="text-right">Total</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {filteredSales.map(sale => (
+                                <TableRow key={sale.id}>
+                                    <TableCell>{format(sale.date, 'dd/MM/yyyy HH:mm')}</TableCell>
+                                    <TableCell>{branches.find(b => b.id === sale.branchId)?.name || 'N/A'}</TableCell>
+                                    <TableCell>
+                                        {sale.items.map((item: any, index: number) => (
+                                            <div key={item.id + index}>{item.quantity}x {item.name}</div>
+                                        ))}
+                                    </TableCell>
+                                    <TableCell className="text-right">{formatCurrency(sale.total)}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+        </div>
+    )
+}
 
 // --- Sales Report Component ---
 function SalesReport() {
@@ -91,6 +309,8 @@ function SalesReport() {
 
     const filteredSales = useMemo(() => {
         return sales.filter(sale => {
+            if (sale.status === 'cancelled') return false;
+            
             const saleDate = sale.date;
             const isAfterStart = dateRange?.from ? saleDate >= startOfDay(dateRange.from) : true;
             const isBeforeEnd = dateRange?.to ? saleDate <= endOfDay(dateRange.to) : true;
@@ -199,8 +419,15 @@ function SalesReport() {
                                     <TableCell>{branches.find(b => b.id === sale.branchId)?.name || 'N/A'}</TableCell>
                                     <TableCell>{sale.cashier}</TableCell>
                                     <TableCell>
-                                        {sale.items.map((item: any) => (
-                                            <div key={item.id}>{item.quantity}x {item.name}</div>
+                                        {sale.items.map((item: any, index: number) => (
+                                            <div key={item.id + index}>
+                                                <span className="font-semibold">{item.quantity}x {item.name}</span>
+                                                {item.type === 'kit' && item.chosenProducts && (
+                                                     <div className="pl-4 text-xs text-muted-foreground">
+                                                        {item.chosenProducts.map((p: any) => p.name).join(', ')}
+                                                     </div>
+                                                )}
+                                            </div>
                                         ))}
                                     </TableCell>
                                     <TableCell>
@@ -273,6 +500,8 @@ function TopSellingProductsReport() {
 
     const topProducts = useMemo(() => {
         const filteredSales = sales.filter(sale => {
+            if (sale.status === 'cancelled') return false;
+            
             const saleDate = sale.date;
             const isAfterStart = dateRange?.from ? saleDate >= startOfDay(dateRange.from) : true;
             const isBeforeEnd = dateRange?.to ? saleDate <= endOfDay(dateRange.to) : true;
@@ -598,6 +827,8 @@ function FinancialSummaryReport() {
 
     const financialData = useMemo(() => {
         const filteredSales = sales.filter(sale => {
+            if (sale.status === 'cancelled') return false;
+            
             const saleDate = sale.date;
             const isAfterStart = dateRange?.from ? saleDate >= startOfDay(dateRange.from) : true;
             const isBeforeEnd = dateRange?.to ? saleDate <= endOfDay(dateRange.to) : true;
@@ -802,7 +1033,7 @@ function FinancialSummaryReport() {
 // --- Main Page Component ---
 export default function ReportsPage() {
     const { user, loading } = useAuth();
-    const [reportType, setReportType] = useState('sales');
+    const [reportType, setReportType] = useState('general');
 
     if (loading) {
         return (
@@ -844,6 +1075,9 @@ export default function ReportsPage() {
                         <SelectValue placeholder="Selecione um relatório..." />
                     </SelectTrigger>
                     <SelectContent>
+                         <SelectItem value="general">
+                            <span className="flex items-center"><Book className="mr-2 h-4 w-4"/>Relatório Geral</span>
+                        </SelectItem>
                         <SelectItem value="sales">
                             <span className="flex items-center"><FileDown className="mr-2 h-4 w-4"/>Relatório de Vendas</span>
                         </SelectItem>
@@ -859,7 +1093,8 @@ export default function ReportsPage() {
                     </SelectContent>
                 </Select>
             </div>
-
+            
+            {reportType === 'general' && <GeneralReport />}
             {reportType === 'sales' && <SalesReport />}
             {reportType === 'financial-summary' && <FinancialSummaryReport />}
             {reportType === 'top-selling' && <TopSellingProductsReport />}
@@ -868,18 +1103,10 @@ export default function ReportsPage() {
 
             <style jsx global>{`
                 @media print {
+                    body * { visibility: hidden; }
                     .printable-area, .printable-area * { visibility: visible; }
-                    .no-print, .no-print * { visibility: hidden; display: none; }
-                    body {
-                        margin: 0;
-                        padding: 1rem;
-                    }
-                    .printable-area { 
-                        position: absolute; 
-                        left: 0; 
-                        top: 0; 
-                        width: 100%;
-                    }
+                    .printable-area { position: absolute; left: 0; top: 0; width: 100%; }
+                    .no-print, .no-print * { display: none !important; }
                 }
             `}</style>
         </div>

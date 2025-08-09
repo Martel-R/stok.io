@@ -118,11 +118,11 @@ function GeneralReport() {
     const productsSold = useMemo(() => {
         const productMap = new Map<string, { id: string; name: string, quantity: number, totalValue: number }>();
         
-        const processProduct = (productId: string, name: string, quantity: number, price: number) => {
+        const processProduct = (productId: string, name: string, quantity: number, value: number) => {
             const key = name; // Group by name
             const existing = productMap.get(key) || { id: productId, name, quantity: 0, totalValue: 0 };
             existing.quantity += quantity;
-            existing.totalValue += (price * quantity);
+            existing.totalValue += value;
             productMap.set(key, existing);
         };
 
@@ -131,23 +131,33 @@ function GeneralReport() {
                  if (item.type === 'product') {
                      const product = products.find(p => p.id === item.id);
                      if (product) {
-                        processProduct(item.id, item.name, item.quantity, product.price);
+                        processProduct(item.id, item.name, item.quantity, item.quantity * product.price);
                      }
                  } else if (item.type === 'kit') {
-                     item.chosenProducts.forEach((p: any) => {
-                         const product = products.find(prod => prod.id === p.id);
-                         if (product) {
-                             processProduct(p.id, p.name, item.quantity, product.price);
-                         }
-                     });
+                     const originalKitPrice = item.chosenProducts.reduce((sum: number, p: any) => sum + p.price, 0);
+                     if (originalKitPrice > 0) {
+                        const discountRatio = item.total / originalKitPrice;
+                         item.chosenProducts.forEach((p: any) => {
+                             const product = products.find(prod => prod.id === p.id);
+                             if (product) {
+                                 // Apply the kit's discount ratio to each product's price
+                                 const discountedValue = item.quantity * product.price * discountRatio;
+                                 processProduct(p.id, p.name, item.quantity, discountedValue);
+                             }
+                         });
+                     }
                  } else if (item.type === 'combo') {
-                     const comboDef = combos.find(c => c.id === item.id);
-                     comboDef?.products.forEach(p => {
-                         const product = products.find(prod => prod.id === p.productId);
-                         if (product) {
-                             processProduct(p.productId, p.productName, p.quantity * item.quantity, product.price);
-                         }
-                     })
+                    const comboDef = combos.find(c => c.id === item.id);
+                    if (comboDef) {
+                        const discountRatio = comboDef.finalPrice / comboDef.originalPrice;
+                         comboDef.products.forEach(p => {
+                             const product = products.find(prod => prod.id === p.productId);
+                             if (product) {
+                                const discountedValue = item.quantity * p.quantity * product.price * discountRatio;
+                                processProduct(p.productId, p.productName, p.quantity * item.quantity, discountedValue);
+                             }
+                         })
+                    }
                  }
             });
         });
@@ -436,7 +446,7 @@ function SalesReport() {
                                                 <span className="font-semibold">{item.quantity}x {item.name}</span>
                                                 {item.type === 'kit' && item.chosenProducts && (
                                                      <div className="pl-4 text-xs text-muted-foreground">
-                                                        {item.chosenProducts.map((p: any) => p.name).join(', ')}
+                                                        ({item.chosenProducts.map((p: any) => p.name).join(', ')})
                                                      </div>
                                                 )}
                                             </div>

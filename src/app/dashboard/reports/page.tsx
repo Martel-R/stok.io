@@ -1,5 +1,4 @@
 
-
 'use client';
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
@@ -8,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart, Book } from 'lucide-react';
+import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart, Book, Activity } from 'lucide-react';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Sale, Branch, User, PaymentDetail, Product, StockEntry, PaymentCondition, Combo, Kit } from '@/lib/types';
@@ -1075,6 +1074,174 @@ function FinancialSummaryReport() {
     );
 }
 
+// --- ABC Curve Report ---
+function ABCCurveReport() {
+    const { user } = useAuth();
+    const [loading, setLoading] = useState(true);
+    const [sales, setSales] = useState<Sale[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
+    const [branches, setBranches] = useState<Branch[]>([]);
+
+    const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+      from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+      to: new Date(),
+    });
+
+    useEffect(() => {
+        if (!user?.organizationId) return;
+
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const orgId = user.organizationId;
+                const salesQuery = query(collection(db, 'sales'), where('organizationId', '==', orgId));
+                const productsQuery = query(collection(db, 'products'), where('organizationId', '==', orgId));
+                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', orgId));
+                const [salesSnap, productsSnap, branchesSnap] = await Promise.all([
+                    getDocs(salesQuery),
+                    getDocs(productsQuery),
+                    getDocs(branchesQuery),
+                ]);
+
+                const salesData = salesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Sale));
+                const productsData = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+                const branchesData = branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+                
+                setSales(salesData);
+                setProducts(productsData);
+                setBranches(branchesData);
+                setSelectedBranchIds(branchesData.map(b => b.id));
+            } catch (error) {
+                console.error("Error fetching ABC report data:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, [user]);
+
+    const abcData = useMemo(() => {
+        const filteredSales = sales.filter(sale => {
+            const saleDate = sale.date;
+            const isAfterStart = dateRange?.from ? saleDate >= startOfDay(dateRange.from) : true;
+            const isBeforeEnd = dateRange?.to ? saleDate <= endOfDay(dateRange.to) : true;
+            const inBranch = selectedBranchIds.length === 0 || selectedBranchIds.includes(sale.branchId);
+            return sale.status !== 'cancelled' && isAfterStart && isBeforeEnd && inBranch;
+        });
+
+        const productRevenue = new Map<string, { name: string, total: number }>();
+
+        filteredSales.forEach(sale => {
+            sale.items.forEach((item: any) => {
+                // This logic correctly calculates the final value considering discounts for kits/combos
+                const product = products.find(p => p.id === item.id);
+                if (item.type === 'product' && product) {
+                    const current = productRevenue.get(item.id) || { name: item.name, total: 0 };
+                    current.total += item.quantity * product.price;
+                    productRevenue.set(item.id, current);
+                } else if (item.type === 'combo' && item.products) {
+                    const ratio = (item.originalPrice > 0) ? item.finalPrice / item.originalPrice : 1;
+                    item.products.forEach((p: any) => {
+                        const productInfo = products.find(prod => prod.id === p.productId);
+                        if(productInfo) {
+                           const current = productRevenue.get(p.productId) || { name: p.productName, total: 0 };
+                           current.total += p.quantity * item.quantity * productInfo.price * ratio;
+                           productRevenue.set(p.productId, current);
+                        }
+                    });
+                } else if (item.type === 'kit' && item.chosenProducts) {
+                     const originalPrice = item.chosenProducts.reduce((sum: number, p: any) => sum + p.price, 0);
+                     const ratio = (originalPrice > 0) ? item.total / originalPrice : 1;
+                     item.chosenProducts.forEach((p: any) => {
+                         const current = productRevenue.get(p.id) || { name: p.name, total: 0 };
+                         current.total += item.quantity * p.price * ratio;
+                         productRevenue.set(p.id, current);
+                     });
+                }
+            });
+        });
+
+        const sortedProducts = Array.from(productRevenue.values()).sort((a, b) => b.total - a.total);
+        const totalRevenue = sortedProducts.reduce((acc, p) => acc + p.total, 0);
+        if (totalRevenue === 0) return [];
+
+        let cumulativePercentage = 0;
+        return sortedProducts.map(p => {
+            const percentage = (p.total / totalRevenue) * 100;
+            cumulativePercentage += percentage;
+            let curve: 'A' | 'B' | 'C';
+            if (cumulativePercentage <= 80) {
+                curve = 'A';
+            } else if (cumulativePercentage <= 95) {
+                curve = 'B';
+            } else {
+                curve = 'C';
+            }
+            return { ...p, percentage, cumulativePercentage, curve };
+        });
+    }, [sales, products, dateRange, selectedBranchIds]);
+
+    if (loading) return <Skeleton className="h-96 w-full" />;
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Análise de Curva ABC de Produtos</CardTitle>
+                <CardDescription>
+                    Este relatório classifica seus produtos em categorias A, B e C com base em sua contribuição para o faturamento total.
+                    <br/>
+                    <b>Curva A:</b> Itens mais importantes (80% do faturamento).
+                    <b> Curva B:</b> Itens de importância moderada (15% do faturamento).
+                    <b> Curva C:</b> Itens de menor importância (5% do faturamento).
+                </CardDescription>
+                 <div className="flex flex-col md:flex-row justify-between gap-4 pt-4">
+                    <div className="flex flex-wrap gap-2">
+                        <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
+                        <DateRangePicker date={dateRange} onSelect={setDateRange} />
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Produto</TableHead>
+                            <TableHead className="text-right">Faturamento</TableHead>
+                            <TableHead className="text-right">% do Total</TableHead>
+                            <TableHead className="text-right">% Acumulada</TableHead>
+                            <TableHead className="text-center">Curva</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                         {abcData.length > 0 ? (
+                            abcData.map(item => (
+                                <TableRow key={item.name}>
+                                    <TableCell className="font-medium">{item.name}</TableCell>
+                                    <TableCell className="text-right">R$ {item.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
+                                    <TableCell className="text-right">{item.percentage.toFixed(2)}%</TableCell>
+                                    <TableCell className="text-right">{item.cumulativePercentage.toFixed(2)}%</TableCell>
+                                    <TableCell className="text-center">
+                                        <Badge variant={item.curve === 'A' ? 'destructive' : item.curve === 'B' ? 'secondary' : 'outline'}>
+                                            {item.curve}
+                                        </Badge>
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        ) : (
+                            <TableRow>
+                                <TableCell colSpan={5} className="text-center h-24">Nenhuma venda encontrada para o período selecionado.</TableCell>
+                            </TableRow>
+                        )}
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+    );
+}
+
+
 // --- Main Page Component ---
 export default function ReportsPage() {
     const { user, loading } = useAuth();
@@ -1129,6 +1296,9 @@ export default function ReportsPage() {
                          <SelectItem value="financial-summary">
                             <span className="flex items-center"><FileBarChart className="mr-2 h-4 w-4"/>Resumo Financeiro</span>
                         </SelectItem>
+                         <SelectItem value="abc-curve">
+                            <span className="flex items-center"><Activity className="mr-2 h-4 w-4"/>Análise de Curva ABC</span>
+                        </SelectItem>
                         <SelectItem value="top-selling">
                              <span className="flex items-center"><TrendingUp className="mr-2 h-4 w-4"/>Produtos Mais Vendidos</span>
                         </SelectItem>
@@ -1142,6 +1312,7 @@ export default function ReportsPage() {
             {reportType === 'general' && <GeneralReport />}
             {reportType === 'sales' && <SalesReport />}
             {reportType === 'financial-summary' && <FinancialSummaryReport />}
+            {reportType === 'abc-curve' && <ABCCurveReport />}
             {reportType === 'top-selling' && <TopSellingProductsReport />}
             {reportType === 'low-stock' && <LowStockReport />}
 

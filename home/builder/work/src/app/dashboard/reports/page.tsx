@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart, Book } from 'lucide-react';
+import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart, Book, Activity } from 'lucide-react';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Sale, Branch, User, PaymentDetail, Product, StockEntry, PaymentCondition, Combo, Kit } from '@/lib/types';
@@ -25,6 +25,8 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from "recharts";
+
 
 // --- General Report Component ---
 function GeneralReport() {
@@ -115,33 +117,59 @@ function GeneralReport() {
     }, [filteredSales, paymentConditions]);
     
     const productsSold = useMemo(() => {
-        const productMap = new Map<string, { id: string; name: string, quantity: number, totalValue: number }>();
+        const productMap = new Map<string, { name: string, quantity: number, originalValue: number, finalValue: number }>();
         
-        const processProduct = (productId: string, name: string, quantity: number, price: number) => {
-            const existing = productMap.get(productId) || { id: productId, name, quantity: 0, totalValue: 0 };
+        const processProduct = (name: string, quantity: number, originalValue: number, finalValue: number) => {
+            const existing = productMap.get(name) || { name, quantity: 0, originalValue: 0, finalValue: 0 };
             existing.quantity += quantity;
-            existing.totalValue += (price * quantity);
-            productMap.set(productId, existing);
+            existing.originalValue += originalValue;
+            existing.finalValue += finalValue;
+            productMap.set(name, existing);
         };
 
         filteredSales.forEach(sale => {
-            sale.items.forEach((item: any) => {
+            (sale.items || []).forEach((item: any) => {
                  if (item.type === 'product') {
-                     processProduct(item.id, item.name, item.quantity, item.price);
+                     const product = products.find(p => p.id === item.id);
+                     if (product) {
+                        const value = item.quantity * product.price;
+                        processProduct(item.name, item.quantity, value, value);
+                     }
                  } else if (item.type === 'kit') {
-                     item.chosenProducts.forEach((p: any) => processProduct(p.id, p.name, item.quantity, p.price));
+                     const originalKitPrice = (item.chosenProducts || []).reduce((sum: number, p: any) => sum + (p.price || 0), 0);
+                     let discountRatio = 1;
+                     if (originalKitPrice > 0 && typeof item.total === 'number' && !isNaN(item.total)) {
+                        discountRatio = item.total / originalKitPrice;
+                     }
+                     
+                     (item.chosenProducts || []).forEach((p: any) => {
+                         const product = products.find(prod => prod.id === p.id);
+                         if (product) {
+                             const originalValue = item.quantity * product.price;
+                             const finalValue = originalValue * discountRatio;
+                             processProduct(p.name, item.quantity, originalValue, finalValue);
+                         }
+                     });
                  } else if (item.type === 'combo') {
-                     const comboDef = combos.find(c => c.id === item.id);
-                     comboDef?.products.forEach(p => {
+                    let discountRatio = 1;
+                    if (item.originalPrice > 0 && typeof item.finalPrice === 'number' && !isNaN(item.finalPrice)) {
+                        discountRatio = item.finalPrice / item.originalPrice;
+                    }
+                    
+                    (item.products || []).forEach((p: any) => {
                          const product = products.find(prod => prod.id === p.productId);
-                         processProduct(p.productId, p.productName, p.quantity * item.quantity, product?.price || p.productPrice);
+                         if (product) {
+                            const originalValue = item.quantity * p.quantity * product.price;
+                            const finalValue = originalValue * discountRatio;
+                            processProduct(p.productName, p.quantity * item.quantity, originalValue, finalValue);
+                         }
                      })
                  }
             });
         });
         
         return Array.from(productMap.values()).sort((a,b) => b.quantity - a.quantity);
-    }, [filteredSales, products, combos]);
+    }, [filteredSales, products, combos, kits]);
 
     if (loading) return <Skeleton className="h-[500px] w-full" />;
     
@@ -198,13 +226,23 @@ function GeneralReport() {
                 <CardHeader><CardTitle>Produtos Vendidos</CardTitle></CardHeader>
                 <CardContent>
                     <Table>
-                        <TableHeader><TableRow><TableHead>Produto</TableHead><TableHead className="text-right">Quantidade</TableHead><TableHead className="text-right">Valor Total</TableHead></TableRow></TableHeader>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Produto</TableHead>
+                                <TableHead className="text-right">Quantidade</TableHead>
+                                <TableHead className="text-right">Valor Bruto</TableHead>
+                                <TableHead className="text-right text-destructive">Descontos</TableHead>
+                                <TableHead className="text-right">Valor Final</TableHead>
+                            </TableRow>
+                        </TableHeader>
                         <TableBody>
                             {productsSold.map(p => (
-                                <TableRow key={p.id}>
+                                <TableRow key={p.name}>
                                     <TableCell>{p.name}</TableCell>
                                     <TableCell className="text-right">{p.quantity}</TableCell>
-                                    <TableCell className="text-right">{formatCurrency(p.totalValue)}</TableCell>
+                                    <TableCell className="text-right">{formatCurrency(p.originalValue)}</TableCell>
+                                    <TableCell className="text-right text-destructive">-{formatCurrency(p.originalValue - p.finalValue)}</TableCell>
+                                    <TableCell className="text-right font-semibold">{formatCurrency(p.finalValue)}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -231,7 +269,19 @@ function GeneralReport() {
                                     <TableCell>{branches.find(b => b.id === sale.branchId)?.name || 'N/A'}</TableCell>
                                     <TableCell>
                                         {sale.items.map((item: any, index: number) => (
-                                            <div key={item.id + index}>{item.quantity}x {item.name}</div>
+                                            <div key={item.id + index}>
+                                                <span className="font-semibold">{item.quantity}x {item.name}</span>
+                                                {(item.type === 'kit' && item.chosenProducts) && (
+                                                     <div className="pl-4 text-xs text-muted-foreground">
+                                                        ({item.chosenProducts.map((p: any) => p.name).join(', ')})
+                                                     </div>
+                                                )}
+                                                {(item.type === 'combo' && item.products) && (
+                                                     <div className="pl-4 text-xs text-muted-foreground">
+                                                        ({item.products.map((p: any) => `${p.quantity}x ${p.productName}`).join(', ')})
+                                                     </div>
+                                                )}
+                                            </div>
                                         ))}
                                     </TableCell>
                                     <TableCell className="text-right">{formatCurrency(sale.total)}</TableCell>
@@ -422,9 +472,9 @@ function SalesReport() {
                                         {sale.items.map((item: any, index: number) => (
                                             <div key={item.id + index}>
                                                 <span className="font-semibold">{item.quantity}x {item.name}</span>
-                                                {item.type === 'kit' && item.chosenProducts && (
+                                                {(item.type === 'kit' && item.chosenProducts) && (
                                                      <div className="pl-4 text-xs text-muted-foreground">
-                                                        {item.chosenProducts.map((p: any) => p.name).join(', ')}
+                                                        ({item.chosenProducts.map((p: any) => p.name).join(', ')})
                                                      </div>
                                                 )}
                                             </div>
@@ -1030,6 +1080,205 @@ function FinancialSummaryReport() {
     );
 }
 
+// --- ABC Curve Report ---
+function ABCCurveReport() {
+    const { user } = useAuth();
+    const [loading, setLoading] = useState(true);
+    const [sales, setSales] = useState<Sale[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
+    const [branches, setBranches] = useState<Branch[]>([]);
+
+    const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+      from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+      to: new Date(),
+    });
+
+    useEffect(() => {
+        if (!user?.organizationId) return;
+
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const orgId = user.organizationId;
+                const salesQuery = query(collection(db, 'sales'), where('organizationId', '==', orgId));
+                const productsQuery = query(collection(db, 'products'), where('organizationId', '==', orgId));
+                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', orgId));
+                const [salesSnap, productsSnap, branchesSnap] = await Promise.all([
+                    getDocs(salesQuery),
+                    getDocs(productsQuery),
+                    getDocs(branchesQuery),
+                ]);
+
+                const salesData = salesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Sale));
+                const productsData = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+                const branchesData = branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+                
+                setSales(salesData);
+                setProducts(productsData);
+                setBranches(branchesData);
+                setSelectedBranchIds(branchesData.map(b => b.id));
+            } catch (error) {
+                console.error("Error fetching ABC report data:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, [user]);
+
+    const { abcData, chartData, totalRevenue } = useMemo(() => {
+        const filteredSales = sales.filter(sale => {
+            const saleDate = sale.date;
+            const isAfterStart = dateRange?.from ? saleDate >= startOfDay(dateRange.from) : true;
+            const isBeforeEnd = dateRange?.to ? saleDate <= endOfDay(dateRange.to) : true;
+            const inBranch = selectedBranchIds.length === 0 || selectedBranchIds.includes(sale.branchId);
+            return sale.status !== 'cancelled' && isAfterStart && isBeforeEnd && inBranch;
+        });
+
+        const productRevenue = new Map<string, { name: string, total: number }>();
+
+        filteredSales.forEach(sale => {
+            sale.items.forEach((item: any) => {
+                if (!item || isNaN(item.quantity)) return;
+
+                if (item.type === 'product') {
+                    const product = products.find(p => p.id === item.id);
+                    if (product && !isNaN(product.price)) {
+                        const current = productRevenue.get(item.name) || { name: item.name, total: 0 };
+                        current.total += item.quantity * product.price;
+                        productRevenue.set(item.name, current);
+                    }
+                } else if (item.type === 'combo' && item.products && !isNaN(item.originalPrice) && !isNaN(item.finalPrice)) {
+                    const ratio = (item.originalPrice > 0 && !isNaN(item.finalPrice)) ? item.finalPrice / item.originalPrice : 1;
+                    if(isNaN(ratio)) return; // Skip if ratio is invalid
+                    item.products.forEach((p: any) => {
+                        const productInfo = products.find(prod => prod.id === p.productId);
+                        if(productInfo && !isNaN(productInfo.price) && !isNaN(p.quantity)) {
+                           const current = productRevenue.get(p.productName) || { name: p.productName, total: 0 };
+                           current.total += p.quantity * item.quantity * productInfo.price * ratio;
+                           productRevenue.set(p.productName, current);
+                        }
+                    });
+                } else if (item.type === 'kit' && item.chosenProducts && !isNaN(item.total)) {
+                     const originalPrice = item.chosenProducts.reduce((sum: number, p: any) => sum + (p.price || 0), 0);
+                     const ratio = (originalPrice > 0 && !isNaN(item.total)) ? item.total / originalPrice : 1;
+                     if(isNaN(ratio)) return; // Skip if ratio is invalid
+                     item.chosenProducts.forEach((p: any) => {
+                         if (!isNaN(p.price)) {
+                             const current = productRevenue.get(p.name) || { name: p.name, total: 0 };
+                             current.total += item.quantity * p.price * ratio;
+                             productRevenue.set(p.name, current);
+                         }
+                     });
+                }
+            });
+        });
+
+        const sortedProducts = Array.from(productRevenue.values()).sort((a, b) => b.total - a.total);
+        const totalRevenueValue = sortedProducts.reduce((acc, p) => acc + p.total, 0);
+        if (totalRevenueValue === 0) return { abcData: [], chartData: [], totalRevenue: 0 };
+
+        let cumulativePercentage = 0;
+        const finalAbcData = sortedProducts.map(p => {
+            const percentage = (p.total / totalRevenueValue) * 100;
+            cumulativePercentage += percentage;
+            let curve: 'A' | 'B' | 'C';
+            if (cumulativePercentage <= 80) {
+                curve = 'A';
+            } else if (cumulativePercentage <= 95) {
+                curve = 'B';
+            } else {
+                curve = 'C';
+            }
+            return { ...p, percentage, cumulativePercentage, curve };
+        });
+
+        const finalChartData = [
+            { curve: 'A', "Quantidade de Itens": finalAbcData.filter(p => p.curve === 'A').length, "Faturamento (%)": finalAbcData.filter(p => p.curve === 'A').reduce((acc, p) => acc + p.percentage, 0) },
+            { curve: 'B', "Quantidade de Itens": finalAbcData.filter(p => p.curve === 'B').length, "Faturamento (%)": finalAbcData.filter(p => p.curve === 'B').reduce((acc, p) => acc + p.percentage, 0) },
+            { curve: 'C', "Quantidade de Itens": finalAbcData.filter(p => p.curve === 'C').length, "Faturamento (%)": finalAbcData.filter(p => p.curve === 'C').reduce((acc, p) => acc + p.percentage, 0) },
+        ]
+
+        return { abcData: finalAbcData, chartData: finalChartData, totalRevenue: totalRevenueValue };
+    }, [sales, products, dateRange, selectedBranchIds]);
+
+    if (loading) return <Skeleton className="h-96 w-full" />;
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Análise de Curva ABC de Produtos</CardTitle>
+                <CardDescription>
+                    Este relatório classifica seus produtos em categorias A, B e C com base em sua contribuição para o faturamento total.
+                    <br/>
+                    <b>Curva A:</b> Itens mais importantes (80% do faturamento).
+                    <b> Curva B:</b> Itens de importância moderada (15% do faturamento).
+                    <b> Curva C:</b> Itens de menor importância (5% do faturamento).
+                </CardDescription>
+                 <div className="flex flex-col md:flex-row justify-between gap-4 pt-4">
+                    <div className="flex flex-wrap gap-2">
+                        <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
+                        <DateRangePicker date={dateRange} onSelect={setDateRange} />
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent>
+                {abcData.length > 0 && (
+                     <div className="h-[250px] mb-8">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="curve" />
+                                <YAxis yAxisId="left" orientation="left" stroke="#8884d8" label={{ value: 'Qtd. Itens', angle: -90, position: 'insideLeft' }}/>
+                                <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" label={{ value: 'Faturamento (%)', angle: -90, position: 'insideRight' }} unit="%"/>
+                                <Tooltip formatter={(value, name) => name === 'Faturamento (%)' ? `${(value as number).toFixed(2)}%` : value} />
+                                <Legend />
+                                <Bar yAxisId="left" dataKey="Quantidade de Itens" fill="#8884d8" />
+                                <Bar yAxisId="right" dataKey="Faturamento (%)" fill="#82ca9d" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                )}
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Produto</TableHead>
+                            <TableHead className="text-right">Faturamento</TableHead>
+                            <TableHead className="text-right">% do Total</TableHead>
+                            <TableHead className="text-right">% Acumulada</TableHead>
+                            <TableHead className="text-center">Curva</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                         {abcData.length > 0 ? (
+                            abcData.map(item => (
+                                <TableRow key={item.name}>
+                                    <TableCell className="font-medium">{item.name}</TableCell>
+                                    <TableCell className="text-right">R$ {item.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
+                                    <TableCell className="text-right">{item.percentage.toFixed(2)}%</TableCell>
+                                    <TableCell className="text-right">{item.cumulativePercentage.toFixed(2)}%</TableCell>
+                                    <TableCell className="text-center">
+                                        <Badge variant={item.curve === 'A' ? 'destructive' : item.curve === 'B' ? 'secondary' : 'outline'}>
+                                            {item.curve}
+                                        </Badge>
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        ) : (
+                            <TableRow>
+                                <TableCell colSpan={5} className="text-center h-24">Nenhuma venda encontrada para o período selecionado.</TableCell>
+                            </TableRow>
+                        )}
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+    );
+}
+
+
 // --- Main Page Component ---
 export default function ReportsPage() {
     const { user, loading } = useAuth();
@@ -1084,6 +1333,9 @@ export default function ReportsPage() {
                          <SelectItem value="financial-summary">
                             <span className="flex items-center"><FileBarChart className="mr-2 h-4 w-4"/>Resumo Financeiro</span>
                         </SelectItem>
+                         <SelectItem value="abc-curve">
+                            <span className="flex items-center"><Activity className="mr-2 h-4 w-4"/>Análise de Curva ABC</span>
+                        </SelectItem>
                         <SelectItem value="top-selling">
                              <span className="flex items-center"><TrendingUp className="mr-2 h-4 w-4"/>Produtos Mais Vendidos</span>
                         </SelectItem>
@@ -1097,6 +1349,7 @@ export default function ReportsPage() {
             {reportType === 'general' && <GeneralReport />}
             {reportType === 'sales' && <SalesReport />}
             {reportType === 'financial-summary' && <FinancialSummaryReport />}
+            {reportType === 'abc-curve' && <ABCCurveReport />}
             {reportType === 'top-selling' && <TopSellingProductsReport />}
             {reportType === 'low-stock' && <LowStockReport />}
 

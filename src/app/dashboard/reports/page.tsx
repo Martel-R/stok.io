@@ -265,7 +265,19 @@ function GeneralReport() {
                                     <TableCell>{branches.find(b => b.id === sale.branchId)?.name || 'N/A'}</TableCell>
                                     <TableCell>
                                         {sale.items.map((item: any, index: number) => (
-                                            <div key={item.id + index}>{item.quantity}x {item.name}</div>
+                                            <div key={item.id + index}>
+                                                <span className="font-semibold">{item.quantity}x {item.name}</span>
+                                                {(item.type === 'kit' && item.chosenProducts) && (
+                                                     <div className="pl-4 text-xs text-muted-foreground">
+                                                        ({item.chosenProducts.map((p: any) => p.name).join(', ')})
+                                                     </div>
+                                                )}
+                                                {(item.type === 'combo' && item.products) && (
+                                                     <div className="pl-4 text-xs text-muted-foreground">
+                                                        ({item.products.map((p: any) => `${p.quantity}x ${p.productName}`).join(', ')})
+                                                     </div>
+                                                )}
+                                            </div>
                                         ))}
                                     </TableCell>
                                     <TableCell className="text-right">{formatCurrency(sale.total)}</TableCell>
@@ -456,7 +468,7 @@ function SalesReport() {
                                         {sale.items.map((item: any, index: number) => (
                                             <div key={item.id + index}>
                                                 <span className="font-semibold">{item.quantity}x {item.name}</span>
-                                                {item.type === 'kit' && item.chosenProducts && (
+                                                {(item.type === 'kit' && item.chosenProducts) && (
                                                      <div className="pl-4 text-xs text-muted-foreground">
                                                         ({item.chosenProducts.map((p: any) => p.name).join(', ')})
                                                      </div>

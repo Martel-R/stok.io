@@ -1012,6 +1012,7 @@ export default function POSPage() {
                 baseItem.total = item.total;
             }
             if (item.itemType === 'combo') {
+                baseItem.products = (item as Combo).products.map(p => ({ productId: p.productId, productName: p.productName, quantity: p.quantity, productPrice: p.productPrice }));
                 baseItem.originalPrice = item.originalPrice;
                 baseItem.finalPrice = item.finalPrice;
             }

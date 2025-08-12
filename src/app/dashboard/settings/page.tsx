@@ -142,19 +142,10 @@ function UsersTable() {
         }
     }, [adminUser]);
 
-    const getProfileName = (role: string) => {
-        const profile = profiles.find(p => p.id === role);
+    const getProfileName = (roleId: string) => {
+        const profile = profiles.find(p => p.id === roleId);
         if (profile) return <Badge variant="secondary">{profile.name}</Badge>;
-
-        // Fallback for old roles if they still exist somehow
-        switch (role) {
-            case 'admin': return <Badge variant="destructive">Admin (Legacy)</Badge>;
-            case 'manager': return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Gerente (Legacy)</Badge>;
-            case 'atendimento': return <Badge className="bg-green-100 text-green-800">Atendimento (Legacy)</Badge>;
-            case 'professional': return <Badge className="bg-purple-100 text-purple-800">Profissional (Legacy)</Badge>;
-            case 'customer': return <Badge className="bg-gray-100 text-gray-800">Cliente (Legacy)</Badge>;
-            default: return <Badge variant="outline">{role}</Badge>;
-        }
+        return <Badge variant="outline">{roleId}</Badge>;
     }
     
     const openEditDialog = (user: User) => {
@@ -232,7 +223,7 @@ function UsersTable() {
                         <TableRow>
                             <TableHead>Nome</TableHead>
                             <TableHead>Email</TableHead>
-                            <TableHead>Função</TableHead>
+                            <TableHead>Perfil</TableHead>
                             <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -1299,15 +1290,16 @@ function PermissionProfileForm({
     onDelete: (id: string) => void,
     onDone: () => void,
 }) {
+    const { user } = useAuth();
     const [formData, setFormData] = useState<Partial<PermissionProfile>>(
         profile || { 
             name: '', 
-            permissions: {} as EnabledModules // Start with empty and build up
+            permissions: {} as EnabledModules
         }
     );
     
-    const moduleConfig = [
-        { key: 'dashboard', label: 'Início (Dashboard)', icon: Home },
+    const allModuleConfig = [
+        { key: 'dashboard', label: 'Início', icon: Home },
         { key: 'customers', label: 'Clientes', icon: Users },
         { key: 'services', label: 'Serviços', icon: Briefcase },
         { key: 'appointments', label: 'Agendamentos', icon: Calendar },
@@ -1321,18 +1313,20 @@ function PermissionProfileForm({
         { key: 'settings', label: 'Configurações', icon: Settings },
     ] as const;
 
+    const activeModuleConfig = allModuleConfig.filter(mod => user?.organization?.enabledModules[mod.key]);
+
      useEffect(() => {
         // Initialize with default permissions if creating a new profile
         if (!profile) {
             const defaultPermissions: Partial<EnabledModules> = {};
-            moduleConfig.forEach(mod => {
+            activeModuleConfig.forEach(mod => {
                 defaultPermissions[mod.key] = { view: false, edit: false, delete: false };
             });
             setFormData(prev => ({...prev, permissions: defaultPermissions as EnabledModules}));
         } else {
             setFormData(profile);
         }
-    }, [profile]);
+    }, [profile, activeModuleConfig]);
 
     const handlePermissionChange = (
         module: keyof EnabledModules, 
@@ -1359,6 +1353,39 @@ function PermissionProfileForm({
         });
     };
 
+    const handleSelectAll = (permission: keyof ModulePermissions, checked: boolean) => {
+        setFormData(prev => {
+            const newPermissions = { ...prev.permissions } as EnabledModules;
+            activeModuleConfig.forEach(mod => {
+                if (!newPermissions[mod.key]) {
+                    newPermissions[mod.key] = { view: false, edit: false, delete: false };
+                }
+                newPermissions[mod.key][permission] = checked;
+
+                if (permission === 'view' && !checked) {
+                    newPermissions[mod.key].edit = false;
+                    newPermissions[mod.key].delete = false;
+                }
+                if ((permission === 'edit' || permission === 'delete') && checked) {
+                    newPermissions[mod.key].view = true;
+                }
+            });
+            return { ...prev, permissions: newPermissions };
+        });
+    };
+
+    const getSelectAllState = (permission: keyof ModulePermissions): boolean | 'indeterminate' => {
+        const activeModules = activeModuleConfig.map(m => m.key);
+        const selectedCount = Object.keys(formData.permissions || {})
+            .filter(key => activeModules.includes(key as any))
+            .filter(key => formData.permissions?.[key as keyof EnabledModules]?.[permission])
+            .length;
+        
+        if (selectedCount === 0) return false;
+        if (selectedCount === activeModules.length) return true;
+        return 'indeterminate';
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave(formData);
@@ -1377,45 +1404,67 @@ function PermissionProfileForm({
             </div>
             <div className="space-y-2">
                 <Label>Permissões dos Módulos</Label>
-                <div className="space-y-2 rounded-md border p-4 max-h-96 overflow-y-auto">
-                    {moduleConfig.map(mod => (
-                        <div key={mod.key} className="flex items-center justify-between border-b pb-2">
-                            <Label htmlFor={mod.key} className="flex items-center gap-2 font-normal">
-                                <mod.icon className="h-4 w-4"/> {mod.label}
-                            </Label>
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-2">
-                                     <Checkbox
-                                        id={`${mod.key}-view`}
-                                        checked={formData.permissions?.[mod.key]?.view ?? false}
-                                        onCheckedChange={(checked) => handlePermissionChange(mod.key, 'view', checked === true)}
+                <div className="rounded-md border">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Módulo</TableHead>
+                                <TableHead className="text-center">
+                                    <Checkbox
+                                        checked={getSelectAllState('view')}
+                                        onCheckedChange={(checked) => handleSelectAll('view', checked === true)}
                                     />
-                                    <Label htmlFor={`${mod.key}-view`} className="font-normal text-sm">Ver</Label>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                     <Checkbox
-                                        id={`${mod.key}-edit`}
-                                        checked={formData.permissions?.[mod.key]?.edit ?? false}
-                                        onCheckedChange={(checked) => handlePermissionChange(mod.key, 'edit', checked === true)}
-                                        disabled={!formData.permissions?.[mod.key]?.view}
+                                    <Label htmlFor="select-all-view" className="ml-2">Visualizar</Label>
+                                </TableHead>
+                                <TableHead className="text-center">
+                                    <Checkbox
+                                        checked={getSelectAllState('edit')}
+                                        onCheckedChange={(checked) => handleSelectAll('edit', checked === true)}
                                     />
-                                    <Label htmlFor={`${mod.key}-edit`} className="font-normal text-sm">Editar</Label>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                     <Checkbox
-                                        id={`${mod.key}-delete`}
-                                        checked={formData.permissions?.[mod.key]?.delete ?? false}
-                                        onCheckedChange={(checked) => handlePermissionChange(mod.key, 'delete', checked === true)}
-                                        disabled={!formData.permissions?.[mod.key]?.view}
+                                     <Label htmlFor="select-all-edit" className="ml-2">Editar</Label>
+                                </TableHead>
+                                <TableHead className="text-center">
+                                    <Checkbox
+                                        checked={getSelectAllState('delete')}
+                                        onCheckedChange={(checked) => handleSelectAll('delete', checked === true)}
                                     />
-                                    <Label htmlFor={`${mod.key}-delete`} className="font-normal text-sm">Excluir</Label>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
+                                     <Label htmlFor="select-all-delete" className="ml-2">Excluir</Label>
+                                </TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {activeModuleConfig.map(mod => (
+                                <TableRow key={mod.key}>
+                                    <TableCell className="font-medium flex items-center gap-2">
+                                        <mod.icon className="h-4 w-4"/> {mod.label}
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <Checkbox
+                                            checked={formData.permissions?.[mod.key]?.view ?? false}
+                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'view', checked === true)}
+                                        />
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <Checkbox
+                                            checked={formData.permissions?.[mod.key]?.edit ?? false}
+                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'edit', checked === true)}
+                                            disabled={!formData.permissions?.[mod.key]?.view}
+                                        />
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <Checkbox
+                                            checked={formData.permissions?.[mod.key]?.delete ?? false}
+                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'delete', checked === true)}
+                                            disabled={!formData.permissions?.[mod.key]?.view}
+                                        />
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
                 </div>
             </div>
-            <DialogFooter className="justify-between">
+            <DialogFooter className="justify-between pt-4">
                 <div>
                 {profile?.id && (
                      <AlertDialog>

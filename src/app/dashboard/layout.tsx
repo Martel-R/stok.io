@@ -24,19 +24,19 @@ function DashboardNav() {
     const { user } = useAuth();
     
     const navItems = [
-        { href: '/dashboard', label: 'Início', icon: Home, roles: ['admin', 'manager'], module: 'dashboard' },
-        { href: '/dashboard/appointments', label: 'Agendamentos', icon: Calendar, roles: ['admin', 'manager', 'professional'], module: 'appointments' },
-        { href: '/dashboard/customers', label: 'Clientes', icon: Users, roles: ['admin', 'manager'], module: 'customers' },
-        { href: '/dashboard/services', label: 'Serviços', icon: Briefcase, roles: ['admin', 'manager'], module: 'services' },
-        { href: '/dashboard/products', label: 'Produtos', icon: Package, roles: ['admin', 'manager'], module: 'products' },
-        { href: '/dashboard/combos', label: 'Combos', icon: Gift, roles: ['admin', 'manager'], module: 'combos' },
-        { href: '/dashboard/kits', label: 'Kits', icon: Component, roles: ['admin', 'manager'], module: 'kits' },
-        { href: '/dashboard/inventory', label: 'Estoque', icon: BarChart, roles: ['admin', 'manager', 'atendimento'], module: 'inventory' },
-        { href: '/dashboard/pos', label: 'Frente de Caixa', icon: ShoppingCart, roles: ['admin', 'manager', 'atendimento'], module: 'pos' },
-        { href: '/dashboard/assistant', label: 'Oráculo AI', icon: Bot, roles: ['admin', 'manager'], module: 'assistant' },
-        { href: '/dashboard/reports', label: 'Relatórios', icon: FileText, roles: ['admin'], module: 'reports' },
-        { href: '/dashboard/settings', label: 'Configurações', icon: Settings, roles: ['admin'], module: 'settings' },
-        { href: '/dashboard/help', label: 'Ajuda & Tutorial', icon: LifeBuoy, roles: ['admin', 'manager', 'atendimento', 'professional'], module: 'dashboard' },
+        { href: '/dashboard', label: 'Início', icon: Home, module: 'dashboard' },
+        { href: '/dashboard/appointments', label: 'Agendamentos', icon: Calendar, module: 'appointments' },
+        { href: '/dashboard/customers', label: 'Clientes', icon: Users, module: 'customers' },
+        { href: '/dashboard/services', label: 'Serviços', icon: Briefcase, module: 'services' },
+        { href: '/dashboard/products', label: 'Produtos', icon: Package, module: 'products' },
+        { href: '/dashboard/combos', label: 'Combos', icon: Gift, module: 'combos' },
+        { href: '/dashboard/kits', label: 'Kits', icon: Component, module: 'kits' },
+        { href: '/dashboard/inventory', label: 'Estoque', icon: BarChart, module: 'inventory' },
+        { href: '/dashboard/pos', label: 'Frente de Caixa', icon: ShoppingCart, module: 'pos' },
+        { href: '/dashboard/assistant', label: 'Oráculo AI', icon: Bot, module: 'assistant' },
+        { href: '/dashboard/reports', label: 'Relatórios', icon: FileText, module: 'reports' },
+        { href: '/dashboard/settings', label: 'Configurações', icon: Settings, module: 'settings' },
+        { href: '/dashboard/help', label: 'Ajuda & Tutorial', icon: LifeBuoy, module: 'dashboard' },
     ];
 
     const isActive = (href: string) => {
@@ -46,17 +46,17 @@ function DashboardNav() {
       return pathname === href;
     }
     
-    const isModuleEnabled = (module: string) => {
-        if (!user?.enabledModules) return true; // Default to true if not set
-        return user.enabledModules[module as keyof typeof user.enabledModules] ?? true;
+    const canViewModule = (module: string) => {
+        if (!user?.enabledModules) return true; // Fallback to show all if not defined
+        const moduleKey = module as keyof typeof user.enabledModules;
+        return user.enabledModules[moduleKey]?.view ?? false;
     }
 
 
     return (
         <SidebarMenu>
             {navItems
-                .filter(item => user && item.roles.includes(user.role))
-                .filter(item => isModuleEnabled(item.module))
+                .filter(item => canViewModule(item.module))
                 .map((item) => (
                     <SidebarMenuItem key={item.href}>
                         <Link href={item.href}>

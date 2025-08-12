@@ -12,11 +12,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, query, where, writeBatch, orderBy } from 'firebase/firestore';
-import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType, BrandingSettings, PermissionProfile } from '@/lib/types';
+import type { User, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType, BrandingSettings, PermissionProfile, ModulePermissions } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -1245,7 +1245,7 @@ function RolesSettings() {
                     <TableHeader>
                         <TableRow>
                             <TableHead>Nome do Perfil</TableHead>
-                            <TableHead>Módulos Ativos</TableHead>
+                            <TableHead>Permissões</TableHead>
                             <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -1257,14 +1257,16 @@ function RolesSettings() {
                                 <TableCell className="font-medium">{profile.name}</TableCell>
                                 <TableCell>
                                     <div className="flex flex-wrap gap-1">
-                                        {Object.entries(profile.permissions).filter(([, enabled]) => enabled).map(([key]) => (
+                                        {Object.entries(profile.permissions)
+                                            .filter(([, perms]) => perms.view)
+                                            .map(([key]) => (
                                             <Badge key={key} variant="outline">{key}</Badge>
                                         ))}
                                     </div>
                                 </TableCell>
                                 <TableCell className="text-right">
                                     <Button variant="ghost" size="icon" onClick={() => { setEditingProfile(profile); setIsFormOpen(true);}}>
-                                        <MoreHorizontal className="h-4 w-4"/>
+                                        <Pencil className="h-4 w-4"/>
                                     </Button>
                                 </TableCell>
                             </TableRow>
@@ -1272,7 +1274,7 @@ function RolesSettings() {
                     </TableBody>
                 </Table>
                 <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                    <DialogContent>
+                    <DialogContent className="max-w-2xl">
                         <DialogHeader>
                             <DialogTitle>{editingProfile ? 'Editar Perfil' : 'Novo Perfil'}</DialogTitle>
                         </DialogHeader>
@@ -1297,28 +1299,12 @@ function PermissionProfileForm({
     onDelete: (id: string) => void,
     onDone: () => void,
 }) {
-    const { user } = useAuth();
     const [formData, setFormData] = useState<Partial<PermissionProfile>>(
         profile || { 
             name: '', 
-            permissions: user?.enabledModules || {}
+            permissions: {} as EnabledModules // Start with empty and build up
         }
     );
-
-    const handleModuleToggle = (module: keyof EnabledModules, checked: boolean) => {
-        setFormData(prev => ({
-            ...prev,
-            permissions: {
-                ...prev.permissions,
-                [module]: checked
-            }
-        }));
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave(formData);
-    }
     
     const moduleConfig = [
         { key: 'dashboard', label: 'Início (Dashboard)', icon: Home },
@@ -1335,6 +1321,49 @@ function PermissionProfileForm({
         { key: 'settings', label: 'Configurações', icon: Settings },
     ] as const;
 
+     useEffect(() => {
+        // Initialize with default permissions if creating a new profile
+        if (!profile) {
+            const defaultPermissions: Partial<EnabledModules> = {};
+            moduleConfig.forEach(mod => {
+                defaultPermissions[mod.key] = { view: false, edit: false, delete: false };
+            });
+            setFormData(prev => ({...prev, permissions: defaultPermissions as EnabledModules}));
+        } else {
+            setFormData(profile);
+        }
+    }, [profile]);
+
+    const handlePermissionChange = (
+        module: keyof EnabledModules, 
+        permission: keyof ModulePermissions, 
+        checked: boolean
+    ) => {
+        setFormData(prev => {
+            const newPermissions = { ...prev.permissions };
+            if (!newPermissions[module]) {
+                newPermissions[module] = { view: false, edit: false, delete: false };
+            }
+            newPermissions[module]![permission] = checked;
+
+            // Logic: if edit or delete is checked, view must be checked. If view is unchecked, others must be too.
+            if (permission === 'view' && !checked) {
+                newPermissions[module]!.edit = false;
+                newPermissions[module]!.delete = false;
+            }
+            if ((permission === 'edit' || permission === 'delete') && checked) {
+                 newPermissions[module]!.view = true;
+            }
+
+            return { ...prev, permissions: newPermissions as EnabledModules };
+        });
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData);
+    }
+
     return (
         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
             <div className="space-y-2">
@@ -1348,17 +1377,40 @@ function PermissionProfileForm({
             </div>
             <div className="space-y-2">
                 <Label>Permissões dos Módulos</Label>
-                <div className="space-y-2 rounded-md border p-4 max-h-64 overflow-y-auto">
+                <div className="space-y-2 rounded-md border p-4 max-h-96 overflow-y-auto">
                     {moduleConfig.map(mod => (
-                        <div key={mod.key} className="flex items-center justify-between">
+                        <div key={mod.key} className="flex items-center justify-between border-b pb-2">
                             <Label htmlFor={mod.key} className="flex items-center gap-2 font-normal">
                                 <mod.icon className="h-4 w-4"/> {mod.label}
                             </Label>
-                            <Switch
-                                id={mod.key}
-                                checked={!!formData.permissions?.[mod.key]}
-                                onCheckedChange={(checked) => handleModuleToggle(mod.key, checked)}
-                            />
+                            <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-2">
+                                     <Checkbox
+                                        id={`${mod.key}-view`}
+                                        checked={formData.permissions?.[mod.key]?.view ?? false}
+                                        onCheckedChange={(checked) => handlePermissionChange(mod.key, 'view', checked === true)}
+                                    />
+                                    <Label htmlFor={`${mod.key}-view`} className="font-normal text-sm">Ver</Label>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                     <Checkbox
+                                        id={`${mod.key}-edit`}
+                                        checked={formData.permissions?.[mod.key]?.edit ?? false}
+                                        onCheckedChange={(checked) => handlePermissionChange(mod.key, 'edit', checked === true)}
+                                        disabled={!formData.permissions?.[mod.key]?.view}
+                                    />
+                                    <Label htmlFor={`${mod.key}-edit`} className="font-normal text-sm">Editar</Label>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                     <Checkbox
+                                        id={`${mod.key}-delete`}
+                                        checked={formData.permissions?.[mod.key]?.delete ?? false}
+                                        onCheckedChange={(checked) => handlePermissionChange(mod.key, 'delete', checked === true)}
+                                        disabled={!formData.permissions?.[mod.key]?.view}
+                                    />
+                                    <Label htmlFor={`${mod.key}-delete`} className="font-normal text-sm">Excluir</Label>
+                                </div>
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -1482,7 +1534,7 @@ function SettingsPageContent() {
                     <TabsTrigger value="payments">Pagamentos</TabsTrigger>
                     <TabsTrigger value="branding">Branding</TabsTrigger>
                     <TabsTrigger value="roles">Perfis &amp; Permissões</TabsTrigger>
-                    {user?.enabledModules?.customers && (
+                    {user?.enabledModules?.customers?.view && (
                         <TabsTrigger value="anamnesis">Anamnese</TabsTrigger>
                     )}
                 </TabsList>
@@ -1501,7 +1553,7 @@ function SettingsPageContent() {
                  <TabsContent value="roles">
                     <RolesSettings />
                 </TabsContent>
-                 {user?.enabledModules?.customers && (
+                 {user?.enabledModules?.customers?.view && (
                     <TabsContent value="anamnesis">
                         <AnamnesisSettings />
                     </TabsContent>

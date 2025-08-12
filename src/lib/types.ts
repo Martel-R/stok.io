@@ -3,19 +3,25 @@
 export type UserRole = 'admin' | 'manager' | 'atendimento' | 'customer' | 'professional';
 export type PaymentStatus = 'active' | 'overdue' | 'locked';
 
+export interface ModulePermissions {
+    view: boolean;
+    edit: boolean;
+    delete: boolean;
+}
+
 export interface EnabledModules {
-    dashboard: boolean;
-    products: boolean;
-    combos: boolean;
-    inventory: boolean;
-    pos: boolean;
-    assistant: boolean;
-    reports: boolean;
-    settings: boolean;
-    kits: boolean;
-    customers: boolean;
-    appointments: boolean;
-    services: boolean;
+    dashboard: ModulePermissions;
+    products: ModulePermissions;
+    combos: ModulePermissions;
+    inventory: ModulePermissions;
+    pos: ModulePermissions;
+    assistant: ModulePermissions;
+    reports: ModulePermissions;
+    settings: ModulePermissions;
+    kits: ModulePermissions;
+    customers: ModulePermissions;
+    appointments: ModulePermissions;
+    services: ModulePermissions;
 }
 
 export interface PermissionProfile {

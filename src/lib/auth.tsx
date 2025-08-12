@@ -6,7 +6,7 @@ import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc } from "firebase/firestore";
-import type { User, UserRole, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile } from '@/lib/types';
+import type { User, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
 
@@ -45,6 +45,21 @@ interface AuthContextType {
 }
 
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
+
+const defaultPermissions: EnabledModules = {
+    dashboard: { view: true, edit: false, delete: false },
+    products: { view: true, edit: true, delete: true },
+    combos: { view: true, edit: true, delete: true },
+    inventory: { view: true, edit: true, delete: false },
+    pos: { view: true, edit: false, delete: false },
+    assistant: { view: true, edit: false, delete: false },
+    reports: { view: true, edit: false, delete: false },
+    settings: { view: true, edit: false, delete: false },
+    kits: { view: true, edit: true, delete: true },
+    customers: { view: true, edit: true, delete: false },
+    appointments: { view: true, edit: true, delete: true },
+    services: { view: true, edit: true, delete: true },
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<UserWithOrg | null>(null);
@@ -103,20 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     let modules = orgData.enabledModules;
                     
                     if (!modules) {
-                        modules = {
-                            dashboard: true,
-                            products: true,
-                            combos: true,
-                            inventory: true,
-                            pos: true,
-                            assistant: true,
-                            reports: true,
-                            settings: true,
-                            kits: true,
-                            customers: true,
-                            appointments: true,
-                            services: true,
-                        };
+                        modules = defaultPermissions;
                         await updateDoc(orgDocRef, { enabledModules: modules });
                     }
                     
@@ -196,11 +198,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         photoURL: avatar
       });
 
+      const adminProfileRef = doc(collection(db, 'permissionProfiles'));
+
       const newUser: User = {
         id: firebaseUser.uid,
         name,
         email,
-        role: 'admin',
+        role: adminProfileRef.id,
         avatar: avatar,
         organizationId: organizationId
       };
@@ -213,21 +217,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ownerId: newUser.id, 
         name: `${name}'s Company`,
         paymentStatus: 'active',
-        enabledModules: {
-            dashboard: true,
-            products: true,
-            combos: true,
-            inventory: true,
-            pos: true,
-            assistant: true,
-            reports: true,
-            settings: true,
-            kits: true,
-            customers: true,
-            appointments: true,
-            services: true,
-        }
+        enabledModules: defaultPermissions
       });
+      
+      // Create a default "Admin" profile
+      const adminProfile: Omit<PermissionProfile, 'id'> = {
+          name: 'Admin',
+          organizationId: organizationId,
+          permissions: defaultPermissions
+      };
+      batch.set(adminProfileRef, adminProfile);
+
 
       await batch.commit();
       
@@ -463,8 +463,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if(isAuthPage) {
             if (user.role === 'customer') {
                 router.push('/portal');
-            } else if (user.role === 'atendimento') {
-                router.push('/dashboard/pos');
+            } else if (user?.enabledModules?.pos.view && !user.enabledModules?.dashboard.view) {
+                 router.push('/dashboard/pos');
             } else {
                 router.push('/dashboard');
             }
@@ -472,8 +472,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             router.push('/portal');
         } else if (user.role !== 'customer' && isPortalPage) {
             router.push('/dashboard');
-        } else if (user.role === 'atendimento' && pathname === '/dashboard') {
-            router.push('/dashboard/pos');
+        } else if (user.enabledModules?.pos.view && !user.enabledModules?.dashboard.view && pathname === '/dashboard') {
+             router.push('/dashboard/pos');
         }
     }
   }, [isAuthenticated, loading, pathname, router, user]);

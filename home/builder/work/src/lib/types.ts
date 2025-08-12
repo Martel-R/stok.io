@@ -50,7 +50,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: UserRole | string; // Can be a role or a profileId
+  role: string; // Can be a role name or a permission profile ID
   avatar: string;
   password?: string;
   organizationId: string;

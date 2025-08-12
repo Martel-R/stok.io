@@ -32,7 +32,7 @@ interface AuthContextType {
   login: (email: string, pass: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<boolean>;
   signup: (email: string, pass: string, name: string) => Promise<{ success: boolean; error?: string, isFirstUser?: boolean }>;
-  createUser: (email: string, name: string, role: UserRole | string, organizationId: string, customerId?: string) => Promise<{ success: boolean; error?: string, userId?: string }>;
+  createUser: (email: string, name: string, role: string, organizationId: string, customerId?: string) => Promise<{ success: boolean; error?: string, userId?: string }>;
   updateUserProfile: (data: Partial<User>) => Promise<{ success: boolean; error?: string }>;
   changeUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean, error?: string }>;
   sendPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
@@ -246,7 +246,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const createUser = async (email: string, name: string, role: UserRole | string, organizationId: string, customerId?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
+  const createUser = async (email: string, name: string, role: string, organizationId: string, customerId?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
     try {
         // This trick allows creating a user without signing in the admin out.
         // It's a common workaround for admin SDK-like functionality on the client.

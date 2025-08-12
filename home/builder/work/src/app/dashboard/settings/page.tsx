@@ -16,7 +16,7 @@ import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType, Pr
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -33,6 +33,7 @@ import { MOCK_PRODUCTS } from '@/lib/mock-data';
 import { ImportAnamnesisQuestionsDialog } from '@/components/import-anamnesis-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import Image from 'next/image';
+import { Switch } from '@/components/ui/switch';
 
 
 const availableAvatars = [
@@ -54,8 +55,8 @@ function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: P
         setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
-    const handleRoleChange = (role: UserRole) => {
-        setFormData(prev => ({...prev, role}));
+    const handleRoleChange = (roleId: string) => {
+        setFormData(prev => ({...prev, role: roleId}));
     }
 
     const handleSubmit = (e: React.FormEvent) => {

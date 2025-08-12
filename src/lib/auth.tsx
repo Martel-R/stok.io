@@ -32,7 +32,7 @@ interface AuthContextType {
   login: (email: string, pass: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<boolean>;
   signup: (email: string, pass: string, name: string) => Promise<{ success: boolean; error?: string, isFirstUser?: boolean }>;
-  createUser: (email: string, pass: string, name: string, role: UserRole, organizationId: string, customerId?: string) => Promise<{ success: boolean; error?: string, userId?: string }>;
+  createUser: (email: string, name: string, role: UserRole, organizationId: string, customerId?: string) => Promise<{ success: boolean; error?: string, userId?: string }>;
   updateUserProfile: (data: Partial<User>) => Promise<{ success: boolean; error?: string }>;
   changeUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean, error?: string }>;
   sendPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
@@ -229,7 +229,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const createUser = async (email: string, pass: string, name: string, role: UserRole, organizationId: string, customerId?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
+  const createUser = async (email: string, name: string, role: UserRole, organizationId: string, customerId?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
     try {
         const { getApp, initializeApp, deleteApp } = await import('firebase/app');
         const { getAuth: getAuth_local } = await import('firebase/auth');
@@ -239,7 +239,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const tempApp = initializeApp(tempAppConfig, tempAppName);
         const tempAuthInstance = getAuth_local(tempApp);
 
-        const userCredential = await createUserWithEmailAndPassword(tempAuthInstance, email, pass);
+        // Generate a random password
+        const tempPassword = Math.random().toString(36).slice(-10);
+        const userCredential = await createUserWithEmailAndPassword(tempAuthInstance, email, tempPassword);
         const firebaseUser = userCredential.user;
 
         const newUser: User = {
@@ -253,6 +255,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
         
         await setDoc(doc(db, "users", firebaseUser.uid), newUser);
+
+        // Send password reset email
+        await sendPasswordResetEmail(auth, email);
 
         await signOut(tempAuthInstance);
         await deleteApp(tempApp);

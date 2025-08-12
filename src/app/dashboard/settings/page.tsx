@@ -46,9 +46,8 @@ const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availa
 
 function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partial<User>) => void; onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<User>>(
-        user || { name: '', email: '', role: 'atendimento', avatar: getRandomAvatar(), password: '' }
+        user || { name: '', email: '', role: 'atendimento', avatar: getRandomAvatar() }
     );
-    const [showPassword, setShowPassword] = useState(false);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -77,30 +76,6 @@ function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partia
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required disabled={isEditing}/>
             </div>
-            {!isEditing && (
-                 <div className="grid gap-2">
-                    <Label htmlFor="password">Senha</Label>
-                    <div className="relative">
-                        <Input
-                        id="password"
-                        name="password"
-                        type={showPassword ? 'text' : 'password'}
-                        required
-                        value={formData.password}
-                        onChange={handleChange}
-                        />
-                        <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
-                        onClick={() => setShowPassword((prev) => !prev)}
-                        >
-                        {showPassword ? <EyeOff /> : <Eye />}
-                        </Button>
-                    </div>
-                </div>
-            )}
             <div>
                 <Label htmlFor="role">Função</Label>
                  <Select value={formData.role} onValueChange={handleRoleChange}>
@@ -179,20 +154,19 @@ function UsersTable() {
                 toast({ title: 'Erro ao atualizar usuário', variant: 'destructive' });
             }
         } else {
-            if (!userToSave.email || !userToSave.password || !userToSave.name || !adminUser?.organizationId) {
+            if (!userToSave.email || !userToSave.name || !adminUser?.organizationId) {
                 toast({title: "Campos obrigatórios faltando", variant: "destructive"});
                 return;
             }
             try {
                  const { success, error } = await createUser(
                      userToSave.email, 
-                     userToSave.password, 
                      userToSave.name, 
                      userToSave.role || 'atendimento', 
                      adminUser.organizationId
                  );
                  if (success) {
-                     toast({title: "Usuário criado com sucesso!"});
+                     toast({title: "Usuário criado!", description: "Um e-mail para definição de senha foi enviado."});
                  } else {
                      toast({title: "Erro ao criar usuário", description: error, variant: "destructive"});
                  }

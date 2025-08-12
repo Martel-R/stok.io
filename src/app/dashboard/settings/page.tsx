@@ -313,11 +313,14 @@ function BranchesSettings() {
                 // Seed products for the new branch
                 MOCK_PRODUCTS.forEach(product => {
                     const productDocRef = doc(collection(db, 'products'));
-                    const productWithBranchInfo: Omit<Product, 'id'> = {
+                    const productWithBranchInfo: Omit<Product, 'id'|'stock'> = {
                         ...product,
                         branchId: branchDocRef.id,
                         organizationId: currentUser.organizationId,
                         isSalable: true,
+                        purchasePrice: product.price * 0.6,
+                        marginType: 'percentage',
+                        marginValue: 66.67,
                     };
                     batch.set(productDocRef, productWithBranchInfo);
                 });
@@ -1148,6 +1151,22 @@ function BrandingSettings() {
     );
 }
 
+function RolesSettings() {
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Perfis e Permissões</CardTitle>
+                <CardDescription>
+                    Gerencie os perfis de usuário e quais módulos cada um pode acessar. (Funcionalidade em desenvolvimento)
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <p className="text-muted-foreground">Em breve, você poderá criar e personalizar perfis de acesso aqui.</p>
+            </CardContent>
+        </Card>
+    );
+}
+
 
 
 function TestDataSettings() {
@@ -1237,6 +1256,7 @@ function SettingsPageContent() {
                     <TabsTrigger value="branches">Filiais</TabsTrigger>
                     <TabsTrigger value="payments">Pagamentos</TabsTrigger>
                     <TabsTrigger value="branding">Branding</TabsTrigger>
+                    <TabsTrigger value="roles">Perfis &amp; Permissões</TabsTrigger>
                     {user?.enabledModules?.customers && (
                         <TabsTrigger value="anamnesis">Anamnese</TabsTrigger>
                     )}
@@ -1252,6 +1272,9 @@ function SettingsPageContent() {
                 </TabsContent>
                 <TabsContent value="branding">
                     <BrandingSettings />
+                </TabsContent>
+                 <TabsContent value="roles">
+                    <RolesSettings />
                 </TabsContent>
                  {user?.enabledModules?.customers && (
                     <TabsContent value="anamnesis">

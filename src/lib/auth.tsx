@@ -231,17 +231,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const createUser = async (email: string, name: string, role: UserRole, organizationId: string, customerId?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
     try {
+        // This trick allows creating a user without signing in the admin out.
+        // It's a common workaround for admin SDK-like functionality on the client.
         const { getApp, initializeApp, deleteApp } = await import('firebase/app');
-        const { getAuth: getAuth_local } = await import('firebase/auth');
+        const { getAuth: getAuth_local, createUserWithEmailAndPassword: createUserWithEmailAndPassword_local, sendPasswordResetEmail: sendPasswordResetEmail_local, signOut: signOut_local } = await import('firebase/auth');
 
         const tempAppName = `temp-auth-app-${Date.now()}`;
         const tempAppConfig = { ...getApp().options, appName: tempAppName };
         const tempApp = initializeApp(tempAppConfig, tempAppName);
         const tempAuthInstance = getAuth_local(tempApp);
 
-        // Generate a random password
-        const tempPassword = Math.random().toString(36).slice(-10);
-        const userCredential = await createUserWithEmailAndPassword(tempAuthInstance, email, tempPassword);
+        const userCredential = await createUserWithEmailAndPassword_local(tempAuthInstance, email, Math.random().toString(36).slice(-10));
         const firebaseUser = userCredential.user;
 
         const newUser: User = {
@@ -256,10 +256,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         await setDoc(doc(db, "users", firebaseUser.uid), newUser);
 
-        // Send password reset email
-        await sendPasswordResetEmail(auth, email);
+        // Send password reset email right away
+        await sendPasswordResetEmail_local(tempAuthInstance, email);
 
-        await signOut(tempAuthInstance);
+        await signOut_local(tempAuthInstance);
         await deleteApp(tempApp);
 
         return { success: true, userId: firebaseUser.uid };
@@ -268,8 +268,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         let errorMessage = "Ocorreu um erro desconhecido.";
         if (error.code === 'auth/email-already-in-use') {
             errorMessage = 'Este e-mail já está em uso.';
-        } else if (error.code === 'auth/weak-password') {
-            errorMessage = 'A senha deve ter pelo menos 6 caracteres.';
         }
         return { success: false, error: errorMessage };
     }

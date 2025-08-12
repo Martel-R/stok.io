@@ -1,9 +1,7 @@
-
-
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { initializeFirestore, CACHE_SIZE_UNLIMITED } from "firebase/firestore";
+import { initializeFirestore, CACHE_SIZE_UNLIMITED, enableIndexedDbPersistence } from "firebase/firestore";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 import { getStorage } from "firebase/storage";
 
@@ -27,6 +25,19 @@ const db = initializeFirestore(app, {
   cacheSizeBytes: CACHE_SIZE_UNLIMITED,
 });
 const storage = getStorage(app);
+
+// Enable offline persistence
+if (typeof window !== 'undefined') {
+  try {
+    enableIndexedDbPersistence(db);
+  } catch (err: any) {
+    if (err.code === 'failed-precondition') {
+      console.warn('Firebase persistence failed: multiple tabs open.');
+    } else if (err.code === 'unimplemented') {
+      console.warn('Firebase persistence failed: browser does not support it.');
+    }
+  }
+}
 
 
 // Initialize App Check

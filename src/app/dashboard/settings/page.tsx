@@ -88,10 +88,10 @@ function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: P
                 <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required disabled={isEditing}/>
             </div>
             <div>
-                <Label htmlFor="role">Função</Label>
+                <Label htmlFor="role">Perfil</Label>
                  <Select value={formData.role} onValueChange={handleRoleChange}>
                     <SelectTrigger id="role">
-                        <SelectValue placeholder="Selecione uma função" />
+                        <SelectValue placeholder="Selecione um perfil" />
                     </SelectTrigger>
                     <SelectContent>
                         {profiles.map(profile => (
@@ -1291,14 +1291,9 @@ function PermissionProfileForm({
     onDone: () => void,
 }) {
     const { user } = useAuth();
-    const [formData, setFormData] = useState<Partial<PermissionProfile>>(
-        profile || { 
-            name: '', 
-            permissions: {} as EnabledModules
-        }
-    );
+    const [formData, setFormData] = useState<Partial<PermissionProfile>>({});
     
-    const allModuleConfig = [
+    const allModuleConfig = React.useMemo(() => [
         { key: 'dashboard', label: 'Início', icon: Home },
         { key: 'customers', label: 'Clientes', icon: Users },
         { key: 'services', label: 'Serviços', icon: Briefcase },
@@ -1311,21 +1306,27 @@ function PermissionProfileForm({
         { key: 'assistant', label: 'Oráculo AI', icon: Bot },
         { key: 'reports', label: 'Relatórios', icon: FileText },
         { key: 'settings', label: 'Configurações', icon: Settings },
-    ] as const;
+    ] as const, []);
 
-    const activeModuleConfig = allModuleConfig.filter(mod => user?.organization?.enabledModules[mod.key]);
+    const activeModuleConfig = React.useMemo(() => 
+        allModuleConfig.filter(mod => user?.organization?.enabledModules[mod.key]),
+    [allModuleConfig, user?.organization?.enabledModules]);
 
-     useEffect(() => {
-        // Initialize with default permissions if creating a new profile
-        if (!profile) {
-            const defaultPermissions: Partial<EnabledModules> = {};
-            activeModuleConfig.forEach(mod => {
-                defaultPermissions[mod.key] = { view: false, edit: false, delete: false };
-            });
-            setFormData(prev => ({...prev, permissions: defaultPermissions as EnabledModules}));
-        } else {
-            setFormData(profile);
-        }
+    useEffect(() => {
+        const defaultPermissions: Partial<EnabledModules> = {};
+        activeModuleConfig.forEach(mod => {
+            defaultPermissions[mod.key] = { view: false, edit: false, delete: false };
+        });
+
+        const initialPermissions = profile?.permissions 
+            ? { ...defaultPermissions, ...profile.permissions } 
+            : defaultPermissions;
+
+        setFormData({
+            ...profile,
+            name: profile?.name || '',
+            permissions: initialPermissions as EnabledModules,
+        });
     }, [profile, activeModuleConfig]);
 
     const handlePermissionChange = (
@@ -1335,21 +1336,18 @@ function PermissionProfileForm({
     ) => {
         setFormData(prev => {
             const newPermissions = { ...prev.permissions };
-            if (!newPermissions[module]) {
-                newPermissions[module] = { view: false, edit: false, delete: false };
-            }
-            newPermissions[module]![permission] = checked;
-
-            // Logic: if edit or delete is checked, view must be checked. If view is unchecked, others must be too.
+            const currentModulePerms = newPermissions[module] || { view: false, edit: false, delete: false };
+            const updatedModulePerms = { ...currentModulePerms, [permission]: checked };
+            
             if (permission === 'view' && !checked) {
-                newPermissions[module]!.edit = false;
-                newPermissions[module]!.delete = false;
+                updatedModulePerms.edit = false;
+                updatedModulePerms.delete = false;
             }
             if ((permission === 'edit' || permission === 'delete') && checked) {
-                 newPermissions[module]!.view = true;
+                 updatedModulePerms.view = true;
             }
 
-            return { ...prev, permissions: newPermissions as EnabledModules };
+            return { ...prev, permissions: {...newPermissions, [module]: updatedModulePerms} as EnabledModules };
         });
     };
 
@@ -1357,32 +1355,29 @@ function PermissionProfileForm({
         setFormData(prev => {
             const newPermissions = { ...prev.permissions } as EnabledModules;
             activeModuleConfig.forEach(mod => {
-                if (!newPermissions[mod.key]) {
-                    newPermissions[mod.key] = { view: false, edit: false, delete: false };
-                }
-                newPermissions[mod.key][permission] = checked;
+                const currentModulePerms = newPermissions[mod.key] || { view: false, edit: false, delete: false };
+                const updatedModulePerms = { ...currentModulePerms, [permission]: checked };
 
                 if (permission === 'view' && !checked) {
-                    newPermissions[mod.key].edit = false;
-                    newPermissions[mod.key].delete = false;
+                    updatedModulePerms.edit = false;
+                    updatedModulePerms.delete = false;
                 }
                 if ((permission === 'edit' || permission === 'delete') && checked) {
-                    newPermissions[mod.key].view = true;
+                    updatedModulePerms.view = true;
                 }
+                newPermissions[mod.key] = updatedModulePerms;
             });
             return { ...prev, permissions: newPermissions };
         });
     };
 
     const getSelectAllState = (permission: keyof ModulePermissions): boolean | 'indeterminate' => {
-        const activeModules = activeModuleConfig.map(m => m.key);
-        const selectedCount = Object.keys(formData.permissions || {})
-            .filter(key => activeModules.includes(key as any))
-            .filter(key => formData.permissions?.[key as keyof EnabledModules]?.[permission])
+        const selectedCount = activeModuleConfig
+            .filter(mod => formData.permissions?.[mod.key]?.[permission])
             .length;
         
         if (selectedCount === 0) return false;
-        if (selectedCount === activeModules.length) return true;
+        if (selectedCount === activeModuleConfig.length) return true;
         return 'indeterminate';
     };
 
@@ -1410,25 +1405,34 @@ function PermissionProfileForm({
                             <TableRow>
                                 <TableHead>Módulo</TableHead>
                                 <TableHead className="text-center">
-                                    <Checkbox
-                                        checked={getSelectAllState('view')}
-                                        onCheckedChange={(checked) => handleSelectAll('view', checked === true)}
-                                    />
-                                    <Label htmlFor="select-all-view" className="ml-2">Visualizar</Label>
+                                    <div className="flex flex-col items-center gap-1">
+                                        <Checkbox
+                                            checked={getSelectAllState('view')}
+                                            onCheckedChange={(checked) => handleSelectAll('view', checked === true)}
+                                            id="select-all-view"
+                                        />
+                                        <Label htmlFor="select-all-view" className="cursor-pointer">Visualizar</Label>
+                                    </div>
                                 </TableHead>
                                 <TableHead className="text-center">
-                                    <Checkbox
-                                        checked={getSelectAllState('edit')}
-                                        onCheckedChange={(checked) => handleSelectAll('edit', checked === true)}
-                                    />
-                                     <Label htmlFor="select-all-edit" className="ml-2">Editar</Label>
+                                     <div className="flex flex-col items-center gap-1">
+                                        <Checkbox
+                                            checked={getSelectAllState('edit')}
+                                            onCheckedChange={(checked) => handleSelectAll('edit', checked === true)}
+                                            id="select-all-edit"
+                                        />
+                                        <Label htmlFor="select-all-edit" className="cursor-pointer">Editar</Label>
+                                    </div>
                                 </TableHead>
                                 <TableHead className="text-center">
-                                    <Checkbox
-                                        checked={getSelectAllState('delete')}
-                                        onCheckedChange={(checked) => handleSelectAll('delete', checked === true)}
-                                    />
-                                     <Label htmlFor="select-all-delete" className="ml-2">Excluir</Label>
+                                     <div className="flex flex-col items-center gap-1">
+                                        <Checkbox
+                                            checked={getSelectAllState('delete')}
+                                            onCheckedChange={(checked) => handleSelectAll('delete', checked === true)}
+                                            id="select-all-delete"
+                                        />
+                                        <Label htmlFor="select-all-delete" className="cursor-pointer">Excluir</Label>
+                                    </div>
                                 </TableHead>
                             </TableRow>
                         </TableHeader>

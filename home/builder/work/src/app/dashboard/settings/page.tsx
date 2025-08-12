@@ -12,11 +12,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, query, where, writeBatch, orderBy } from 'firebase/firestore';
-import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType, BrandingSettings, PermissionProfile } from '@/lib/types';
+import type { User, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType, BrandingSettings, PermissionProfile, ModulePermissions } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -47,8 +47,18 @@ const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availa
 
 function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: PermissionProfile[]; onSave: (user: Partial<User>) => void; onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<User>>(
-        user || { name: '', email: '', role: 'atendimento', avatar: getRandomAvatar() }
+        user || { name: '', email: '', role: '', avatar: getRandomAvatar() }
     );
+
+    useEffect(() => {
+        if (!user && profiles.length > 0) {
+            // Default to the first profile if creating a new user
+            setFormData(prev => ({ ...prev, role: profiles[0].id }));
+        }
+        if (user) {
+             setFormData(user);
+        }
+    }, [user, profiles]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -136,12 +146,13 @@ function UsersTable() {
         const profile = profiles.find(p => p.id === role);
         if (profile) return <Badge variant="secondary">{profile.name}</Badge>;
 
+        // Fallback for old roles if they still exist somehow
         switch (role) {
-            case 'admin': return <Badge variant="destructive">Admin</Badge>;
-            case 'manager': return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Gerente</Badge>;
-            case 'atendimento': return <Badge className="bg-green-100 text-green-800">Atendimento</Badge>;
-            case 'professional': return <Badge className="bg-purple-100 text-purple-800">Profissional</Badge>;
-            case 'customer': return <Badge className="bg-gray-100 text-gray-800">Cliente</Badge>;
+            case 'admin': return <Badge variant="destructive">Admin (Legacy)</Badge>;
+            case 'manager': return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Gerente (Legacy)</Badge>;
+            case 'atendimento': return <Badge className="bg-green-100 text-green-800">Atendimento (Legacy)</Badge>;
+            case 'professional': return <Badge className="bg-purple-100 text-purple-800">Profissional (Legacy)</Badge>;
+            case 'customer': return <Badge className="bg-gray-100 text-gray-800">Cliente (Legacy)</Badge>;
             default: return <Badge variant="outline">{role}</Badge>;
         }
     }
@@ -167,7 +178,7 @@ function UsersTable() {
                 toast({ title: 'Erro ao atualizar usuário', variant: 'destructive' });
             }
         } else {
-            if (!userToSave.email || !userToSave.name || !adminUser?.organizationId) {
+            if (!userToSave.email || !userToSave.name || !userToSave.role || !adminUser?.organizationId) {
                 toast({title: "Campos obrigatórios faltando", variant: "destructive"});
                 return;
             }
@@ -175,7 +186,7 @@ function UsersTable() {
                  const { success, error } = await createUser(
                      userToSave.email, 
                      userToSave.name, 
-                     userToSave.role || 'atendimento', 
+                     userToSave.role, 
                      adminUser.organizationId
                  );
                  if (success) {
@@ -187,6 +198,7 @@ function UsersTable() {
                  toast({title: "Erro ao criar usuário", variant: "destructive"});
             }
         }
+        setIsFormOpen(false);
     };
 
     const handleDelete = (userId: string) => {
@@ -1233,7 +1245,7 @@ function RolesSettings() {
                     <TableHeader>
                         <TableRow>
                             <TableHead>Nome do Perfil</TableHead>
-                            <TableHead>Módulos Ativos</TableHead>
+                            <TableHead>Permissões</TableHead>
                             <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -1245,14 +1257,16 @@ function RolesSettings() {
                                 <TableCell className="font-medium">{profile.name}</TableCell>
                                 <TableCell>
                                     <div className="flex flex-wrap gap-1">
-                                        {Object.entries(profile.permissions).filter(([, enabled]) => enabled).map(([key]) => (
+                                        {Object.entries(profile.permissions)
+                                            .filter(([, perms]) => perms.view)
+                                            .map(([key]) => (
                                             <Badge key={key} variant="outline">{key}</Badge>
                                         ))}
                                     </div>
                                 </TableCell>
                                 <TableCell className="text-right">
                                     <Button variant="ghost" size="icon" onClick={() => { setEditingProfile(profile); setIsFormOpen(true);}}>
-                                        <MoreHorizontal className="h-4 w-4"/>
+                                        <Pencil className="h-4 w-4"/>
                                     </Button>
                                 </TableCell>
                             </TableRow>
@@ -1260,7 +1274,7 @@ function RolesSettings() {
                     </TableBody>
                 </Table>
                 <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                    <DialogContent>
+                    <DialogContent className="max-w-3xl">
                         <DialogHeader>
                             <DialogTitle>{editingProfile ? 'Editar Perfil' : 'Novo Perfil'}</DialogTitle>
                         </DialogHeader>
@@ -1285,28 +1299,12 @@ function PermissionProfileForm({
     onDelete: (id: string) => void,
     onDone: () => void,
 }) {
-    const { user } = useAuth();
     const [formData, setFormData] = useState<Partial<PermissionProfile>>(
         profile || { 
             name: '', 
-            permissions: user?.enabledModules || {}
+            permissions: {} as EnabledModules // Start with empty and build up
         }
     );
-
-    const handleModuleToggle = (module: keyof EnabledModules, checked: boolean) => {
-        setFormData(prev => ({
-            ...prev,
-            permissions: {
-                ...prev.permissions,
-                [module]: checked
-            }
-        }));
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave(formData);
-    }
     
     const moduleConfig = [
         { key: 'dashboard', label: 'Início (Dashboard)', icon: Home },
@@ -1323,6 +1321,74 @@ function PermissionProfileForm({
         { key: 'settings', label: 'Configurações', icon: Settings },
     ] as const;
 
+     useEffect(() => {
+        // Initialize with default permissions if creating a new profile
+        if (!profile) {
+            const defaultPermissions: Partial<EnabledModules> = {};
+            moduleConfig.forEach(mod => {
+                defaultPermissions[mod.key] = { view: false, edit: false, delete: false };
+            });
+            setFormData(prev => ({...prev, permissions: defaultPermissions as EnabledModules}));
+        } else {
+            setFormData(profile);
+        }
+    }, [profile]);
+
+    const handlePermissionChange = (
+        module: keyof EnabledModules, 
+        permission: keyof ModulePermissions, 
+        checked: boolean
+    ) => {
+        setFormData(prev => {
+            const newPermissions = { ...prev.permissions };
+            if (!newPermissions[module]) {
+                newPermissions[module] = { view: false, edit: false, delete: false };
+            }
+            newPermissions[module]![permission] = checked;
+
+            // Logic: if edit or delete is checked, view must be checked. If view is unchecked, others must be too.
+            if (permission === 'view' && !checked) {
+                newPermissions[module]!.edit = false;
+                newPermissions[module]!.delete = false;
+            }
+            if ((permission === 'edit' || permission === 'delete') && checked) {
+                 newPermissions[module]!.view = true;
+            }
+
+            return { ...prev, permissions: newPermissions as EnabledModules };
+        });
+    };
+
+    const handleSelectAll = (permission: keyof ModulePermissions, checked: boolean) => {
+        setFormData(prev => {
+            const newPermissions = { ...prev.permissions } as EnabledModules;
+            moduleConfig.forEach(mod => {
+                if (!newPermissions[mod.key]) {
+                    newPermissions[mod.key] = { view: false, edit: false, delete: false };
+                }
+                newPermissions[mod.key][permission] = checked;
+
+                if (permission === 'view' && !checked) {
+                    newPermissions[mod.key].edit = false;
+                    newPermissions[mod.key].delete = false;
+                }
+                if ((permission === 'edit' || permission === 'delete') && checked) {
+                    newPermissions[mod.key].view = true;
+                }
+            });
+            return { ...prev, permissions: newPermissions };
+        });
+    };
+
+    const isAllSelected = (permission: keyof ModulePermissions) => {
+        return moduleConfig.every(mod => formData.permissions?.[mod.key]?.[permission]);
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData);
+    }
+
     return (
         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
             <div className="space-y-2">
@@ -1336,22 +1402,73 @@ function PermissionProfileForm({
             </div>
             <div className="space-y-2">
                 <Label>Permissões dos Módulos</Label>
-                <div className="space-y-2 rounded-md border p-4 max-h-64 overflow-y-auto">
-                    {moduleConfig.map(mod => (
-                        <div key={mod.key} className="flex items-center justify-between">
-                            <Label htmlFor={mod.key} className="flex items-center gap-2 font-normal">
-                                <mod.icon className="h-4 w-4"/> {mod.label}
-                            </Label>
-                            <Switch
-                                id={mod.key}
-                                checked={!!formData.permissions?.[mod.key]}
-                                onCheckedChange={(checked) => handleModuleToggle(mod.key, checked)}
-                            />
-                        </div>
-                    ))}
+                <div className="rounded-md border">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Módulo</TableHead>
+                                <TableHead className="text-center">
+                                    <div className="flex flex-col items-center gap-1">
+                                        <Checkbox
+                                            checked={isAllSelected('view')}
+                                            onCheckedChange={(checked) => handleSelectAll('view', checked === true)}
+                                        />
+                                        <span>Visualizar</span>
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-center">
+                                     <div className="flex flex-col items-center gap-1">
+                                        <Checkbox
+                                            checked={isAllSelected('edit')}
+                                            onCheckedChange={(checked) => handleSelectAll('edit', checked === true)}
+                                        />
+                                        <span>Editar</span>
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-center">
+                                     <div className="flex flex-col items-center gap-1">
+                                        <Checkbox
+                                            checked={isAllSelected('delete')}
+                                            onCheckedChange={(checked) => handleSelectAll('delete', checked === true)}
+                                        />
+                                        <span>Excluir</span>
+                                    </div>
+                                </TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {moduleConfig.map(mod => (
+                                <TableRow key={mod.key}>
+                                    <TableCell className="font-medium flex items-center gap-2">
+                                        <mod.icon className="h-4 w-4"/> {mod.label}
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <Checkbox
+                                            checked={formData.permissions?.[mod.key]?.view ?? false}
+                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'view', checked === true)}
+                                        />
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <Checkbox
+                                            checked={formData.permissions?.[mod.key]?.edit ?? false}
+                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'edit', checked === true)}
+                                            disabled={!formData.permissions?.[mod.key]?.view}
+                                        />
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <Checkbox
+                                            checked={formData.permissions?.[mod.key]?.delete ?? false}
+                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'delete', checked === true)}
+                                            disabled={!formData.permissions?.[mod.key]?.view}
+                                        />
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
                 </div>
             </div>
-            <DialogFooter className="justify-between">
+            <DialogFooter className="justify-between pt-4">
                 <div>
                 {profile?.id && (
                      <AlertDialog>
@@ -1470,7 +1587,7 @@ function SettingsPageContent() {
                     <TabsTrigger value="payments">Pagamentos</TabsTrigger>
                     <TabsTrigger value="branding">Branding</TabsTrigger>
                     <TabsTrigger value="roles">Perfis &amp; Permissões</TabsTrigger>
-                    {user?.enabledModules?.customers && (
+                    {user?.enabledModules?.customers?.view && (
                         <TabsTrigger value="anamnesis">Anamnese</TabsTrigger>
                     )}
                 </TabsList>
@@ -1489,7 +1606,7 @@ function SettingsPageContent() {
                  <TabsContent value="roles">
                     <RolesSettings />
                 </TabsContent>
-                 {user?.enabledModules?.customers && (
+                 {user?.enabledModules?.customers?.view && (
                     <TabsContent value="anamnesis">
                         <AnamnesisSettings />
                     </TabsContent>

@@ -18,6 +18,13 @@ export interface EnabledModules {
     services: boolean;
 }
 
+export interface PermissionProfile {
+    id: string;
+    name: string;
+    organizationId: string;
+    permissions: EnabledModules;
+}
+
 export interface TimeSlot {
     start: string; // "HH:mm"
     end: string;   // "HH:mm"
@@ -43,7 +50,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: UserRole;
+  role: string; // Can be a role name or a permission profile ID
   avatar: string;
   password?: string;
   organizationId: string;

@@ -12,11 +12,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, query, where, writeBatch, orderBy } from 'firebase/firestore';
-import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType, BrandingSettings } from '@/lib/types';
+import type { User, UserRole, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType, BrandingSettings, PermissionProfile } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -33,6 +33,7 @@ import { MOCK_PRODUCTS } from '@/lib/mock-data';
 import { ImportAnamnesisQuestionsDialog } from '@/components/import-anamnesis-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import Image from 'next/image';
+import { Switch } from '@/components/ui/switch';
 
 
 const availableAvatars = [
@@ -44,18 +45,28 @@ const availableAvatars = [
 ];
 const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availableAvatars.length)];
 
-function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partial<User>) => void; onDone: () => void }) {
+function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: PermissionProfile[]; onSave: (user: Partial<User>) => void; onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<User>>(
-        user || { name: '', email: '', role: 'atendimento', avatar: getRandomAvatar() }
+        user || { name: '', email: '', role: '', avatar: getRandomAvatar() }
     );
+
+    useEffect(() => {
+        if (!user && profiles.length > 0) {
+            // Default to the first profile if creating a new user
+            setFormData(prev => ({ ...prev, role: profiles[0].id }));
+        }
+        if (user) {
+             setFormData(user);
+        }
+    }, [user, profiles]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
-    const handleRoleChange = (role: UserRole) => {
-        setFormData(prev => ({...prev, role}));
+    const handleRoleChange = (roleId: string) => {
+        setFormData(prev => ({...prev, role: roleId}));
     }
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -83,11 +94,9 @@ function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partia
                         <SelectValue placeholder="Selecione uma função" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="manager">Gerente</SelectItem>
-                        <SelectItem value="atendimento">Atendimento</SelectItem>
-                        <SelectItem value="professional">Profissional</SelectItem>
-                        <SelectItem value="customer">Cliente</SelectItem>
+                        {profiles.map(profile => (
+                            <SelectItem key={profile.id} value={profile.id}>{profile.name}</SelectItem>
+                        ))}
                     </SelectContent>
                 </Select>
             </div>
@@ -102,6 +111,7 @@ function UserForm({ user, onSave, onDone }: { user?: User; onSave: (user: Partia
 
 function UsersTable() {
     const [users, setUsers] = useState<User[]>([]);
+    const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
@@ -113,22 +123,36 @@ function UsersTable() {
             setLoading(false);
             return;
         }
-        const q = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const qUsers = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId));
+        const qProfiles = query(collection(db, 'permissionProfiles'), where('organizationId', '==', adminUser.organizationId));
+        
+        const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
             const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as User[];
             setUsers(usersData);
             setLoading(false);
         });
-        return () => unsubscribe();
+
+        const unsubscribeProfiles = onSnapshot(qProfiles, (snapshot) => {
+             setProfiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile)));
+        });
+
+        return () => {
+            unsubscribeUsers();
+            unsubscribeProfiles();
+        }
     }, [adminUser]);
 
-    const getRoleBadge = (role: string) => {
+    const getProfileName = (role: string) => {
+        const profile = profiles.find(p => p.id === role);
+        if (profile) return <Badge variant="secondary">{profile.name}</Badge>;
+
+        // Fallback for old roles if they still exist somehow
         switch (role) {
-            case 'admin': return <Badge variant="destructive">Admin</Badge>;
-            case 'manager': return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Gerente</Badge>;
-            case 'atendimento': return <Badge className="bg-green-100 text-green-800">Atendimento</Badge>;
-            case 'professional': return <Badge className="bg-purple-100 text-purple-800">Profissional</Badge>;
-            case 'customer': return <Badge className="bg-gray-100 text-gray-800">Cliente</Badge>;
+            case 'admin': return <Badge variant="destructive">Admin (Legacy)</Badge>;
+            case 'manager': return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Gerente (Legacy)</Badge>;
+            case 'atendimento': return <Badge className="bg-green-100 text-green-800">Atendimento (Legacy)</Badge>;
+            case 'professional': return <Badge className="bg-purple-100 text-purple-800">Profissional (Legacy)</Badge>;
+            case 'customer': return <Badge className="bg-gray-100 text-gray-800">Cliente (Legacy)</Badge>;
             default: return <Badge variant="outline">{role}</Badge>;
         }
     }
@@ -154,7 +178,7 @@ function UsersTable() {
                 toast({ title: 'Erro ao atualizar usuário', variant: 'destructive' });
             }
         } else {
-            if (!userToSave.email || !userToSave.name || !adminUser?.organizationId) {
+            if (!userToSave.email || !userToSave.name || !userToSave.role || !adminUser?.organizationId) {
                 toast({title: "Campos obrigatórios faltando", variant: "destructive"});
                 return;
             }
@@ -162,7 +186,7 @@ function UsersTable() {
                  const { success, error } = await createUser(
                      userToSave.email, 
                      userToSave.name, 
-                     userToSave.role || 'atendimento', 
+                     userToSave.role, 
                      adminUser.organizationId
                  );
                  if (success) {
@@ -174,6 +198,7 @@ function UsersTable() {
                  toast({title: "Erro ao criar usuário", variant: "destructive"});
             }
         }
+        setIsFormOpen(false);
     };
 
     const handleDelete = (userId: string) => {
@@ -196,7 +221,7 @@ function UsersTable() {
                             <DialogHeader>
                                 <DialogTitle>{editingUser ? 'Editar Usuário' : 'Adicionar Novo Usuário'}</DialogTitle>
                             </DialogHeader>
-                            <UserForm user={editingUser} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
+                            <UserForm user={editingUser} profiles={profiles} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
                         </DialogContent>
                     </Dialog>
                 </div>
@@ -226,7 +251,7 @@ function UsersTable() {
                                 <TableRow key={user.id}>
                                     <TableCell className="font-medium">{user.name}</TableCell>
                                     <TableCell>{user.email}</TableCell>
-                                    <TableCell>{getRoleBadge(user.role)}</TableCell>
+                                    <TableCell>{getProfileName(user.role)}</TableCell>
                                     <TableCell className="text-right">
                                          <AlertDialog>
                                             <DropdownMenu>
@@ -1152,19 +1177,219 @@ function BrandingSettings() {
 }
 
 function RolesSettings() {
+    const { user } = useAuth();
+    const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [editingProfile, setEditingProfile] = useState<PermissionProfile | undefined>(undefined);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (!user?.organizationId) {
+            setLoading(false);
+            return;
+        }
+        const q = query(collection(db, 'permissionProfiles'), where('organizationId', '==', user.organizationId));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
+            setProfiles(data);
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, [user]);
+
+    const handleSave = async (profileData: Partial<PermissionProfile>) => {
+        if (!user?.organizationId) return;
+
+        try {
+            if (editingProfile?.id) {
+                await updateDoc(doc(db, 'permissionProfiles', editingProfile.id), profileData);
+                toast({ title: 'Perfil atualizado com sucesso!' });
+            } else {
+                await addDoc(collection(db, 'permissionProfiles'), { ...profileData, organizationId: user.organizationId });
+                toast({ title: 'Novo perfil criado com sucesso!' });
+            }
+            setIsFormOpen(false);
+            setEditingProfile(undefined);
+        } catch (error) {
+            toast({ title: 'Erro ao salvar perfil', variant: 'destructive' });
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        try {
+            await deleteDoc(doc(db, 'permissionProfiles', id));
+            toast({ title: 'Perfil excluído!', variant: 'destructive' });
+        } catch (error) {
+            toast({ title: 'Erro ao excluir perfil', variant: 'destructive' });
+        }
+    };
+    
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Perfis e Permissões</CardTitle>
-                <CardDescription>
-                    Gerencie os perfis de usuário e quais módulos cada um pode acessar. (Funcionalidade em desenvolvimento)
-                </CardDescription>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                    <div>
+                        <CardTitle>Perfis e Permissões</CardTitle>
+                        <CardDescription>
+                            Crie perfis de usuário e defina quais módulos cada um pode acessar.
+                        </CardDescription>
+                    </div>
+                     <Button onClick={() => { setEditingProfile(undefined); setIsFormOpen(true); }}>
+                        <PlusCircle className="mr-2" /> Adicionar Perfil
+                    </Button>
+                </div>
             </CardHeader>
             <CardContent>
-                <p className="text-muted-foreground">Em breve, você poderá criar e personalizar perfis de acesso aqui.</p>
+                 <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Nome do Perfil</TableHead>
+                            <TableHead>Módulos Ativos</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {loading ? (
+                            <TableRow><TableCell colSpan={3}><Skeleton className="h-5 w-full"/></TableCell></TableRow>
+                        ) : profiles.map(profile => (
+                            <TableRow key={profile.id}>
+                                <TableCell className="font-medium">{profile.name}</TableCell>
+                                <TableCell>
+                                    <div className="flex flex-wrap gap-1">
+                                        {Object.entries(profile.permissions).filter(([, enabled]) => enabled).map(([key]) => (
+                                            <Badge key={key} variant="outline">{key}</Badge>
+                                        ))}
+                                    </div>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                    <Button variant="ghost" size="icon" onClick={() => { setEditingProfile(profile); setIsFormOpen(true);}}>
+                                        <MoreHorizontal className="h-4 w-4"/>
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+                <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>{editingProfile ? 'Editar Perfil' : 'Novo Perfil'}</DialogTitle>
+                        </DialogHeader>
+                        <PermissionProfileForm
+                            profile={editingProfile}
+                            onSave={handleSave}
+                            onDelete={handleDelete}
+                            onDone={() => setIsFormOpen(false)}
+                        />
+                    </DialogContent>
+                </Dialog>
             </CardContent>
         </Card>
     );
+}
+
+function PermissionProfileForm({
+    profile, onSave, onDelete, onDone
+}: {
+    profile?: PermissionProfile,
+    onSave: (data: Partial<PermissionProfile>) => void,
+    onDelete: (id: string) => void,
+    onDone: () => void,
+}) {
+    const { user } = useAuth();
+    const [formData, setFormData] = useState<Partial<PermissionProfile>>(
+        profile || { 
+            name: '', 
+            permissions: user?.enabledModules || {}
+        }
+    );
+
+    const handleModuleToggle = (module: keyof EnabledModules, checked: boolean) => {
+        setFormData(prev => ({
+            ...prev,
+            permissions: {
+                ...prev.permissions,
+                [module]: checked
+            }
+        }));
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData);
+    }
+    
+    const moduleConfig = [
+        { key: 'dashboard', label: 'Início (Dashboard)', icon: Home },
+        { key: 'customers', label: 'Clientes', icon: Users },
+        { key: 'services', label: 'Serviços', icon: Briefcase },
+        { key: 'appointments', label: 'Agendamentos', icon: Calendar },
+        { key: 'products', label: 'Produtos', icon: Package },
+        { key: 'combos', label: 'Combos', icon: Gift },
+        { key: 'kits', label: 'Kits', icon: Component },
+        { key: 'inventory', label: 'Estoque', icon: BarChart },
+        { key: 'pos', label: 'Frente de Caixa', icon: ShoppingCart },
+        { key: 'assistant', label: 'Oráculo AI', icon: Bot },
+        { key: 'reports', label: 'Relatórios', icon: FileText },
+        { key: 'settings', label: 'Configurações', icon: Settings },
+    ] as const;
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+            <div className="space-y-2">
+                <Label htmlFor="profileName">Nome do Perfil</Label>
+                <Input
+                    id="profileName"
+                    value={formData.name || ''}
+                    onChange={(e) => setFormData(prev => ({...prev, name: e.target.value}))}
+                    required
+                />
+            </div>
+            <div className="space-y-2">
+                <Label>Permissões dos Módulos</Label>
+                <div className="space-y-2 rounded-md border p-4 max-h-64 overflow-y-auto">
+                    {moduleConfig.map(mod => (
+                        <div key={mod.key} className="flex items-center justify-between">
+                            <Label htmlFor={mod.key} className="flex items-center gap-2 font-normal">
+                                <mod.icon className="h-4 w-4"/> {mod.label}
+                            </Label>
+                            <Switch
+                                id={mod.key}
+                                checked={!!formData.permissions?.[mod.key]}
+                                onCheckedChange={(checked) => handleModuleToggle(mod.key, checked)}
+                            />
+                        </div>
+                    ))}
+                </div>
+            </div>
+            <DialogFooter className="justify-between">
+                <div>
+                {profile?.id && (
+                     <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                           <Button variant="destructive" type="button">Excluir</Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                               <AlertDialogTitle>Excluir Perfil?</AlertDialogTitle>
+                               <AlertDialogDescription>Esta ação é irreversível. O perfil será removido permanentemente.</AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => onDelete(profile.id)}>Sim, excluir</AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                )}
+                </div>
+                <div className="flex gap-2">
+                    <Button variant="ghost" type="button" onClick={onDone}>Cancelar</Button>
+                    <Button type="submit">Salvar Perfil</Button>
+                </div>
+            </DialogFooter>
+        </form>
+    )
 }
 
 

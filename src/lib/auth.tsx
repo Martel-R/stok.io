@@ -6,7 +6,7 @@ import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc } from "firebase/firestore";
-import type { User, UserRole, Branch, Product, Organization, EnabledModules, BrandingSettings } from '@/lib/types';
+import type { User, UserRole, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
 
@@ -32,7 +32,7 @@ interface AuthContextType {
   login: (email: string, pass: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<boolean>;
   signup: (email: string, pass: string, name: string) => Promise<{ success: boolean; error?: string, isFirstUser?: boolean }>;
-  createUser: (email: string, name: string, role: UserRole, organizationId: string, customerId?: string) => Promise<{ success: boolean; error?: string, userId?: string }>;
+  createUser: (email: string, name: string, role: string, organizationId: string, customerId?: string) => Promise<{ success: boolean; error?: string, userId?: string }>;
   updateUserProfile: (data: Partial<User>) => Promise<{ success: boolean; error?: string }>;
   changeUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean, error?: string }>;
   sendPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
@@ -58,11 +58,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     let branchesUnsubscribe: Unsubscribe | null = null;
     let orgUnsubscribe: Unsubscribe | null = null;
+    let profilesUnsubscribe: Unsubscribe | null = null;
 
     const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseAuthUser | null) => {
       setLoading(true);
       if (branchesUnsubscribe) branchesUnsubscribe();
       if (orgUnsubscribe) orgUnsubscribe();
+      if (profilesUnsubscribe) profilesUnsubscribe();
 
       if (firebaseUser) {
         const userDocRef = doc(db, "users", firebaseUser.uid);
@@ -127,6 +129,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
             });
 
+             // Listen to permission profiles
+            const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', currentUser.organizationId));
+            profilesUnsubscribe = onSnapshot(profilesQuery, async (profilesSnap) => {
+                const profiles = profilesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
+                const userProfile = profiles.find(p => p.id === currentUser.role);
+
+                if (userProfile) {
+                     setUser(prevUser => prevUser ? { 
+                        ...prevUser, 
+                        enabledModules: userProfile.permissions
+                    } : null);
+                }
+            });
+
             const q = query(collection(db, "branches"), where("organizationId", "==", currentUser.organizationId));
             branchesUnsubscribe = onSnapshot(q, (snapshot) => {
                 const userBranches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
@@ -159,6 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authUnsubscribe();
       if (branchesUnsubscribe) branchesUnsubscribe();
       if (orgUnsubscribe) orgUnsubscribe();
+      if (profilesUnsubscribe) profilesUnsubscribe();
     };
   }, []);
   
@@ -229,7 +246,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const createUser = async (email: string, name: string, role: UserRole, organizationId: string, customerId?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
+  const createUser = async (email: string, name: string, role: string, organizationId: string, customerId?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
     try {
         // This trick allows creating a user without signing in the admin out.
         // It's a common workaround for admin SDK-like functionality on the client.

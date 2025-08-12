@@ -1148,6 +1148,22 @@ function BrandingSettings() {
     );
 }
 
+function RolesSettings() {
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Perfis e Permissões</CardTitle>
+                <CardDescription>
+                    Gerencie os perfis de usuário e quais módulos cada um pode acessar. (Funcionalidade em desenvolvimento)
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <p className="text-muted-foreground">Em breve, você poderá criar e personalizar perfis de acesso aqui.</p>
+            </CardContent>
+        </Card>
+    );
+}
+
 
 
 function TestDataSettings() {
@@ -1237,7 +1253,7 @@ function SettingsPageContent() {
                     <TabsTrigger value="branches">Filiais</TabsTrigger>
                     <TabsTrigger value="payments">Pagamentos</TabsTrigger>
                     <TabsTrigger value="branding">Branding</TabsTrigger>
-                    <TabsTrigger value="roles">Perfis & Permissões</TabsTrigger>
+                    <TabsTrigger value="roles">Perfis &amp; Permissões</TabsTrigger>
                     {user?.enabledModules?.customers && (
                         <TabsTrigger value="anamnesis">Anamnese</TabsTrigger>
                     )}
@@ -1253,6 +1269,9 @@ function SettingsPageContent() {
                 </TabsContent>
                 <TabsContent value="branding">
                     <BrandingSettings />
+                </TabsContent>
+                 <TabsContent value="roles">
+                    <RolesSettings />
                 </TabsContent>
                  {user?.enabledModules?.customers && (
                     <TabsContent value="anamnesis">

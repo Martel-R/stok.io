@@ -88,10 +88,10 @@ function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: P
                 <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required disabled={isEditing}/>
             </div>
             <div>
-                <Label htmlFor="role">Função</Label>
+                <Label htmlFor="role">Perfil</Label>
                  <Select value={formData.role} onValueChange={handleRoleChange}>
                     <SelectTrigger id="role">
-                        <SelectValue placeholder="Selecione uma função" />
+                        <SelectValue placeholder="Selecione um perfil" />
                     </SelectTrigger>
                     <SelectContent>
                         {profiles.map(profile => (
@@ -142,19 +142,10 @@ function UsersTable() {
         }
     }, [adminUser]);
 
-    const getProfileName = (role: string) => {
-        const profile = profiles.find(p => p.id === role);
+    const getProfileName = (roleId: string) => {
+        const profile = profiles.find(p => p.id === roleId);
         if (profile) return <Badge variant="secondary">{profile.name}</Badge>;
-
-        // Fallback for old roles if they still exist somehow
-        switch (role) {
-            case 'admin': return <Badge variant="destructive">Admin (Legacy)</Badge>;
-            case 'manager': return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Gerente (Legacy)</Badge>;
-            case 'atendimento': return <Badge className="bg-green-100 text-green-800">Atendimento (Legacy)</Badge>;
-            case 'professional': return <Badge className="bg-purple-100 text-purple-800">Profissional (Legacy)</Badge>;
-            case 'customer': return <Badge className="bg-gray-100 text-gray-800">Cliente (Legacy)</Badge>;
-            default: return <Badge variant="outline">{role}</Badge>;
-        }
+        return <Badge variant="outline">{roleId}</Badge>;
     }
     
     const openEditDialog = (user: User) => {
@@ -232,7 +223,7 @@ function UsersTable() {
                         <TableRow>
                             <TableHead>Nome</TableHead>
                             <TableHead>Email</TableHead>
-                            <TableHead>Função</TableHead>
+                            <TableHead>Perfil</TableHead>
                             <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -1274,7 +1265,7 @@ function RolesSettings() {
                     </TableBody>
                 </Table>
                 <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                    <DialogContent className="max-w-3xl">
+                    <DialogContent className="max-w-2xl">
                         <DialogHeader>
                             <DialogTitle>{editingProfile ? 'Editar Perfil' : 'Novo Perfil'}</DialogTitle>
                         </DialogHeader>
@@ -1299,15 +1290,11 @@ function PermissionProfileForm({
     onDelete: (id: string) => void,
     onDone: () => void,
 }) {
-    const [formData, setFormData] = useState<Partial<PermissionProfile>>(
-        profile || { 
-            name: '', 
-            permissions: {} as EnabledModules // Start with empty and build up
-        }
-    );
+    const { user } = useAuth();
+    const [formData, setFormData] = useState<Partial<PermissionProfile>>({});
     
-    const moduleConfig = [
-        { key: 'dashboard', label: 'Início (Dashboard)', icon: Home },
+    const allModuleConfig = [
+        { key: 'dashboard', label: 'Início', icon: Home },
         { key: 'customers', label: 'Clientes', icon: Users },
         { key: 'services', label: 'Serviços', icon: Briefcase },
         { key: 'appointments', label: 'Agendamentos', icon: Calendar },
@@ -1321,18 +1308,26 @@ function PermissionProfileForm({
         { key: 'settings', label: 'Configurações', icon: Settings },
     ] as const;
 
-     useEffect(() => {
-        // Initialize with default permissions if creating a new profile
-        if (!profile) {
-            const defaultPermissions: Partial<EnabledModules> = {};
-            moduleConfig.forEach(mod => {
-                defaultPermissions[mod.key] = { view: false, edit: false, delete: false };
+    const activeModuleConfig = allModuleConfig.filter(mod => user?.organization?.enabledModules[mod.key]);
+
+    useEffect(() => {
+        const defaultPermissions: Partial<EnabledModules> = {};
+        activeModuleConfig.forEach(mod => {
+            defaultPermissions[mod.key] = { view: false, edit: false, delete: false };
+        });
+        
+        if (profile) {
+             setFormData({
+                ...profile,
+                permissions: { ...defaultPermissions, ...profile.permissions } as EnabledModules,
             });
-            setFormData(prev => ({...prev, permissions: defaultPermissions as EnabledModules}));
         } else {
-            setFormData(profile);
+            setFormData({
+                name: '',
+                permissions: defaultPermissions as EnabledModules
+            });
         }
-    }, [profile]);
+    }, [profile, activeModuleConfig]);
 
     const handlePermissionChange = (
         module: keyof EnabledModules, 
@@ -1341,47 +1336,50 @@ function PermissionProfileForm({
     ) => {
         setFormData(prev => {
             const newPermissions = { ...prev.permissions };
-            if (!newPermissions[module]) {
-                newPermissions[module] = { view: false, edit: false, delete: false };
-            }
-            newPermissions[module]![permission] = checked;
-
+            const currentModulePerms = newPermissions[module] || { view: false, edit: false, delete: false };
+            const updatedModulePerms = { ...currentModulePerms, [permission]: checked };
+            
             // Logic: if edit or delete is checked, view must be checked. If view is unchecked, others must be too.
             if (permission === 'view' && !checked) {
-                newPermissions[module]!.edit = false;
-                newPermissions[module]!.delete = false;
+                updatedModulePerms.edit = false;
+                updatedModulePerms.delete = false;
             }
             if ((permission === 'edit' || permission === 'delete') && checked) {
-                 newPermissions[module]!.view = true;
+                 updatedModulePerms.view = true;
             }
 
-            return { ...prev, permissions: newPermissions as EnabledModules };
+            return { ...prev, permissions: {...newPermissions, [module]: updatedModulePerms} as EnabledModules };
         });
     };
 
     const handleSelectAll = (permission: keyof ModulePermissions, checked: boolean) => {
         setFormData(prev => {
             const newPermissions = { ...prev.permissions } as EnabledModules;
-            moduleConfig.forEach(mod => {
-                if (!newPermissions[mod.key]) {
-                    newPermissions[mod.key] = { view: false, edit: false, delete: false };
-                }
-                newPermissions[mod.key][permission] = checked;
+            activeModuleConfig.forEach(mod => {
+                const currentModulePerms = newPermissions[mod.key] || { view: false, edit: false, delete: false };
+                const updatedModulePerms = { ...currentModulePerms, [permission]: checked };
 
                 if (permission === 'view' && !checked) {
-                    newPermissions[mod.key].edit = false;
-                    newPermissions[mod.key].delete = false;
+                    updatedModulePerms.edit = false;
+                    updatedModulePerms.delete = false;
                 }
                 if ((permission === 'edit' || permission === 'delete') && checked) {
-                    newPermissions[mod.key].view = true;
+                    updatedModulePerms.view = true;
                 }
+                newPermissions[mod.key] = updatedModulePerms;
             });
             return { ...prev, permissions: newPermissions };
         });
     };
 
-    const isAllSelected = (permission: keyof ModulePermissions) => {
-        return moduleConfig.every(mod => formData.permissions?.[mod.key]?.[permission]);
+    const getSelectAllState = (permission: keyof ModulePermissions): boolean | 'indeterminate' => {
+        const selectedCount = activeModuleConfig
+            .filter(mod => formData.permissions?.[mod.key]?.[permission])
+            .length;
+        
+        if (selectedCount === 0) return false;
+        if (selectedCount === activeModuleConfig.length) return true;
+        return 'indeterminate';
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -1410,7 +1408,7 @@ function PermissionProfileForm({
                                 <TableHead className="text-center">
                                     <div className="flex flex-col items-center gap-1">
                                         <Checkbox
-                                            checked={isAllSelected('view')}
+                                            checked={getSelectAllState('view')}
                                             onCheckedChange={(checked) => handleSelectAll('view', checked === true)}
                                         />
                                         <span>Visualizar</span>
@@ -1419,7 +1417,7 @@ function PermissionProfileForm({
                                 <TableHead className="text-center">
                                      <div className="flex flex-col items-center gap-1">
                                         <Checkbox
-                                            checked={isAllSelected('edit')}
+                                            checked={getSelectAllState('edit')}
                                             onCheckedChange={(checked) => handleSelectAll('edit', checked === true)}
                                         />
                                         <span>Editar</span>
@@ -1428,7 +1426,7 @@ function PermissionProfileForm({
                                 <TableHead className="text-center">
                                      <div className="flex flex-col items-center gap-1">
                                         <Checkbox
-                                            checked={isAllSelected('delete')}
+                                            checked={getSelectAllState('delete')}
                                             onCheckedChange={(checked) => handleSelectAll('delete', checked === true)}
                                         />
                                         <span>Excluir</span>
@@ -1437,7 +1435,7 @@ function PermissionProfileForm({
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {moduleConfig.map(mod => (
+                            {activeModuleConfig.map(mod => (
                                 <TableRow key={mod.key}>
                                     <TableCell className="font-medium flex items-center gap-2">
                                         <mod.icon className="h-4 w-4"/> {mod.label}
@@ -1587,7 +1585,7 @@ function SettingsPageContent() {
                     <TabsTrigger value="payments">Pagamentos</TabsTrigger>
                     <TabsTrigger value="branding">Branding</TabsTrigger>
                     <TabsTrigger value="roles">Perfis &amp; Permissões</TabsTrigger>
-                    {user?.enabledModules?.customers?.view && (
+                    {user?.organization?.enabledModules?.customers && (
                         <TabsTrigger value="anamnesis">Anamnese</TabsTrigger>
                     )}
                 </TabsList>
@@ -1606,7 +1604,7 @@ function SettingsPageContent() {
                  <TabsContent value="roles">
                     <RolesSettings />
                 </TabsContent>
-                 {user?.enabledModules?.customers?.view && (
+                 {user?.organization?.enabledModules?.customers && (
                     <TabsContent value="anamnesis">
                         <AnamnesisSettings />
                     </TabsContent>

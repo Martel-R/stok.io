@@ -223,6 +223,11 @@ export default function AppointmentsPage() {
     const { toast } = useToast();
     const { user, currentBranch } = useAuth();
     const router = useRouter();
+
+    const can = useMemo(() => ({
+        edit: user?.enabledModules?.appointments?.edit ?? false,
+        delete: user?.enabledModules?.appointments?.delete ?? false,
+    }), [user]);
     
     const convertAppointmentDate = (docData: any): Appointment => {
         const convert = (field: any) => field instanceof Timestamp ? field.toDate() : new Date();
@@ -411,25 +416,27 @@ export default function AppointmentsPage() {
                         </p>
                     </div>
                 </div>
-                <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                    <DialogTrigger asChild>
-                        <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" /> Novo Agendamento</Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-xl">
-                        <DialogHeader>
-                            <DialogTitle>{editingAppointment ? 'Editar Agendamento' : 'Novo Agendamento'}</DialogTitle>
-                        </DialogHeader>
-                        <AppointmentForm
-                            appointment={editingAppointment}
-                            customers={customers}
-                            services={services}
-                            professionals={professionals}
-                            onSave={handleSave}
-                            onDone={() => setIsFormOpen(false)}
-                            initialDate={selectedDay}
-                        />
-                    </DialogContent>
-                </Dialog>
+                {can.edit && (
+                    <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                        <DialogTrigger asChild>
+                            <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" /> Novo Agendamento</Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-xl">
+                            <DialogHeader>
+                                <DialogTitle>{editingAppointment ? 'Editar Agendamento' : 'Novo Agendamento'}</DialogTitle>
+                            </DialogHeader>
+                            <AppointmentForm
+                                appointment={editingAppointment}
+                                customers={customers}
+                                services={services}
+                                professionals={professionals}
+                                onSave={handleSave}
+                                onDone={() => setIsFormOpen(false)}
+                                initialDate={selectedDay}
+                            />
+                        </DialogContent>
+                    </Dialog>
+                )}
             </div>
 
             <div className="grid md:grid-cols-3 gap-6">
@@ -483,12 +490,12 @@ export default function AppointmentsPage() {
                                                     <div className="flex flex-col items-end gap-2 shrink-0">
                                                         {getStatusBadge(app.status)}
                                                         <div className="flex items-center gap-1">
-                                                            {app.status === 'pending-confirmation' ? (
+                                                            {app.status === 'pending-confirmation' && can.edit ? (
                                                                 <Button size="sm" onClick={() => openEditDialog(app)}>
                                                                     <Check className="mr-2" />
                                                                     Confirmar
                                                                 </Button>
-                                                            ) : (
+                                                            ) : can.edit ? (
                                                                 <Button
                                                                     size="sm"
                                                                     variant={app.attendanceId ? "outline" : "default"}
@@ -498,19 +505,19 @@ export default function AppointmentsPage() {
                                                                     <PlayCircle className="mr-2" />
                                                                     {app.attendanceId ? 'Ver' : 'Iniciar'}
                                                                 </Button>
-                                                            )}
+                                                            ) : null}
                                                             <DropdownMenu>
                                                                 <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
                                                                 <DropdownMenuContent align="end">
                                                                     <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                                                    <DropdownMenuSeparator />
-                                                                    <DropdownMenuItem onClick={() => openEditDialog(app)}>Editar</DropdownMenuItem>
-                                                                    <DropdownMenuItem onClick={() => handleReschedule(app)}>
+                                                                    {can.edit && <DropdownMenuSeparator />}
+                                                                    {can.edit && <DropdownMenuItem onClick={() => openEditDialog(app)}>Editar</DropdownMenuItem>}
+                                                                    {can.edit && <DropdownMenuItem onClick={() => handleReschedule(app)}>
                                                                         <RefreshCw className="mr-2 h-4 w-4" />
                                                                         Reagendar
-                                                                    </DropdownMenuItem>
-                                                                    <DropdownMenuSeparator />
-                                                                    <div className="p-2">
+                                                                    </DropdownMenuItem>}
+                                                                    {can.edit && <DropdownMenuSeparator />}
+                                                                    {can.edit && <div className="p-2">
                                                                         <Label>Mudar Status</Label>
                                                                         <Select value={app.status} onValueChange={(status: AppointmentStatus) => handleStatusChange(app.id, status)}>
                                                                             <SelectTrigger className="mt-1">
@@ -525,9 +532,9 @@ export default function AppointmentsPage() {
                                                                                 <SelectItem value="no-show">Não Compareceu</SelectItem>
                                                                             </SelectContent>
                                                                         </Select>
-                                                                    </div>
-                                                                    <DropdownMenuSeparator />
-                                                                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDelete(app.id)}>Excluir</DropdownMenuItem>
+                                                                    </div>}
+                                                                    {can.delete && <DropdownMenuSeparator />}
+                                                                    {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDelete(app.id)}>Excluir</DropdownMenuItem>}
                                                                 </DropdownMenuContent>
                                                             </DropdownMenu>
                                                         </div>

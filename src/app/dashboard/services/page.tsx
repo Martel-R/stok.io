@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -145,6 +145,11 @@ export default function ServicesPage() {
     const { toast } = useToast();
     const { user } = useAuth();
 
+    const can = useMemo(() => ({
+        edit: user?.enabledModules?.services?.edit ?? false,
+        delete: user?.enabledModules?.services?.delete ?? false,
+    }), [user]);
+
     useEffect(() => {
         if (!user?.organizationId) {
             setLoading(false);
@@ -216,12 +221,12 @@ export default function ServicesPage() {
         }).filter(Boolean);
     };
 
-    if (!user?.enabledModules?.services) {
+    if (!user?.enabledModules?.services?.view) {
         return (
             <Card className="m-auto">
                 <CardHeader>
                     <CardTitle>Módulo Desabilitado</CardTitle>
-                    <CardDescription>O módulo de serviços não está ativo para a sua organização.</CardDescription>
+                    <CardDescription>O módulo de serviços não está ativo para a sua organização ou você não tem permissão para visualizá-lo.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <p>O administrador pode ativar este módulo na tela de Super Admin.</p>
@@ -242,22 +247,24 @@ export default function ServicesPage() {
                         </p>
                     </div>
                 </div>
-                <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                    <DialogTrigger asChild>
-                        <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" />Adicionar Serviço</Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-xl">
-                        <DialogHeader>
-                            <DialogTitle>{editingService ? 'Editar Serviço' : 'Adicionar Novo Serviço'}</DialogTitle>
-                        </DialogHeader>
-                        <ServiceForm
-                            service={editingService}
-                            professionals={professionals}
-                            onSave={handleSave}
-                            onDone={() => setIsFormOpen(false)}
-                        />
-                    </DialogContent>
-                </Dialog>
+                {can.edit && (
+                    <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                        <DialogTrigger asChild>
+                            <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" />Adicionar Serviço</Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-xl">
+                            <DialogHeader>
+                                <DialogTitle>{editingService ? 'Editar Serviço' : 'Adicionar Novo Serviço'}</DialogTitle>
+                            </DialogHeader>
+                            <ServiceForm
+                                service={editingService}
+                                professionals={professionals}
+                                onSave={handleSave}
+                                onDone={() => setIsFormOpen(false)}
+                            />
+                        </DialogContent>
+                    </Dialog>
+                )}
             </div>
 
             <Table>
@@ -310,8 +317,8 @@ export default function ServicesPage() {
                                             </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
-                                            <DropdownMenuItem onClick={() => openEditDialog(service)}>Editar</DropdownMenuItem>
-                                            <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(service.id)}>Excluir</DropdownMenuItem>
+                                            {can.edit && <DropdownMenuItem onClick={() => openEditDialog(service)}>Editar</DropdownMenuItem>}
+                                            {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(service.id)}>Excluir</DropdownMenuItem>}
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </TableCell>

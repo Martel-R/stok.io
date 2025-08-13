@@ -222,6 +222,11 @@ export default function CustomersPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const { toast } = useToast();
     const { user, createUser } = useAuth();
+    
+    const can = useMemo(() => ({
+        edit: user?.enabledModules?.customers?.edit ?? false,
+        delete: user?.enabledModules?.customers?.delete ?? false,
+    }), [user]);
 
     useEffect(() => {
         if (!user?.organizationId) {
@@ -286,8 +291,7 @@ export default function CustomersPage() {
 
                 if(userSnapshot.empty) {
                      // No user account, create one
-                    const tempPassword = Math.random().toString(36).slice(-8);
-                    const { success, error, userId } = await createUser(data.email!, tempPassword, data.name!, 'customer', user.organizationId, customerRef.id);
+                    const { success, error, userId } = await createUser(data.email!, data.name!, 'customer', user.organizationId, customerRef.id);
                     if (!success) {
                         toast({ title: "Erro ao criar conta de acesso", description: error, variant: "destructive" });
                         return; // Stop if user creation fails
@@ -332,14 +336,14 @@ export default function CustomersPage() {
         setIsFormOpen(true);
     };
 
-    if (!user?.enabledModules?.customers) {
+    if (!user?.enabledModules?.customers?.view) {
         return (
             <Card className="m-auto">
                 <CardHeader>
                     <CardTitle>Módulo Desabilitado</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <p>O módulo de clientes não está ativo para a sua organização.</p>
+                    <p>O módulo de clientes não está ativo para a sua organização ou você não tem permissão para visualizá-lo.</p>
                 </CardContent>
             </Card>
         )
@@ -357,22 +361,24 @@ export default function CustomersPage() {
                         </p>
                     </div>
                 </div>
-                <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                    <DialogTrigger asChild>
-                        <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" />Adicionar Cliente</Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-2xl">
-                        <DialogHeader>
-                            <DialogTitle>{editingCustomer ? 'Editar Cliente' : 'Adicionar Novo Cliente'}</DialogTitle>
-                        </DialogHeader>
-                        <CustomerForm
-                            customer={editingCustomer}
-                            anamnesisQuestions={anamnesisQuestions}
-                            onSave={handleSave}
-                            onDone={() => setIsFormOpen(false)}
-                        />
-                    </DialogContent>
-                </Dialog>
+                {can.edit && (
+                    <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                        <DialogTrigger asChild>
+                            <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" />Adicionar Cliente</Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-2xl">
+                            <DialogHeader>
+                                <DialogTitle>{editingCustomer ? 'Editar Cliente' : 'Adicionar Novo Cliente'}</DialogTitle>
+                            </DialogHeader>
+                            <CustomerForm
+                                customer={editingCustomer}
+                                anamnesisQuestions={anamnesisQuestions}
+                                onSave={handleSave}
+                                onDone={() => setIsFormOpen(false)}
+                            />
+                        </DialogContent>
+                    </Dialog>
+                )}
             </div>
             
             <div className="relative">
@@ -427,8 +433,8 @@ export default function CustomersPage() {
                                             </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
-                                            <DropdownMenuItem onClick={() => openEditDialog(customer)}>Editar</DropdownMenuItem>
-                                            <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(customer.id)}>Inativar</DropdownMenuItem>
+                                            {can.edit && <DropdownMenuItem onClick={() => openEditDialog(customer)}>Editar</DropdownMenuItem>}
+                                            {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(customer.id)}>Inativar</DropdownMenuItem>}
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </TableCell>
@@ -446,5 +452,3 @@ export default function CustomersPage() {
         </div>
     );
 }
-
-    

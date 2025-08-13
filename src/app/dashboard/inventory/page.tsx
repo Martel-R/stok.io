@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, Timestamp, orderBy } from 'firebase/firestore';
@@ -61,6 +62,7 @@ export default function InventoryPage() {
       to: new Date(),
     });
 
+    const canManageStock = useMemo(() => user?.enabledModules?.inventory?.edit ?? false, [user]);
 
     useEffect(() => {
         if (authLoading || !currentBranch) {
@@ -214,8 +216,6 @@ export default function InventoryPage() {
             </Card>
         )
     }
-
-    const canManageStock = user?.role === 'admin' || user?.role === 'manager';
 
     return (
         <>
@@ -523,3 +523,5 @@ export default function InventoryPage() {
         </>
     );
 }
+
+    

@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
@@ -291,6 +292,11 @@ export default function CombosPage() {
   const [editingCombo, setEditingCombo] = useState<Combo | undefined>(undefined);
   const { toast } = useToast();
   const { user, currentBranch, loading: authLoading } = useAuth();
+  
+  const can = useMemo(() => ({
+    edit: user?.enabledModules?.combos?.edit ?? false,
+    delete: user?.enabledModules?.combos?.delete ?? false,
+  }), [user]);
 
   useEffect(() => {
     if (authLoading || !currentBranch || !user?.organizationId) {
@@ -401,7 +407,7 @@ export default function CombosPage() {
     <div className="space-y-6">
        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <h1 className="text-3xl font-bold">Combos</h1>
-        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+        {can.edit && <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
             <DialogTrigger asChild>
                 <Button onClick={openNewDialog}>
                     <PlusCircle className="mr-2 h-4 w-4" />
@@ -420,7 +426,7 @@ export default function CombosPage() {
                     onDone={() => setIsFormOpen(false)} 
                 />
             </DialogContent>
-        </Dialog>
+        </Dialog>}
       </div>
 
       <Table>
@@ -469,12 +475,12 @@ export default function CombosPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => openEditDialog(combo)}>Editar</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleCopy(combo)}>
+                      {can.edit && <DropdownMenuItem onClick={() => openEditDialog(combo)}>Editar</DropdownMenuItem>}
+                      {can.edit && <DropdownMenuItem onClick={() => handleCopy(combo)}>
                         <Copy className="mr-2 h-4 w-4" />
                         Copiar
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(combo.id)}>Excluir</DropdownMenuItem>
+                      </DropdownMenuItem>}
+                      {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(combo.id)}>Excluir</DropdownMenuItem>}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>
@@ -492,3 +498,5 @@ export default function CombosPage() {
     </div>
   );
 }
+
+    

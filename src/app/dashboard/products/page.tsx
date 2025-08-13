@@ -434,6 +434,10 @@ export default function ProductsPage() {
   const [branchesToCopyTo, setBranchesToCopyTo] = useState<string[]>([]);
   const [isProcessingBulkAction, setIsProcessingBulkAction] = useState(false);
 
+  const can = useMemo(() => ({
+    edit: user?.enabledModules?.products?.edit ?? false,
+    delete: user?.enabledModules?.products?.delete ?? false,
+  }), [user]);
 
   useEffect(() => {
     if (authLoading || !currentBranch || !user?.organizationId) {
@@ -734,7 +738,7 @@ export default function ProductsPage() {
        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <h1 className="text-3xl font-bold">Produtos</h1>
         <div className="flex flex-wrap gap-2">
-            {selectedProductIds.length > 0 && (
+            {can.edit && selectedProductIds.length > 0 && (
                  <AlertDialog>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -759,12 +763,14 @@ export default function ProductsPage() {
                              <DropdownMenuItem onClick={() => setIsCopyProductsDialogOpen(true)}>
                                 Copiar para Filial(is)
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                             <AlertDialogTrigger asChild>
-                                 <DropdownMenuItem className="text-destructive focus:text-destructive">
-                                    <Trash2 className="mr-2" /> Excluir Selecionados
-                                </DropdownMenuItem>
-                            </AlertDialogTrigger>
+                            {can.delete && <>
+                                <DropdownMenuSeparator />
+                                <AlertDialogTrigger asChild>
+                                    <DropdownMenuItem className="text-destructive focus:text-destructive">
+                                        <Trash2 className="mr-2" /> Excluir Selecionados
+                                    </DropdownMenuItem>
+                                </AlertDialogTrigger>
+                            </>}
                         </DropdownMenuContent>
                     </DropdownMenu>
                     <AlertDialogContent>
@@ -785,13 +791,13 @@ export default function ProductsPage() {
                 </AlertDialog>
             )}
 
-            <ImportProductsDialog
+            {can.edit && <ImportProductsDialog
                 isOpen={isImportOpen}
                 onOpenChange={setIsImportOpen}
                 onImport={handleImport}
-            />
+            />}
 
-            <Dialog open={isStockFormOpen} onOpenChange={setIsStockFormOpen}>
+            {can.edit && <Dialog open={isStockFormOpen} onOpenChange={setIsStockFormOpen}>
                 <DialogTrigger asChild>
                     <Button variant="outline" disabled={products.length === 0}>
                         <PlusCircle className="mr-2 h-4 w-4" />
@@ -808,9 +814,9 @@ export default function ProductsPage() {
                         onDone={() => setIsStockFormOpen(false)}
                     />
                 </DialogContent>
-            </Dialog>
+            </Dialog>}
 
-            <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+            {can.edit && <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                 <DialogTrigger asChild>
                     <Button onClick={openNewDialog}>
                         <PlusCircle className="mr-2 h-4 w-4" />
@@ -823,7 +829,7 @@ export default function ProductsPage() {
                     </DialogHeader>
                     <ProductForm product={editingProduct} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
                 </DialogContent>
-            </Dialog>
+            </Dialog>}
         </div>
       </div>
       
@@ -842,13 +848,13 @@ export default function ProductsPage() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[50px]">
+            {can.edit && <TableHead className="w-[50px]">
                 <Checkbox
                     checked={filteredProducts.length > 0 && selectedProductIds.length === filteredProducts.length}
                     onCheckedChange={handleSelectAll}
                     aria-label="Selecionar todas as linhas"
                 />
-            </TableHead>
+            </TableHead>}
             <TableHead className="w-[80px]">Imagem</TableHead>
             <TableHead>Nome</TableHead>
             <TableHead>Categoria</TableHead>
@@ -864,7 +870,7 @@ export default function ProductsPage() {
           {loading ? (
              Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                    <TableCell><Skeleton className="h-5 w-5"/></TableCell>
+                    {can.edit && <TableCell><Skeleton className="h-5 w-5"/></TableCell>}
                     <TableCell><Skeleton className="h-10 w-10 rounded-md" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-48" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-32" /></TableCell>
@@ -879,13 +885,13 @@ export default function ProductsPage() {
           ) : filteredProducts.length > 0 ? (
             filteredProducts.map((product) => (
               <TableRow key={product.id} data-state={selectedProductIds.includes(product.id) && "selected"}>
-                <TableCell>
+                {can.edit && <TableCell>
                     <Checkbox
                         checked={selectedProductIds.includes(product.id)}
                         onCheckedChange={(checked) => handleSelectProduct(product.id, checked)}
                         aria-label={`Selecionar ${product.name}`}
                     />
-                </TableCell>
+                </TableCell>}
                 <TableCell>
                    <Image src={product.imageUrl} alt={product.name} width={40} height={40} className="rounded-md object-cover aspect-square" data-ai-hint="product image" />
                 </TableCell>
@@ -909,12 +915,12 @@ export default function ProductsPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => openEditDialog(product)}>Editar</DropdownMenuItem>
-                       <DropdownMenuItem onClick={() => handleCopy(product)}>
+                      {can.edit && <DropdownMenuItem onClick={() => openEditDialog(product)}>Editar</DropdownMenuItem>}
+                      {can.edit && <DropdownMenuItem onClick={() => handleCopy(product)}>
                         <Copy className="mr-2 h-4 w-4" />
                         Copiar
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(product.id)}>Excluir</DropdownMenuItem>
+                      </DropdownMenuItem>}
+                      {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(product.id)}>Excluir</DropdownMenuItem>}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>
@@ -922,7 +928,7 @@ export default function ProductsPage() {
             ))
           ) : (
              <TableRow>
-                <TableCell colSpan={10} className="h-24 text-center">
+                <TableCell colSpan={can.edit ? 10 : 9} className="h-24 text-center">
                     Nenhum produto encontrado. Adicione produtos para começar.
                 </TableCell>
             </TableRow>
@@ -1030,6 +1036,7 @@ export default function ProductsPage() {
     </div>
   );
 }
+
 
 
 

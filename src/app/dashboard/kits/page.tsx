@@ -1,6 +1,7 @@
 
+
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -196,6 +197,11 @@ export default function KitsPage() {
     const [editingKit, setEditingKit] = useState<Kit | undefined>(undefined);
     const { toast } = useToast();
     const { user, currentBranch, loading: authLoading } = useAuth();
+    
+    const can = useMemo(() => ({
+        edit: user?.enabledModules?.kits?.edit ?? false,
+        delete: user?.enabledModules?.kits?.delete ?? false,
+    }), [user]);
 
     useEffect(() => {
         if (authLoading || !currentBranch || !user?.organizationId) {
@@ -212,7 +218,8 @@ export default function KitsPage() {
         });
 
         const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
-            setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+            const productData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+            setProducts(productData.sort((a,b) => a.name.localeCompare(b.name)));
         });
 
         return () => {
@@ -292,7 +299,7 @@ export default function KitsPage() {
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                 <h1 className="text-3xl font-bold">Kits Dinâmicos</h1>
-                <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                {can.edit && <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                     <DialogTrigger asChild>
                         <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" />Adicionar Kit</Button>
                     </DialogTrigger>
@@ -307,7 +314,7 @@ export default function KitsPage() {
                             onDone={() => setIsFormOpen(false)}
                         />
                     </DialogContent>
-                </Dialog>
+                </Dialog>}
             </div>
 
             <Table>
@@ -354,12 +361,12 @@ export default function KitsPage() {
                                             </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
-                                            <DropdownMenuItem onClick={() => openEditDialog(kit)}>Editar</DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => handleCopy(kit)}>
+                                            {can.edit && <DropdownMenuItem onClick={() => openEditDialog(kit)}>Editar</DropdownMenuItem>}
+                                            {can.edit && <DropdownMenuItem onClick={() => handleCopy(kit)}>
                                                 <Copy className="mr-2 h-4 w-4" />
                                                 Copiar
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(kit.id)}>Excluir</DropdownMenuItem>
+                                            </DropdownMenuItem>}
+                                            {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(kit.id)}>Excluir</DropdownMenuItem>}
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </TableCell>
@@ -377,3 +384,5 @@ export default function KitsPage() {
         </div>
     );
 }
+
+    

@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, Timestamp, orderBy } from 'firebase/firestore';
@@ -60,6 +61,10 @@ export default function InventoryPage() {
       from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
       to: new Date(),
     });
+
+    const can = useMemo(() => ({
+        edit: user?.enabledModules?.inventory?.edit ?? false,
+    }), [user]);
 
 
     useEffect(() => {
@@ -215,14 +220,12 @@ export default function InventoryPage() {
         )
     }
 
-    const canManageStock = user?.role === 'admin' || user?.role === 'manager';
-
     return (
         <>
         <div className="space-y-6 printable-area">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 no-print">
                 <h1 className="text-3xl font-bold">Gestão de Estoque</h1>
-                {canManageStock && (
+                {can.edit && (
                     <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                         <div className="flex flex-wrap gap-2">
                             <Button variant="outline" onClick={() => handleOpenForm('entry')}><PlusCircle className="mr-2" />Entrada</Button>
@@ -501,7 +504,7 @@ export default function InventoryPage() {
                 </DialogContent>
             </Dialog>
         </div>
-        <style jsx global>{\`
+        <style jsx global>{`
                 @media print {
                     body * {
                         visibility: hidden;
@@ -519,7 +522,9 @@ export default function InventoryPage() {
                         display: none;
                     }
                 }
-            \`}</style>
+            `}</style>
         </>
     );
 }
+
+    

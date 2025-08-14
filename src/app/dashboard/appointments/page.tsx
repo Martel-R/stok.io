@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
@@ -16,16 +16,14 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
-import { DateRange, DayPicker } from 'react-day-picker';
-import { format, addMinutes, setHours, setMinutes, startOfDay, endOfDay, isSameDay } from 'date-fns';
+import { format, addMinutes, setHours, setMinutes, startOfDay, endOfDay, isSameDay, getHours, getMinutes } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
 
 
 function AppointmentForm({ 
@@ -65,7 +63,7 @@ function AppointmentForm({
 
     const availableProfessionals = useMemo(() => {
         if (!selectedService) return [];
-        return professionals.filter(p => selectedService.professionalIds.includes(p.id));
+        return professionals.filter(p => p.professionalIds.includes(p.id));
     }, [selectedService, professionals]);
 
     const handleDateChange = (date: Date | undefined) => {
@@ -197,7 +195,7 @@ function AppointmentForm({
 
             <div className="space-y-2">
                 <Label>Observações</Label>
-                <Textarea value={formData.notes} onChange={(e) => setFormData(prev => ({...prev, notes: e.target.value}))}/>
+                <Textarea value={formData.notes || ''} onChange={(e) => setFormData(prev => ({...prev, notes: e.target.value}))}/>
             </div>
 
 
@@ -207,6 +205,145 @@ function AppointmentForm({
             </DialogFooter>
         </form>
     );
+}
+
+function DayView({ appointments, onEdit, onStartAttendance, onReschedule, onStatusChange, onDelete, customers }: {
+    appointments: Appointment[];
+    onEdit: (app: Appointment) => void;
+    onStartAttendance: (app: Appointment) => void;
+    onReschedule: (app: Appointment) => void;
+    onStatusChange: (id: string, status: AppointmentStatus) => void;
+    onDelete: (id: string) => void;
+    customers: Customer[];
+}) {
+    const { user } = useAuth();
+    const can = useMemo(() => ({
+        edit: user?.enabledModules?.appointments?.edit ?? false,
+        delete: user?.enabledModules?.appointments?.delete ?? false,
+    }), [user]);
+
+    const hourHeight = 60; // 60px per hour
+    const startHour = 7;
+    const endHour = 21;
+    const hours = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i);
+
+    const getPosition = (date: Date) => {
+        const hours = getHours(date);
+        const minutes = getMinutes(date);
+        return (hours - startHour + minutes / 60) * hourHeight;
+    };
+
+    const getStatusBadge = (status: AppointmentStatus) => {
+        switch (status) {
+            case 'scheduled': return <Badge variant="secondary">Agendado</Badge>;
+            case 'completed': return <Badge className="bg-green-100 text-green-800">Concluído</Badge>;
+            case 'cancelled': return <Badge variant="outline">Cancelado</Badge>;
+            case 'rescheduled': return <Badge className="bg-blue-100 text-blue-800">Reagendado</Badge>;
+            case 'no-show': return <Badge variant="destructive">Não Compareceu</Badge>;
+            case 'pending-confirmation': return <Badge variant="destructive" className="bg-orange-100 text-orange-800">Pendente</Badge>;
+            default: return <Badge>{status}</Badge>;
+        }
+    };
+    
+    const isAnamnesisComplete = (customer: Customer | undefined): boolean => {
+        if (!customer || !customer.anamnesisAnswers || customer.anamnesisAnswers.length === 0) {
+            return false;
+        }
+        return customer.anamnesisAnswers.every(item => {
+            if (item.answer === null || item.answer === '') {
+                return false;
+            }
+            if (typeof item.answer === 'object' && item.answer.choice === null) {
+                return false;
+            }
+            return true;
+        });
+    }
+
+    return (
+        <ScrollArea className="h-[70vh] w-full">
+            <div className="relative">
+                {/* Time slots */}
+                <div className="grid">
+                    {hours.map(hour => (
+                        <div key={hour} className="relative h-[60px] border-t border-muted">
+                            <span className="absolute -top-3 left-2 text-xs text-muted-foreground">{format(setHours(new Date(), hour), 'HH:mm')}</span>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Appointments */}
+                <div className="absolute top-0 left-12 right-0 bottom-0">
+                    {appointments.map(app => {
+                        const top = getPosition(app.start);
+                        const height = getPosition(app.end) - top;
+                        const customer = customers.find(c => c.id === app.customerId);
+                        const anamnesisDone = isAnamnesisComplete(customer);
+
+                        return (
+                            <Card key={app.id}
+                                className="absolute w-[calc(100%-1rem)] p-3 overflow-hidden"
+                                style={{ top: `${top}px`, height: `${height}px`, minHeight: '40px' }}
+                            >
+                                <div className="flex justify-between items-start gap-2 h-full">
+                                    <div className="space-y-1 flex-grow overflow-hidden">
+                                        <CardTitle className="text-sm truncate">{app.serviceName}</CardTitle>
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <Users className="h-3 w-3" />
+                                            <span className="truncate">{app.customerName}</span>
+                                        </div>
+                                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <Briefcase className="h-3 w-3" />
+                                            <span className="truncate">{app.professionalName}</span>
+                                        </div>
+                                        {!anamnesisDone && (
+                                            <div className="flex items-center gap-1 text-yellow-600 text-xs">
+                                                <AlertTriangle className="h-3 w-3"/>
+                                                <span>Anamnese pendente</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1 shrink-0">
+                                        {getStatusBadge(app.status)}
+                                         <div className="flex items-center gap-1">
+                                            {app.status === 'pending-confirmation' && can.edit ? (
+                                                <Button size="sm" className="h-7" onClick={() => onEdit(app)}>
+                                                    <Check className="mr-1 h-3 w-3" />
+                                                    Confirmar
+                                                </Button>
+                                            ) : can.edit ? (
+                                                <Button
+                                                    size="sm"
+                                                    className="h-7"
+                                                    variant={app.attendanceId ? "outline" : "default"}
+                                                    onClick={() => onStartAttendance(app)}
+                                                    disabled={app.status !== 'scheduled'}
+                                                >
+                                                    <PlayCircle className="mr-1 h-3 w-3" />
+                                                    {app.attendanceId ? 'Ver' : 'Iniciar'}
+                                                </Button>
+                                            ) : null}
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    {can.edit && <DropdownMenuItem onClick={() => onEdit(app)}>Editar</DropdownMenuItem>}
+                                                    {can.edit && <DropdownMenuItem onClick={() => onReschedule(app)}>
+                                                        <RefreshCw className="mr-2 h-4 w-4" />
+                                                        Reagendar
+                                                    </DropdownMenuItem>}
+                                                    {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(app.id)}>Excluir</DropdownMenuItem>}
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </div>
+                                    </div>
+                                </div>
+                            </Card>
+                        )
+                    })}
+                </div>
+            </div>
+        </ScrollArea>
+    )
 }
 
 export default function AppointmentsPage() {
@@ -376,37 +513,10 @@ export default function AppointmentsPage() {
         });
         setIsFormOpen(true);
     }
-
-    const getStatusBadge = (status: AppointmentStatus) => {
-        switch (status) {
-            case 'scheduled': return <Badge variant="secondary">Agendado</Badge>;
-            case 'completed': return <Badge className="bg-green-100 text-green-800">Concluído</Badge>;
-            case 'cancelled': return <Badge variant="outline">Cancelado</Badge>;
-            case 'rescheduled': return <Badge className="bg-blue-100 text-blue-800">Reagendado</Badge>;
-            case 'no-show': return <Badge variant="destructive">Não Compareceu</Badge>;
-            case 'pending-confirmation': return <Badge variant="destructive" className="bg-orange-100 text-orange-800">Pendente</Badge>;
-            default: return <Badge>{status}</Badge>;
-        }
-    };
-
-    const isAnamnesisComplete = (customer: Customer | undefined): boolean => {
-        if (!customer || !customer.anamnesisAnswers || customer.anamnesisAnswers.length === 0) {
-            return false;
-        }
-        return customer.anamnesisAnswers.every(item => {
-            if (item.answer === null || item.answer === '') {
-                return false;
-            }
-            if (typeof item.answer === 'object' && item.answer.choice === null) {
-                return false;
-            }
-            return true;
-        });
-    }
-
+    
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-start">
+            <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                 <div className="flex items-center gap-4">
                     <Calendar className="h-10 w-10 text-primary" />
                     <div>
@@ -416,145 +526,71 @@ export default function AppointmentsPage() {
                         </p>
                     </div>
                 </div>
-                {can.edit && (
-                    <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                        <DialogTrigger asChild>
-                            <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" /> Novo Agendamento</Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-xl">
-                            <DialogHeader>
-                                <DialogTitle>{editingAppointment ? 'Editar Agendamento' : 'Novo Agendamento'}</DialogTitle>
-                            </DialogHeader>
-                            <AppointmentForm
-                                appointment={editingAppointment}
-                                customers={customers}
-                                services={services}
-                                professionals={professionals}
-                                onSave={handleSave}
-                                onDone={() => setIsFormOpen(false)}
-                                initialDate={selectedDay}
+                 <div className="flex flex-wrap gap-2">
+                    <Popover>
+                        <PopoverTrigger asChild>
+                             <Button variant="outline">
+                                <Calendar className="mr-2 h-4 w-4" />
+                                {format(selectedDay, 'dd/MM/yyyy')}
+                             </Button>
+                        </PopoverTrigger>
+                         <PopoverContent className="w-auto p-0">
+                            <CalendarComponent
+                                mode="single"
+                                selected={selectedDay}
+                                onSelect={(day) => day && setSelectedDay(day)}
+                                initialFocus
                             />
-                        </DialogContent>
-                    </Dialog>
-                )}
-            </div>
-
-            <div className="grid md:grid-cols-3 gap-6">
-                <div className="md:col-span-1">
-                     <CalendarComponent
-                        mode="single"
-                        selected={selectedDay}
-                        onSelect={(day) => day && setSelectedDay(day)}
-                        className="rounded-md border"
-                     />
-                </div>
-                <div className="md:col-span-2">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Agendamentos para {format(selectedDay, 'dd/MM/yyyy')}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <ScrollArea className="h-[60vh]">
-                            {loading ? (
-                                <Skeleton className="h-full w-full" />
-                            ) : appointmentsForSelectedDay.length > 0 ? (
-                                <div className="space-y-4">
-                                    {appointmentsForSelectedDay.map(app => {
-                                        const customer = customers.find(c => c.id === app.customerId);
-                                        const anamnesisDone = isAnamnesisComplete(customer);
-
-                                        return (
-                                            <Card key={app.id} className={cn("p-4", app.status === 'pending-confirmation' && "bg-orange-50 border-orange-200")}>
-                                                <div className="flex justify-between items-start gap-4">
-                                                    <div className="space-y-1 flex-grow">
-                                                        <CardTitle className="text-lg">{app.serviceName}</CardTitle>
-                                                        <div className="flex items-center gap-2">
-                                                            <Users className="h-4 w-4 text-muted-foreground" />
-                                                            <CardDescription>{app.customerName}</CardDescription>
-                                                        </div>
-                                                        {!anamnesisDone && (
-                                                            <div className="flex items-center gap-2 text-yellow-600">
-                                                                <AlertTriangle className="h-4 w-4"/>
-                                                                <span className="text-sm font-semibold">Anamnese pendente</span>
-                                                            </div>
-                                                        )}
-                                                        <div className="flex items-center gap-2">
-                                                            <Briefcase className="h-4 w-4 text-muted-foreground" />
-                                                            <CardDescription>{app.professionalName}</CardDescription>
-                                                        </div>
-                                                         <div className="flex items-center gap-2">
-                                                            <Clock className="h-4 w-4 text-muted-foreground" />
-                                                            <CardDescription>{format(app.start, 'HH:mm')} - {format(app.end, 'HH:mm')}</CardDescription>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex flex-col items-end gap-2 shrink-0">
-                                                        {getStatusBadge(app.status)}
-                                                        <div className="flex items-center gap-1">
-                                                            {app.status === 'pending-confirmation' && can.edit ? (
-                                                                <Button size="sm" onClick={() => openEditDialog(app)}>
-                                                                    <Check className="mr-2" />
-                                                                    Confirmar
-                                                                </Button>
-                                                            ) : can.edit ? (
-                                                                <Button
-                                                                    size="sm"
-                                                                    variant={app.attendanceId ? "outline" : "default"}
-                                                                    onClick={() => handleStartAttendance(app)}
-                                                                    disabled={app.status !== 'scheduled'}
-                                                                >
-                                                                    <PlayCircle className="mr-2" />
-                                                                    {app.attendanceId ? 'Ver' : 'Iniciar'}
-                                                                </Button>
-                                                            ) : null}
-                                                            <DropdownMenu>
-                                                                <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
-                                                                <DropdownMenuContent align="end">
-                                                                    <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                                                    {can.edit && <DropdownMenuSeparator />}
-                                                                    {can.edit && <DropdownMenuItem onClick={() => openEditDialog(app)}>Editar</DropdownMenuItem>}
-                                                                    {can.edit && <DropdownMenuItem onClick={() => handleReschedule(app)}>
-                                                                        <RefreshCw className="mr-2 h-4 w-4" />
-                                                                        Reagendar
-                                                                    </DropdownMenuItem>}
-                                                                    {can.edit && <DropdownMenuSeparator />}
-                                                                    {can.edit && <div className="p-2">
-                                                                        <Label>Mudar Status</Label>
-                                                                        <Select value={app.status} onValueChange={(status: AppointmentStatus) => handleStatusChange(app.id, status)}>
-                                                                            <SelectTrigger className="mt-1">
-                                                                                <SelectValue />
-                                                                            </SelectTrigger>
-                                                                            <SelectContent>
-                                                                                <SelectItem value="pending-confirmation">Pendente</SelectItem>
-                                                                                <SelectItem value="scheduled">Agendado</SelectItem>
-                                                                                <SelectItem value="completed">Concluído</SelectItem>
-                                                                                <SelectItem value="cancelled">Cancelado</SelectItem>
-                                                                                <SelectItem value="rescheduled">Reagendado</SelectItem>
-                                                                                <SelectItem value="no-show">Não Compareceu</SelectItem>
-                                                                            </SelectContent>
-                                                                        </Select>
-                                                                    </div>}
-                                                                    {can.delete && <DropdownMenuSeparator />}
-                                                                    {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDelete(app.id)}>Excluir</DropdownMenuItem>}
-                                                                </DropdownMenuContent>
-                                                            </DropdownMenu>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                {app.notes && <p className="text-sm text-muted-foreground mt-2 pt-2 border-t">{app.notes}</p>}
-                                            </Card>
-                                        )
-                                    })}
-                                </div>
-                            ) : (
-                                <div className="flex items-center justify-center h-full text-muted-foreground">
-                                    Nenhum agendamento para este dia.
-                                </div>
-                            )}
-                             </ScrollArea>
-                        </CardContent>
-                    </Card>
+                        </PopoverContent>
+                    </Popover>
+                    {can.edit && (
+                        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                            <DialogTrigger asChild>
+                                <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" /> Novo Agendamento</Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-xl">
+                                <DialogHeader>
+                                    <DialogTitle>{editingAppointment ? 'Editar Agendamento' : 'Novo Agendamento'}</DialogTitle>
+                                </DialogHeader>
+                                <AppointmentForm
+                                    appointment={editingAppointment}
+                                    customers={customers}
+                                    services={services}
+                                    professionals={professionals}
+                                    onSave={handleSave}
+                                    onDone={() => setIsFormOpen(false)}
+                                    initialDate={selectedDay}
+                                />
+                            </DialogContent>
+                        </Dialog>
+                    )}
                 </div>
             </div>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Agenda do Dia - {format(selectedDay, 'dd/MM/yyyy')}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {loading ? (
+                        <Skeleton className="h-[60vh] w-full" />
+                    ) : appointmentsForSelectedDay.length > 0 ? (
+                        <DayView
+                            appointments={appointmentsForSelectedDay}
+                            onEdit={openEditDialog}
+                            onStartAttendance={handleStartAttendance}
+                            onReschedule={handleReschedule}
+                            onStatusChange={handleStatusChange}
+                            onDelete={handleDelete}
+                            customers={customers}
+                        />
+                    ) : (
+                        <div className="flex items-center justify-center h-[60vh] text-muted-foreground">
+                            Nenhum agendamento para este dia.
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
         </div>
     )
 }

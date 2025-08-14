@@ -61,6 +61,19 @@ const defaultPermissions: EnabledModules = {
     services: { view: true, edit: true, delete: true },
 };
 
+const professionalPermissions: EnabledModules = {
+    ...defaultPermissions,
+    products: { view: false, edit: false, delete: false },
+    combos: { view: false, edit: false, delete: false },
+    inventory: { view: false, edit: false, delete: false },
+    pos: { view: false, edit: false, delete: false },
+    assistant: { view: false, edit: false, delete: false },
+    reports: { view: false, edit: false, delete: false },
+    settings: { view: false, edit: false, delete: false },
+    kits: { view: false, edit: false, delete: false },
+    customers: { view: true, edit: false, delete: false },
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<UserWithOrg | null>(null);
   const [branches, setBranches] = React.useState<Branch[]>([]);
@@ -198,7 +211,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         photoURL: avatar
       });
 
+      const batch = writeBatch(db);
+
       const adminProfileRef = doc(collection(db, 'permissionProfiles'));
+      const professionalProfileRef = doc(collection(db, 'permissionProfiles'));
 
       const newUser: User = {
         id: firebaseUser.uid,
@@ -209,8 +225,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         organizationId: organizationId
       };
 
-      const batch = writeBatch(db);
-      
       batch.set(doc(db, "users", firebaseUser.uid), newUser);
       
       batch.set(doc(db, "organizations", organizationId), { 
@@ -220,13 +234,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         enabledModules: defaultPermissions
       });
       
-      // Create a default "Admin" profile
       const adminProfile: Omit<PermissionProfile, 'id'> = {
           name: 'Admin',
           organizationId: organizationId,
           permissions: defaultPermissions
       };
       batch.set(adminProfileRef, adminProfile);
+
+      const professionalProfile: Omit<PermissionProfile, 'id'> = {
+          name: 'Profissional',
+          organizationId: organizationId,
+          permissions: professionalPermissions
+      };
+      batch.set(professionalProfileRef, professionalProfile);
 
 
       await batch.commit();

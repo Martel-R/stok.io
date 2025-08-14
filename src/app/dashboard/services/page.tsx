@@ -9,8 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where } from 'firebase/firestore';
-import type { Service, User } from '@/lib/types';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
+import type { Service, User, PermissionProfile } from '@/lib/types';
 import { MoreHorizontal, PlusCircle, Briefcase, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -146,6 +146,7 @@ export default function ServicesPage() {
     const { user } = useAuth();
 
     const can = useMemo(() => ({
+        view: user?.enabledModules?.services?.view ?? false,
         edit: user?.enabledModules?.services?.edit ?? false,
         delete: user?.enabledModules?.services?.delete ?? false,
     }), [user]);
@@ -155,21 +156,42 @@ export default function ServicesPage() {
             setLoading(false);
             return;
         }
-        
+
         const servicesQuery = query(collection(db, 'services'), where("organizationId", "==", user.organizationId));
         const servicesUnsub = onSnapshot(servicesQuery, (snapshot) => {
             setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Service)));
             setLoading(false);
         });
 
-        const professionalsQuery = query(collection(db, 'users'), where("organizationId", "==", user.organizationId), where("role", "==", "professional"));
-        const profsUnsub = onSnapshot(professionalsQuery, (snapshot) => {
-            setProfessionals(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
+        // Fetch the "Professional" profile ID first
+        const profilesQuery = query(collection(db, 'permissionProfiles'), where("organizationId", "==", user.organizationId), where("name", "==", "Profissional"));
+        
+        const fetchProfessionals = async () => {
+            const profileSnap = await getDocs(profilesQuery);
+            if (profileSnap.empty) {
+                console.warn("Perfil 'Profissional' não encontrado.");
+                setProfessionals([]);
+                return () => {}; // Return an empty unsubscribe function
+            }
+            const professionalProfileId = profileSnap.docs[0].id;
+            
+            // Now fetch users with that profile ID
+            const professionalsQuery = query(collection(db, 'users'), where("organizationId", "==", user.organizationId), where("role", "==", professionalProfileId));
+            return onSnapshot(professionalsQuery, (snapshot) => {
+                setProfessionals(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
+            });
+        };
+        
+        let profsUnsub: (() => void) | undefined;
+        fetchProfessionals().then(unsub => {
+            profsUnsub = unsub;
         });
 
         return () => {
             servicesUnsub();
-            profsUnsub();
+            if (profsUnsub) {
+                profsUnsub();
+            }
         };
     }, [user]);
 
@@ -221,7 +243,7 @@ export default function ServicesPage() {
         }).filter(Boolean);
     };
 
-    if (!user?.enabledModules?.services?.view) {
+    if (!can.view) {
         return (
             <Card className="m-auto">
                 <CardHeader>

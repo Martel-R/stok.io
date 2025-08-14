@@ -63,7 +63,7 @@ function AppointmentForm({
 
     const availableProfessionals = useMemo(() => {
         if (!selectedService) return [];
-        return professionals.filter(p => p.professionalIds.includes(p.id));
+        return professionals.filter(p => selectedService.professionalIds.includes(p.id));
     }, [selectedService, professionals]);
 
     const handleDateChange = (date: Date | undefined) => {

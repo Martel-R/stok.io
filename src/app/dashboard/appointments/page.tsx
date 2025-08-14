@@ -9,8 +9,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, Timestamp, writeBatch, serverTimestamp } from 'firebase/firestore';
-import type { Appointment, Customer, Service, User, AppointmentStatus, Attendance, AnamnesisAnswer } from '@/lib/types';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, Timestamp, writeBatch, serverTimestamp, getDocs } from 'firebase/firestore';
+import type { Appointment, Customer, Service, User, AppointmentStatus, Attendance, AnamnesisAnswer, PermissionProfile } from '@/lib/types';
 import { MoreHorizontal, PlusCircle, Calendar, Users, Briefcase, Check, ChevronsUpDown, Clock, RefreshCw, PlayCircle, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -413,27 +413,37 @@ export default function AppointmentsPage() {
             return;
         }
 
-        const queries = [
-            {coll: 'appointments', stateSetter: setAppointments, converter: convertAppointmentDate, condition: where('branchId', '==', currentBranch.id)},
-            {coll: 'customers', stateSetter: setCustomers, condition: where('organizationId', '==', user.organizationId)},
-            {coll: 'services', stateSetter: setServices, condition: where('organizationId', '==', user.organizationId)},
-            {coll: 'users', stateSetter: setProfessionals, condition: where('role', '==', 'professional')},
-        ];
+        const fetchRelatedData = async () => {
+            const unsubscribers: (() => void)[] = [];
 
-        const unsubs = queries.map(q => {
-            const queryRef = query(collection(db, q.coll), q.condition);
-            return onSnapshot(queryRef, (snapshot) => {
-                const data = snapshot.docs.map(doc => {
-                    const docData = { id: doc.id, ...doc.data() };
-                    return q.converter ? q.converter(docData) : docData;
-                });
-                q.stateSetter(data as any);
-            });
-        });
+            // Fetch Customers and Services
+            const customerQuery = query(collection(db, 'customers'), where('organizationId', '==', user.organizationId));
+            unsubscribers.push(onSnapshot(customerQuery, snap => setCustomers(snap.docs.map(d => ({id: d.id, ...d.data()}) as Customer))));
 
-        setLoading(false);
+            const serviceQuery = query(collection(db, 'services'), where('organizationId', '==', user.organizationId));
+            unsubscribers.push(onSnapshot(serviceQuery, snap => setServices(snap.docs.map(d => ({id: d.id, ...d.data()}) as Service))));
 
-        return () => unsubs.forEach(unsub => unsub());
+            // Fetch Appointments
+            const appointmentQuery = query(collection(db, 'appointments'), where('branchId', '==', currentBranch.id));
+            unsubscribers.push(onSnapshot(appointmentQuery, snap => setAppointments(snap.docs.map(d => convertAppointmentDate({id: d.id, ...d.data()})))));
+
+            // Fetch Professionals
+            const profilesQuery = query(collection(db, 'permissionProfiles'), where("organizationId", "==", user.organizationId), where("name", "==", "Profissional"));
+            const profileSnap = await getDocs(profilesQuery);
+            if (!profileSnap.empty) {
+                const professionalProfileId = profileSnap.docs[0].id;
+                const professionalsQuery = query(collection(db, 'users'), where("organizationId", "==", user.organizationId), where("role", "==", professionalProfileId));
+                unsubscribers.push(onSnapshot(professionalsQuery, snap => setProfessionals(snap.docs.map(d => ({id: d.id, ...d.data()}) as User))));
+            } else {
+                console.warn("Perfil 'Profissional' não encontrado.");
+                setProfessionals([]);
+            }
+
+            setLoading(false);
+            return () => unsubscribers.forEach(unsub => unsub());
+        };
+
+        fetchRelatedData();
 
     }, [user, currentBranch]);
 

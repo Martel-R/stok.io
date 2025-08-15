@@ -28,6 +28,7 @@ interface UserWithOrg extends User {
 interface AuthContextType {
   isAuthenticated: boolean;
   user: UserWithOrg | null;
+  organizations: Organization[];
   branches: Branch[];
   currentBranch: Branch | null;
   setCurrentBranch: (branch: Branch) => void;
@@ -80,6 +81,7 @@ const professionalPermissions: EnabledModules = {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<UserWithOrg | null>(null);
+  const [organizations, setOrganizations] = React.useState<Organization[]>([]);
   const [branches, setBranches] = React.useState<Branch[]>([]);
   const [currentBranch, setCurrentBranchState] = React.useState<Branch | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -91,12 +93,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let branchesUnsubscribe: Unsubscribe | null = null;
     let orgUnsubscribe: Unsubscribe | null = null;
     let profilesUnsubscribe: Unsubscribe | null = null;
+    let allOrgsUnsubscribe: Unsubscribe | null = null;
 
     const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseAuthUser | null) => {
       setLoading(true);
       if (branchesUnsubscribe) branchesUnsubscribe();
       if (orgUnsubscribe) orgUnsubscribe();
       if (profilesUnsubscribe) profilesUnsubscribe();
+      if (allOrgsUnsubscribe) allOrgsUnsubscribe();
 
       if (firebaseUser) {
         const userDocRef = doc(db, "users", firebaseUser.uid);
@@ -134,12 +138,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser({ ...currentUser, isImpersonating });
 
         if (isSuperAdmin && !isImpersonating) {
-            setUser(prev => prev ? ({...prev, enabledModules: defaultPermissions}) : null);
+            allOrgsUnsubscribe = onSnapshot(collection(db, 'organizations'), (snapshot) => {
+                const orgs = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as Organization));
+                setOrganizations(orgs);
+                if (orgs.length > 0) {
+                     setUser(prev => prev ? ({
+                        ...prev, 
+                        enabledModules: defaultPermissions, 
+                        organizationId: orgs[0].id,
+                        organization: orgs[0]
+                    }) : null);
+                } else {
+                    setUser(prev => prev ? ({...prev, enabledModules: defaultPermissions}) : null);
+                }
+            });
         } else if (effectiveOrgId) {
             const orgDocRef = doc(db, "organizations", effectiveOrgId);
             orgUnsubscribe = onSnapshot(orgDocRef, (orgDoc) => {
                 if (orgDoc.exists()) {
                     const orgData = orgDoc.data() as Organization;
+                    setUser(prev => prev ? ({...prev, paymentStatus: orgData.paymentStatus, organization: orgData }) : null);
 
                     const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId));
                     profilesUnsubscribe = onSnapshot(profilesQuery, (profilesSnap) => {
@@ -149,25 +167,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         
                         let finalPermissions: Partial<EnabledModules> = {};
 
-                        if (isImpersonating) {
+                        if (isSuperAdmin && isImpersonating) {
                             finalPermissions = { ...defaultPermissions, ...orgModules };
-                        } else if (currentUser.role === 'admin' && !userProfile) {
+                        } else if (currentUser.role === 'admin' && !userProfile) { // Case for first admin before profiles are set
                             finalPermissions = { ...defaultPermissions, ...orgModules };
                         } else if (userProfile?.permissions) {
-                            for (const key in userProfile.permissions) {
+                             for (const key in orgModules) {
                                 const moduleKey = key as keyof EnabledModules;
                                 if (orgModules[moduleKey]) {
-                                    finalPermissions[moduleKey] = userProfile.permissions[moduleKey];
+                                    finalPermissions[moduleKey] = userProfile.permissions[moduleKey] || { view: false, edit: false, delete: false };
                                 }
                             }
                         }
 
-                        setUser(prevUser => prevUser ? { 
-                            ...prevUser, 
-                            paymentStatus: orgData.paymentStatus, 
-                            organization: orgData,
-                            enabledModules: finalPermissions as EnabledModules
-                        } : null);
+                        setUser(prevUser => prevUser ? { ...prevUser, enabledModules: finalPermissions as EnabledModules } : null);
                     });
                 }
             });
@@ -175,7 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const q = query(collection(db, "branches"), where("organizationId", "==", effectiveOrgId));
             branchesUnsubscribe = onSnapshot(q, (snapshot) => {
                 const orgBranches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
-                const userFilteredBranches = isImpersonating ? orgBranches : orgBranches.filter(b => b.userIds.includes(currentUser.id));
+                const userFilteredBranches = (isSuperAdmin && isImpersonating) ? orgBranches : orgBranches.filter(b => b.userIds.includes(currentUser.id));
                 setBranches(userFilteredBranches);
 
                 const storedBranchId = localStorage.getItem('currentBranchId');
@@ -196,6 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setBranches([]);
         setCurrentBranchState(null);
+        setOrganizations([]);
       }
       setLoading(false);
     });
@@ -205,6 +219,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (branchesUnsubscribe) branchesUnsubscribe();
       if (orgUnsubscribe) orgUnsubscribe();
       if (profilesUnsubscribe) profilesUnsubscribe();
+      if (allOrgsUnsubscribe) allOrgsUnsubscribe();
     };
   }, []);
   
@@ -533,7 +548,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, loading, pathname, router, user]);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, deleteTestData, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, deleteTestData, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations }}>
       {children}
     </AuthContext.Provider>
   );
@@ -546,4 +561,5 @@ export const useAuth = () => {
   }
   return context;
 };
+
 

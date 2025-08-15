@@ -130,6 +130,60 @@ function BranchSwitcher() {
     );
 }
 
+function OrganizationSwitcher() {
+    const { organizations, startImpersonation, user } = useAuth();
+    const [open, setOpen] = useState(false);
+
+    if (user?.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
+        return null;
+    }
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={open}
+                    className="w-[250px] justify-between"
+                >
+                     <Building className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate">{user.isImpersonating ? `Personificando: ${user.organization?.name}` : 'Trocar de Organização'}</span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[250px] p-0">
+                <Command>
+                    <CommandInput placeholder="Buscar organização..." />
+                    <CommandList>
+                        <CommandEmpty>Nenhuma organização encontrada.</CommandEmpty>
+                        <CommandGroup>
+                            {organizations.map((org) => (
+                                <CommandItem
+                                    key={org.id}
+                                    value={org.name}
+                                    onSelect={() => {
+                                        startImpersonation(org.id);
+                                        setOpen(false);
+                                    }}
+                                >
+                                    <Check
+                                        className={cn(
+                                            "mr-2 h-4 w-4",
+                                            user?.organizationId === org.id && user?.isImpersonating ? "opacity-100" : "opacity-0"
+                                        )}
+                                    />
+                                    {org.name}
+                                </CommandItem>
+                            ))}
+                        </CommandGroup>
+                    </CommandList>
+                </Command>
+            </PopoverContent>
+        </Popover>
+    );
+}
+
 
 function UserNav() {
     const { user, logout } = useAuth();
@@ -292,6 +346,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                             <span className="sr-only">Abrir Menu</span>
                         </Button>
                         <BranchSwitcher />
+                        <OrganizationSwitcher />
                     </div>
                     <div className="flex w-full items-center justify-end gap-4">
                         <UserNav />

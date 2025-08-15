@@ -13,7 +13,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, CalendarIcon, Edit, CheckCircle } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -23,11 +23,12 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { PermissionProfileForm } from '@/components/permission-profile-form';
-import { format, addMonths, eachMonthOfInterval, startOfMonth } from 'date-fns';
+import { format, eachMonthOfInterval, startOfMonth } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { DateRange } from 'react-day-picker';
+import { cn } from '@/lib/utils';
 
 type OrgWithUser = Organization & { owner?: User };
 
@@ -35,7 +36,9 @@ type OrgWithUser = Organization & { owner?: User };
 const toDate = (date: any): Date | undefined => {
     if (!date) return undefined;
     if (date instanceof Date) return date;
-    if (date.toDate instanceof Function) return date.toDate();
+    if (date instanceof Timestamp) return date.toDate();
+    if (typeof date.toDate === 'function') return date.toDate();
+    if (typeof date.seconds === 'number') return new Date(date.seconds * 1000);
     return undefined;
 };
 
@@ -65,10 +68,11 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
         const months = eachMonthOfInterval({ start: startDate, end: endDate });
 
         const paymentRecords: PaymentRecord[] = months.map((monthDate) => {
-            const existingRecord = (organization.subscription?.paymentRecords || []).find(p => 
-                p.date.toDate().getMonth() === monthDate.getMonth() && 
-                p.date.toDate().getFullYear() === monthDate.getFullYear()
-            );
+            const existingRecord = (organization.subscription?.paymentRecords || []).find(p => {
+                const pDate = toDate(p.date);
+                return pDate && pDate.getMonth() === monthDate.getMonth() && pDate.getFullYear() === monthDate.getFullYear();
+            });
+
             return existingRecord || {
                 id: doc(collection(db, 'dummy')).id, // Temporary unique ID
                 date: Timestamp.fromDate(startOfMonth(monthDate)),
@@ -89,7 +93,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
             await updateDoc(doc(db, 'organizations', organization.id), {
                 subscription: newSubscriptionData
             });
-            toast({ title: 'Assinatura salva com sucesso!' });
+            toast({ title: 'Assinatura salva e parcelas geradas com sucesso!' });
         } catch (error) {
             console.error(error);
             toast({ title: 'Erro ao salvar assinatura', variant: 'destructive' });
@@ -97,11 +101,17 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
     }
     
     const handleRegisterPayment = async (paymentRecordId: string) => {
-        if (!organization.subscription) return;
+        if (!organization.subscription || !adminUser) return;
     
         const updatedRecords = organization.subscription.paymentRecords.map(record => {
             if (record.id === paymentRecordId) {
-                return { ...record, status: 'paid' as PaymentRecordStatus, paidDate: serverTimestamp() };
+                return { 
+                    ...record, 
+                    status: 'paid' as PaymentRecordStatus, 
+                    paidDate: serverTimestamp(),
+                    paidAmount: record.amount,
+                    recordedBy: adminUser.id,
+                };
             }
             return record;
         });
@@ -155,7 +165,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                                 </Popover>
                              </div>
                          </div>
-                         <Button onClick={handleCreateOrUpdateSubscription}>Salvar Alterações e Gerar Parcelas</Button>
+                         <Button onClick={handleCreateOrUpdateSubscription}>Salvar Contrato e Gerar Parcelas</Button>
                     </div>
 
                     {/* Payment Records Table */}
@@ -167,6 +177,8 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                                     <TableRow>
                                         <TableHead>Vencimento</TableHead>
                                         <TableHead>Valor</TableHead>
+                                        <TableHead>Data Pag.</TableHead>
+                                        <TableHead>Valor Pago</TableHead>
                                         <TableHead>Status</TableHead>
                                         <TableHead className="text-right">Ações</TableHead>
                                     </TableRow>
@@ -177,7 +189,13 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                                             <TableRow key={p.id}>
                                                 <TableCell>{p.date ? format(toDate(p.date)!, 'dd/MM/yyyy') : 'N/A'}</TableCell>
                                                 <TableCell>R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
-                                                <TableCell><Badge variant={p.status === 'paid' ? 'default' : 'destructive'}>{p.status}</Badge></TableCell>
+                                                <TableCell>{p.paidDate ? format(toDate(p.paidDate)!, 'dd/MM/yyyy') : '-'}</TableCell>
+                                                <TableCell>{p.paidAmount ? `R$ ${p.paidAmount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`: '-'}</TableCell>
+                                                <TableCell>
+                                                     <Badge className={cn(p.status === 'paid' && 'bg-green-100 text-green-800')} variant={p.status === 'paid' ? 'secondary' : 'destructive'}>
+                                                        {p.status}
+                                                    </Badge>
+                                                </TableCell>
                                                 <TableCell className="text-right">
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal/></Button></DropdownMenuTrigger>
@@ -191,7 +209,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                                             </TableRow>
                                         ))
                                     ) : (
-                                        <TableRow><TableCell colSpan={4} className="text-center">Nenhuma parcela gerada.</TableCell></TableRow>
+                                        <TableRow><TableCell colSpan={6} className="text-center">Nenhuma parcela gerada.</TableCell></TableRow>
                                     )}
                                 </TableBody>
                             </Table>
@@ -607,5 +625,4 @@ function SuperAdminPage() {
 }
 
 export default SuperAdminPage;
-
 

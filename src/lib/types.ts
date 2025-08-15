@@ -302,6 +302,7 @@ export interface PaymentRecord {
     date: any; // Timestamp for the due date
     paidDate?: any; // Timestamp for when it was paid
     amount: number;
+    paidAmount?: number;
     status: PaymentRecordStatus;
     recordedBy?: string; // User ID of admin who recorded it
 }

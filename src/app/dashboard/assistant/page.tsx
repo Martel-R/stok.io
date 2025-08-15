@@ -3,55 +3,129 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
-import { answerInventoryQuestion } from '@/ai/flows/answer-inventory-questions';
+import { answerBusinessQuestion } from '@/ai/flows/answer-business-questions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Send, Loader2, Lock } from 'lucide-react';
-import type { Product, Sale, StockEntry } from '@/lib/types';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import type { Product, Service, Customer, Appointment, StockEntry, Sale, PaymentCondition } from '@/lib/types';
+import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { format } from 'date-fns';
 
 interface Message {
   sender: 'user' | 'bot';
   text: string;
 }
 
+const convertDate = (field: any) => field instanceof Timestamp ? field.toDate() : new Date();
+
 export default function AssistantPage() {
   const { user, currentBranch } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [inventoryContext, setInventoryContext] = useState('');
+  const [dataLoaded, setDataLoaded] = useState(false);
 
-  const hasAccess = user?.role === 'admin' || user?.role === 'manager';
+  // State for all contexts
+  const [productsContext, setProductsContext] = useState('');
+  const [servicesContext, setServicesContext] = useState('');
+  const [customersContext, setCustomersContext] = useState('');
+  const [appointmentsContext, setAppointmentsContext] = useState('');
+  const [inventoryContext, setInventoryContext] = useState('');
+  const [salesContext, setSalesContext] = useState('');
+  const [paymentConditionsContext, setPaymentConditionsContext] = useState('');
+
+  const hasAccess = user?.enabledModules?.assistant?.view ?? false;
 
   useEffect(() => {
-      if (!hasAccess || !currentBranch) return;
+      if (!hasAccess || !currentBranch || !user?.organizationId) return;
 
-      const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
-      const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
+      const unsubs: (()=>void)[] = [];
+      const orgId = user.organizationId;
+      const branchId = currentBranch.id;
 
-      const unsubProducts = onSnapshot(productsQuery, (productsSnapshot) => {
-          const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-          
-          const unsubEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
-              const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
+      // Products
+      const productsQuery = query(collection(db, 'products'), where('branchId', '==', branchId));
+      unsubs.push(onSnapshot(productsQuery, (s) => 
+        setProductsContext(JSON.stringify(s.docs.map(d => d.data()).map(({name, category, price}) => ({name, category, price}))))));
 
-              const context = productsData.map(product => {
-                  const stock = entriesData
-                    .filter(e => e.productId === product.id)
-                    .reduce((sum, e) => sum + e.quantity, 0);
-                  return `${product.name}: ${stock} unidades`;
-              }).join(', ');
-              setInventoryContext(context);
-          });
-          return unsubEntries;
+      // Services
+      unsubs.push(onSnapshot(query(collection(db, 'services'), where('organizationId', '==', orgId)), (s) => 
+        setServicesContext(JSON.stringify(s.docs.map(d => d.data()).map(({name, price, duration}) => ({name, price, duration})))))
+      );
+      
+      // Customers
+      unsubs.push(onSnapshot(query(collection(db, 'customers'), where('organizationId', '==', orgId)), (s) => 
+        setCustomersContext(JSON.stringify(s.docs.map(d => d.data()).map(({name, email, phone}) => ({name, email, phone})))))
+      );
+
+      // Appointments
+      unsubs.push(onSnapshot(query(collection(db, 'appointments'), where('branchId', '==', branchId)), (s) => {
+          const data = s.docs.map(d => ({...d.data(), start: convertDate(d.data().start)}));
+          setAppointmentsContext(JSON.stringify(data.map(({customerName, serviceName, professionalName, start, status}) => ({
+              cliente: customerName, 
+              servico: serviceName,
+              professional: professionalName,
+              data: format(start, 'dd/MM/yyyy HH:mm'),
+              status
+          }))));
+      }));
+      
+      // Inventory
+      const stockProductsQuery = query(collection(db, 'products'), where('branchId', '==', branchId));
+      const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', branchId));
+      
+      let productsData: Product[] = [];
+      
+      const unsubStockProducts = onSnapshot(stockProductsQuery, (productsSnapshot) => {
+          productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+          // Rerun context generation when products change
+           const entriesData = (unsubEntries as any)?.()?.docs.map((doc: any) => doc.data() as StockEntry) || [];
+           generateInventoryContext(productsData, entriesData);
       });
-      return () => unsubProducts();
-  }, [hasAccess, currentBranch]);
+      unsubs.push(unsubStockProducts);
+      
+      const unsubEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
+          const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
+          // Rerun context generation when entries change
+          generateInventoryContext(productsData, entriesData);
+      });
+      unsubs.push(unsubEntries);
+
+      const generateInventoryContext = (products: Product[], entries: StockEntry[]) => {
+          const context = products.map(product => {
+              const stock = entries
+                .filter(e => e.productId === product.id)
+                .reduce((sum, e) => sum + e.quantity, 0);
+              return `${product.name}: ${stock} unidades`;
+          }).join(', ');
+          setInventoryContext(context);
+      };
+      
+      // Sales
+      unsubs.push(onSnapshot(query(collection(db, 'sales'), where('branchId', '==', branchId)), (s) => {
+          const data = s.docs.map(d => ({...d.data(), date: convertDate(d.data().date)}));
+           setSalesContext(JSON.stringify(data.map(({ cashier, total, date, items, payments }) => ({
+               vendedor: cashier,
+               total: total,
+               data: format(date, 'dd/MM/yyyy HH:mm'),
+               itens: items.map((i: any) => i.name).join(', '),
+               pagamento: payments.map((p: any) => p.conditionName).join(', ')
+           }))));
+      }));
+      
+      // Payment Conditions
+      unsubs.push(onSnapshot(query(collection(db, 'paymentConditions'), where('organizationId', '==', orgId)), (s) => {
+           setPaymentConditionsContext(JSON.stringify(s.docs.map(d => d.data()).map(({name, type, fee}) => ({name, type, fee}))));
+      }));
+
+
+      setDataLoaded(true);
+      return () => unsubs.forEach(unsub => unsub());
+  }, [hasAccess, currentBranch, user]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,9 +138,15 @@ export default function AssistantPage() {
     setLoading(true);
 
     try {
-      const response = await answerInventoryQuestion({ 
+      const response = await answerBusinessQuestion({ 
         question: currentInput,
-        context: inventoryContext
+        productsContext,
+        servicesContext,
+        customersContext,
+        appointmentsContext,
+        inventoryContext,
+        salesContext,
+        paymentConditionsContext,
       });
       const botMessage: Message = { sender: 'bot', text: response.answer };
       setMessages((prev) => [...prev, botMessage]);
@@ -90,7 +170,7 @@ export default function AssistantPage() {
                     <CardTitle className="flex items-center justify-center gap-2"><Lock /> Acesso Negado</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <p>Este recurso está disponível apenas para as funções de Administrador e Gerente.</p>
+                    <p>Você não tem permissão para acessar este módulo.</p>
                 </CardContent>
             </Card>
         </div>
@@ -102,11 +182,17 @@ export default function AssistantPage() {
       <Card className="flex-grow flex flex-col">
         <CardHeader>
             <CardTitle>Oráculo AI</CardTitle>
-            <CardDescription>Faça perguntas sobre seu estoque.</CardDescription>
+            <CardDescription>Faça perguntas sobre seus produtos, serviços, clientes, agenda, vendas e estoque.</CardDescription>
         </CardHeader>
         <CardContent className="flex-grow">
           <ScrollArea className="h-[calc(100vh-20rem)] pr-4">
             <div className="space-y-4">
+              {messages.length === 0 && (
+                <div className="text-center text-muted-foreground">
+                    <p>Olá! O que você gostaria de saber hoje?</p>
+                    <p className="text-xs">Ex: "Qual o produto mais vendido?" ou "Resuma as vendas de ontem".</p>
+                </div>
+              )}
               {messages.map((message, index) => (
                 <div
                   key={index}
@@ -118,7 +204,7 @@ export default function AssistantPage() {
                     </Avatar>
                   )}
                   <div
-                    className={`max-w-xs rounded-lg p-3 text-sm ${
+                    className={`max-w-md rounded-lg p-3 text-sm ${
                       message.sender === 'user'
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted'
@@ -151,10 +237,10 @@ export default function AssistantPage() {
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ex: Quantos Laptops Quânticos há em estoque?"
-            disabled={loading}
+            placeholder="Qual sua pergunta?"
+            disabled={loading || !dataLoaded}
           />
-          <Button type="submit" disabled={loading || !input.trim()}>
+          <Button type="submit" disabled={loading || !input.trim() || !dataLoaded}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </form>
@@ -162,3 +248,4 @@ export default function AssistantPage() {
     </div>
   );
 }
+

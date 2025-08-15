@@ -6,7 +6,7 @@ import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc } from "firebase/firestore";
-import type { User, UserRole, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile } from '@/lib/types';
+import type { User, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
 
@@ -46,6 +46,28 @@ interface AuthContextType {
 
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
 
+const defaultPermissions: EnabledModules = {
+    dashboard: { view: true, edit: false, delete: false },
+    products: { view: true, edit: true, delete: true },
+    combos: { view: true, edit: true, delete: true },
+    inventory: { view: true, edit: true, delete: false },
+    pos: { view: true, edit: false, delete: false },
+    assistant: { view: true, edit: false, delete: false },
+    reports: { view: true, edit: false, delete: false },
+    settings: { view: true, edit: true, delete: true },
+    kits: { view: true, edit: true, delete: true },
+    customers: { view: true, edit: true, delete: false },
+    appointments: { view: true, edit: true, delete: true },
+    services: { view: true, edit: true, delete: true },
+};
+
+const professionalPermissions: Partial<EnabledModules> = {
+    dashboard: { view: true, edit: false, delete: false },
+    appointments: { view: true, edit: true, delete: true },
+    customers: { view: true, edit: false, delete: false },
+    services: { view: true, edit: false, delete: false },
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<UserWithOrg | null>(null);
   const [branches, setBranches] = React.useState<Branch[]>([]);
@@ -56,126 +78,82 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   React.useEffect(() => {
+    let userUnsubscribe: Unsubscribe | null = null;
     let branchesUnsubscribe: Unsubscribe | null = null;
     let orgUnsubscribe: Unsubscribe | null = null;
     let profilesUnsubscribe: Unsubscribe | null = null;
 
+    const cleanup = () => {
+        userUnsubscribe?.();
+        branchesUnsubscribe?.();
+        orgUnsubscribe?.();
+        profilesUnsubscribe?.();
+    };
+
     const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseAuthUser | null) => {
+      cleanup();
       setLoading(true);
-      if (branchesUnsubscribe) branchesUnsubscribe();
-      if (orgUnsubscribe) orgUnsubscribe();
-      if (profilesUnsubscribe) profilesUnsubscribe();
 
       if (firebaseUser) {
-        const userDocRef = doc(db, "users", firebaseUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        
-        let currentUser: User;
-        if (userDocSnap.exists()) {
-            currentUser = userDocSnap.data() as User;
-        } else {
-             const usersSnapshot = await getDocs(collection(db, "users"));
-             const isFirstUser = usersSnapshot.empty;
-             const organizationId = isFirstUser ? doc(collection(db, 'organizations')).id : '';
-             
-             const newUser: User = {
-                id: firebaseUser.uid,
-                email: firebaseUser.email || '',
-                name: firebaseUser.displayName || 'Usuário Google',
-                role: 'admin', 
-                avatar: firebaseUser.photoURL || getRandomAvatar(),
-                organizationId: organizationId,
+        userUnsubscribe = onSnapshot(doc(db, "users", firebaseUser.uid), (userDoc) => {
+            if (!userDoc.exists()) {
+                setLoading(false);
+                return;
             }
-            await setDoc(userDocRef, newUser);
-            if(isFirstUser) {
-                 await setDoc(doc(db, "organizations", organizationId), { ownerId: newUser.id, name: `${newUser.name}'s Organization`, paymentStatus: 'active' });
-            }
-            currentUser = newUser;
-        }
-        
-        setUser(currentUser);
+            const currentUser = userDoc.data() as User;
+            
+            if (currentUser.organizationId) {
+                const orgDocRef = doc(db, "organizations", currentUser.organizationId);
+                orgUnsubscribe = onSnapshot(orgDocRef, (orgDoc) => {
+                     const orgData = orgDoc.data() as Organization | undefined;
 
-        if (currentUser.organizationId) {
-            const orgDocRef = doc(db, "organizations", currentUser.organizationId);
-            orgUnsubscribe = onSnapshot(orgDocRef, async (orgDoc) => {
-                if (orgDoc.exists()) {
-                    const orgData = orgDoc.data() as Organization;
-                    let modules = orgData.enabledModules;
-                    
-                    if (!modules) {
-                        modules = {
-                            dashboard: true,
-                            products: true,
-                            combos: true,
-                            inventory: true,
-                            pos: true,
-                            assistant: true,
-                            reports: true,
-                            settings: true,
-                            kits: true,
-                            customers: true,
-                            appointments: true,
-                            services: true,
+                     const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', currentUser.organizationId));
+                     profilesUnsubscribe = onSnapshot(profilesQuery, (profilesSnap) => {
+                        const profiles = profilesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
+                        const userProfile = profiles.find(p => p.id === currentUser.role);
+
+                        const finalUser: UserWithOrg = {
+                            ...currentUser,
+                            organization: orgData,
+                            enabledModules: userProfile?.permissions || orgData?.enabledModules || defaultPermissions
                         };
-                        await updateDoc(orgDocRef, { enabledModules: modules });
-                    }
+                        setUser(finalUser);
+                     });
+                });
+
+                const q = query(collection(db, "branches"), where("organizationId", "==", currentUser.organizationId));
+                branchesUnsubscribe = onSnapshot(q, (snapshot) => {
+                    const userBranches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+                    const userFilteredBranches = userBranches.filter(b => b.userIds.includes(currentUser.id));
+                    setBranches(userFilteredBranches);
+
+                    const storedBranchId = localStorage.getItem('currentBranchId');
+                    const storedBranch = userFilteredBranches.find(b => b.id === storedBranchId);
                     
-                    setUser(prevUser => prevUser ? { 
-                        ...prevUser, 
-                        paymentStatus: orgData.paymentStatus, 
-                        enabledModules: modules,
-                        organization: orgData,
-                    } : null);
-                }
-            });
-
-             // Listen to permission profiles
-            const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', currentUser.organizationId));
-            profilesUnsubscribe = onSnapshot(profilesQuery, async (profilesSnap) => {
-                const profiles = profilesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
-                const userProfile = profiles.find(p => p.id === currentUser.role);
-
-                if (userProfile) {
-                     setUser(prevUser => prevUser ? { 
-                        ...prevUser, 
-                        enabledModules: userProfile.permissions
-                    } : null);
-                }
-            });
-
-            const q = query(collection(db, "branches"), where("organizationId", "==", currentUser.organizationId));
-            branchesUnsubscribe = onSnapshot(q, (snapshot) => {
-                const userBranches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
-                const userFilteredBranches = userBranches.filter(b => b.userIds.includes(currentUser.id));
-                setBranches(userFilteredBranches);
-
-                const storedBranchId = localStorage.getItem('currentBranchId');
-                const storedBranch = userFilteredBranches.find(b => b.id === storedBranchId);
-                if (storedBranch) {
-                    setCurrentBranchState(storedBranch);
-                } else if (userFilteredBranches.length > 0) {
-                    setCurrentBranchState(userFilteredBranches[0]);
-                } else {
-                    setCurrentBranchState(null);
-                }
-            });
-        } else {
-            setBranches([]);
-            setCurrentBranchState(null);
-        }
+                    if (storedBranch) {
+                        setCurrentBranchState(storedBranch);
+                    } else if (userFilteredBranches.length > 0) {
+                        setCurrentBranchState(userFilteredBranches[0]);
+                    } else {
+                        setCurrentBranchState(null);
+                    }
+                });
+            } else {
+                setUser(currentUser); // User without organization
+            }
+             setLoading(false);
+        });
       } else {
         setUser(null);
         setBranches([]);
         setCurrentBranchState(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => {
       authUnsubscribe();
-      if (branchesUnsubscribe) branchesUnsubscribe();
-      if (orgUnsubscribe) orgUnsubscribe();
-      if (profilesUnsubscribe) profilesUnsubscribe();
+      cleanup();
     };
   }, []);
   
@@ -196,38 +174,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         photoURL: avatar
       });
 
+      const batch = writeBatch(db);
+
+      const adminProfileRef = doc(collection(db, 'permissionProfiles'));
+      const professionalProfileRef = doc(collection(db, 'permissionProfiles'));
+
       const newUser: User = {
         id: firebaseUser.uid,
         name,
         email,
-        role: 'admin',
+        role: adminProfileRef.id,
         avatar: avatar,
         organizationId: organizationId
       };
 
-      const batch = writeBatch(db);
-      
       batch.set(doc(db, "users", firebaseUser.uid), newUser);
       
       batch.set(doc(db, "organizations", organizationId), { 
         ownerId: newUser.id, 
         name: `${name}'s Company`,
         paymentStatus: 'active',
-        enabledModules: {
-            dashboard: true,
-            products: true,
-            combos: true,
-            inventory: true,
-            pos: true,
-            assistant: true,
-            reports: true,
-            settings: true,
-            kits: true,
-            customers: true,
-            appointments: true,
-            services: true,
-        }
+        enabledModules: defaultPermissions
       });
+      
+      const adminProfile: Omit<PermissionProfile, 'id'> = {
+          name: 'Admin',
+          organizationId: organizationId,
+          permissions: defaultPermissions
+      };
+      batch.set(adminProfileRef, adminProfile);
+
+      const professionalProfile: Omit<PermissionProfile, 'id'> = {
+          name: 'Profissional',
+          organizationId: organizationId,
+          permissions: professionalPermissions as EnabledModules
+      };
+      batch.set(professionalProfileRef, professionalProfile);
+
 
       await batch.commit();
       
@@ -248,8 +231,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const createUser = async (email: string, name: string, role: string, organizationId: string, customerId?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
     try {
-        // This trick allows creating a user without signing in the admin out.
-        // It's a common workaround for admin SDK-like functionality on the client.
         const { getApp, initializeApp, deleteApp } = await import('firebase/app');
         const { getAuth: getAuth_local, createUserWithEmailAndPassword: createUserWithEmailAndPassword_local, sendPasswordResetEmail: sendPasswordResetEmail_local, signOut: signOut_local } = await import('firebase/auth');
 
@@ -273,7 +254,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         await setDoc(doc(db, "users", firebaseUser.uid), newUser);
 
-        // Send password reset email right away
         await sendPasswordResetEmail_local(tempAuthInstance, email);
 
         await signOut_local(tempAuthInstance);
@@ -360,7 +340,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const userRef = doc(db, 'users', user.id);
         const updateData = { ...data };
-        delete updateData.paymentStatus; // Do not allow user to update their own payment status
+        delete updateData.paymentStatus;
         await updateDoc(userRef, updateData);
         
         setUser(prev => prev ? { ...prev, ...data } : null);
@@ -463,8 +443,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if(isAuthPage) {
             if (user.role === 'customer') {
                 router.push('/portal');
-            } else if (user.role === 'atendimento') {
-                router.push('/dashboard/pos');
+            } else if (user?.enabledModules?.pos.view && !user.enabledModules?.dashboard.view) {
+                 router.push('/dashboard/pos');
             } else {
                 router.push('/dashboard');
             }
@@ -472,8 +452,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             router.push('/portal');
         } else if (user.role !== 'customer' && isPortalPage) {
             router.push('/dashboard');
-        } else if (user.role === 'atendimento' && pathname === '/dashboard') {
-            router.push('/dashboard/pos');
+        } else if (user.enabledModules?.pos.view && !user.enabledModules?.dashboard.view && pathname === '/dashboard') {
+             router.push('/dashboard/pos');
         }
     }
   }, [isAuthenticated, loading, pathname, router, user]);

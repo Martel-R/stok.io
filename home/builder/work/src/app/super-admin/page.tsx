@@ -1,36 +1,217 @@
+
 // src/app/super-admin/page.tsx
 'use client';
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc } from 'firebase/firestore';
-import type { Organization, User, PaymentStatus } from '@/lib/types';
+import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc, addDoc } from 'firebase/firestore';
+import type { Organization, User, PaymentStatus, EnabledModules, PermissionProfile } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 
 type OrgWithUser = Organization & { owner?: User };
+
+function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void }) {
+    const { toast } = useToast();
+    const [enabledModules, setEnabledModules] = useState<EnabledModules>(organization.enabledModules);
+
+    useEffect(() => {
+        if (organization.enabledModules) {
+            setEnabledModules(organization.enabledModules);
+        }
+    }, [organization]);
+
+    const handleModuleToggle = async (module: keyof EnabledModules, checked: boolean) => {
+        const updatedModules = { ...enabledModules, [module]: { ...enabledModules[module], view: checked } };
+        
+        // If view is disabled, disable edit and delete as well.
+        if (!checked) {
+            updatedModules[module].edit = false;
+            updatedModules[module].delete = false;
+        }
+
+        setEnabledModules(updatedModules);
+
+        try {
+            const orgRef = doc(db, 'organizations', organization.id);
+            await updateDoc(orgRef, { enabledModules: updatedModules });
+            toast({ title: 'Módulo atualizado com sucesso!' });
+        } catch (error) {
+            toast({ title: 'Erro ao atualizar módulo', variant: 'destructive' });
+            setEnabledModules(prev => ({...prev, [module]: { ...prev[module], view: !checked }}));
+        }
+    };
+
+    const moduleConfig = [
+        { key: 'customers', label: 'Clientes' },
+        { key: 'services', label: 'Serviços' },
+        { key: 'appointments', label: 'Agendamentos' },
+        { key: 'pos', label: 'Frente de Caixa (PDV)' },
+        { key: 'combos', label: 'Combos Promocionais' },
+        { key: 'kits', label: 'Kits Dinâmicos' },
+        { key: 'assistant', label: 'Oráculo AI' },
+        { key: 'reports', label: 'Relatórios Gerenciais' },
+    ] as const;
+
+    if (!isOpen) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Gerenciar Módulos</DialogTitle>
+                    <DialogDescription>Habilite ou desabilite funcionalidades para a organização "{organization.name}".</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                     {moduleConfig.map(mod => (
+                        <div key={mod.key} className="flex flex-row items-center justify-between rounded-lg border p-4">
+                            <Label htmlFor={`module-${mod.key}`} className="text-base">{mod.label}</Label>
+                            <Switch
+                                id={`module-${mod.key}`}
+                                checked={enabledModules[mod.key]?.view ?? false}
+                                onCheckedChange={(checked) => handleModuleToggle(mod.key, checked)}
+                            />
+                        </div>
+                    ))}
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: OrgWithUser | null, isOpen: boolean, onOpenChange: (open: boolean) => void }) {
+    const { toast } = useToast();
+    const { createUser } = useAuth();
+    const [users, setUsers] = useState<User[]>([]);
+    const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
+
+    useEffect(() => {
+        if (!isOpen || !organization) return;
+        setLoading(true);
+        const qUsers = query(collection(db, 'users'), where('organizationId', '==', organization.id));
+        const qProfiles = query(collection(db, 'permissionProfiles'), where('organizationId', '==', organization.id));
+        
+        const unsubUsers = onSnapshot(qUsers, (snapshot) => {
+            setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
+            setLoading(false);
+        });
+        const unsubProfiles = onSnapshot(qProfiles, (snapshot) => {
+             setProfiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile)));
+        });
+
+        return () => { unsubUsers(); unsubProfiles(); }
+    }, [isOpen, organization]);
+
+    const getProfileName = (roleId: string) => profiles.find(p => p.id === roleId)?.name || 'N/A';
+    
+    const handleSaveUser = async (userToSave: Partial<User>) => {
+        if (!organization) return;
+        if (editingUser?.id) {
+            await updateDoc(doc(db, "users", editingUser.id), { role: userToSave.role, name: userToSave.name });
+            toast({ title: 'Usuário atualizado!' });
+        } else {
+            const { success, error } = await createUser(userToSave.email!, userToSave.name!, userToSave.role!, organization.id);
+            if (success) toast({ title: 'Usuário criado!' });
+            else toast({ title: 'Erro ao criar', description: error, variant: 'destructive' });
+        }
+        setIsFormOpen(false);
+    };
+
+     const handleDeleteUser = async (userId: string) => {
+        // Caution: This doesn't delete the Firebase Auth user, only the Firestore record.
+        // For a full solution, this should call a Cloud Function.
+        await deleteDoc(doc(db, "users", userId));
+        toast({ title: "Usuário removido da organização", variant: "destructive" });
+    };
+
+    if (!isOpen || !organization) return null;
+
+    return (
+         <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-4xl">
+                 <DialogHeader>
+                    <DialogTitle>Gerenciar Usuários de "{organization.name}"</DialogTitle>
+                </DialogHeader>
+                 <div className="py-4">
+                     <div className="flex justify-end mb-4">
+                        <Button onClick={() => { setEditingUser(undefined); setIsFormOpen(true); }}><PlusCircle className="mr-2" /> Adicionar</Button>
+                    </div>
+                     <Table>
+                        <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Email</TableHead><TableHead>Perfil</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                            {loading ? <TableRow><TableCell colSpan={4} className="text-center"><Loader2 className="animate-spin mx-auto"/></TableCell></TableRow> :
+                             users.map(u => (
+                                <TableRow key={u.id}>
+                                    <TableCell>{u.name}</TableCell>
+                                    <TableCell>{u.email}</TableCell>
+                                    <TableCell><Badge variant="secondary">{getProfileName(u.role)}</Badge></TableCell>
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="sm" onClick={() => { setEditingUser(u); setIsFormOpen(true); }}>Editar</Button>
+                                    </TableCell>
+                                </TableRow>
+                             ))
+                            }
+                        </TableBody>
+                    </Table>
+                 </div>
+                 {isFormOpen && (
+                     <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                         <DialogContent>
+                             <DialogHeader><DialogTitle>{editingUser ? 'Editar Usuário' : 'Novo Usuário'}</DialogTitle></DialogHeader>
+                             <UserForm user={editingUser} profiles={profiles} onSave={handleSaveUser} onDone={() => setIsFormOpen(false)} />
+                         </DialogContent>
+                     </Dialog>
+                 )}
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: PermissionProfile[]; onSave: (user: Partial<User>) => void; onDone: () => void }) {
+    const [formData, setFormData] = useState<Partial<User>>(user || { name: '', email: '', role: profiles[0]?.id || '' });
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    const handleRoleChange = (roleId: string) => setFormData(prev => ({...prev, role: roleId}));
+    const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSave(formData as User); onDone(); };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <Input name="name" value={formData.name} onChange={handleChange} placeholder="Nome do usuário" required />
+            <Input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="Email" required disabled={!!user} />
+            <Select value={formData.role} onValueChange={handleRoleChange}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{profiles.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
+            <DialogFooter><Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button><Button type="submit">Salvar</Button></DialogFooter>
+        </form>
+    );
+}
 
 function SuperAdminPage() {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
     const [organizations, setOrganizations] = useState<OrgWithUser[]>([]);
     const [loading, setLoading] = useState(true);
+    const [selectedOrg, setSelectedOrg] = useState<OrgWithUser | null>(null);
+    const [isModuleDialogOpen, setIsModuleDialogOpen] = useState(false);
+    const [isUsersDialogOpen, setIsUsersDialogOpen] = useState(false);
     const { toast } = useToast();
 
-    // Check for super admin access
     useEffect(() => {
-        if (!authLoading) {
-            if (!user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
-                router.push('/dashboard');
-            }
+        if (!authLoading && (!user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL)) {
+            router.push('/dashboard');
         }
     }, [user, authLoading, router]);
 
@@ -41,10 +222,7 @@ function SuperAdminPage() {
                 const usersSnapshot = await getDocs(collection(db, 'users'));
                 const usersData = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
 
-                const orgsWithUsers = orgsData.map(org => ({
-                    ...org,
-                    owner: usersData.find(u => u.id === org.ownerId)
-                }));
+                const orgsWithUsers = orgsData.map(org => ({ ...org, owner: usersData.find(u => u.id === org.ownerId) }));
                 
                 setOrganizations(orgsWithUsers);
                 setLoading(false);
@@ -54,59 +232,40 @@ function SuperAdminPage() {
     }, [user]);
 
     const handleStatusChange = async (orgId: string, status: PaymentStatus) => {
-        const orgRef = doc(db, 'organizations', orgId);
-        try {
-            await updateDoc(orgRef, { paymentStatus: status });
-            toast({ title: 'Status atualizado com sucesso!' });
-        } catch (error) {
-            toast({ title: 'Erro ao atualizar status', variant: 'destructive' });
-        }
+        await updateDoc(doc(db, 'organizations', orgId), { paymentStatus: status });
+        toast({ title: 'Status atualizado com sucesso!' });
     };
     
     const handleDeleteOrganization = async (orgId: string) => {
-        const collectionsToDelete = ['users', 'branches', 'products', 'combos', 'kits', 'sales', 'stockEntries', 'paymentConditions'];
+        const collectionsToDelete = ['users', 'branches', 'products', 'combos', 'kits', 'sales', 'stockEntries', 'paymentConditions', 'permissionProfiles'];
         try {
             const batch = writeBatch(db);
-
-            // Delete documents from related collections
             for (const collectionName of collectionsToDelete) {
                 const q = query(collection(db, collectionName), where("organizationId", "==", orgId));
                 const snapshot = await getDocs(q);
-                snapshot.forEach(doc => {
-                    batch.delete(doc.ref);
-                });
+                snapshot.forEach(doc => batch.delete(doc.ref));
             }
-
-            // Delete the organization itself
             batch.delete(doc(db, 'organizations', orgId));
-
             await batch.commit();
-            toast({ title: 'Organização e todos os dados vinculados foram excluídos!', variant: 'destructive' });
+            toast({ title: 'Organização e dados vinculados excluídos!', variant: 'destructive' });
         } catch (error) {
-            console.error("Error deleting organization:", error);
-            toast({ title: 'Erro ao excluir organização', description: 'Não foi possível completar a operação.', variant: 'destructive' });
+            toast({ title: 'Erro ao excluir organização', variant: 'destructive' });
         }
     };
 
     const getStatusBadge = (status: PaymentStatus) => {
-        switch (status) {
-            case 'active': return <Badge variant="secondary" className="bg-green-100 text-green-800">Ativo</Badge>;
-            case 'overdue': return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Vencido</Badge>;
-            case 'locked': return <Badge variant="destructive">Bloqueado</Badge>;
-            default: return <Badge variant="outline">{status}</Badge>;
-        }
-    }
-
-    if (authLoading || loading) {
-        return (
-            <div className="flex h-screen w-full items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin" />
-            </div>
-        );
+        const variants = { active: "bg-green-100 text-green-800", overdue: "bg-yellow-100 text-yellow-800", locked: "destructive" };
+        return <Badge variant={status === 'locked' ? 'destructive' : 'secondary'} className={variants[status]}>{status}</Badge>;
     }
     
-    if (!user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
-         return null; // or a dedicated access denied component
+    const handleOpenDialog = (org: OrgWithUser, type: 'modules' | 'users') => {
+        setSelectedOrg(org);
+        if (type === 'modules') setIsModuleDialogOpen(true);
+        if (type === 'users') setIsUsersDialogOpen(true);
+    };
+
+    if (authLoading || loading || !user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
+        return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
     }
 
     return (
@@ -123,66 +282,36 @@ function SuperAdminPage() {
                 </CardHeader>
                 <CardContent>
                     <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Organização</TableHead>
-                                <TableHead>Proprietário</TableHead>
-                                <TableHead>Email do Proprietário</TableHead>
-                                <TableHead>Status do Pagamento</TableHead>
-                                <TableHead className="text-right">Ações</TableHead>
-                            </TableRow>
-                        </TableHeader>
+                        <TableHeader><TableRow><TableHead>Organização</TableHead><TableHead>Proprietário</TableHead><TableHead>Email</TableHead><TableHead>Status Pag.</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
                         <TableBody>
                             {organizations.map((org) => (
                                 <TableRow key={org.id}>
                                     <TableCell className="font-medium">{org.name}</TableCell>
-                                    <TableCell>{org.owner?.name || 'Não encontrado'}</TableCell>
-                                    <TableCell>{org.owner?.email || 'Não encontrado'}</TableCell>
+                                    <TableCell>{org.owner?.name || 'N/A'}</TableCell>
+                                    <TableCell>{org.owner?.email || 'N/A'}</TableCell>
                                     <TableCell>{getStatusBadge(org.paymentStatus)}</TableCell>
                                     <TableCell className="text-right">
                                         <AlertDialog>
                                             <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button variant="ghost" className="h-8 w-8 p-0">
-                                                        <MoreHorizontal className="h-4 w-4" />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
+                                                <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuLabel>Ações</DropdownMenuLabel>
                                                     <DropdownMenuSeparator />
                                                      <div className="p-2">
-                                                        <Select defaultValue={org.paymentStatus} onValueChange={(status: PaymentStatus) => handleStatusChange(org.id, status)}>
-                                                            <SelectTrigger>
-                                                                <SelectValue placeholder="Mudar Status" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="active">Ativo</SelectItem>
-                                                                <SelectItem value="overdue">Vencido</SelectItem>
-                                                                <SelectItem value="locked">Bloqueado</SelectItem>
-                                                            </SelectContent>
+                                                        <Select defaultValue={org.paymentStatus} onValueChange={(s: PaymentStatus) => handleStatusChange(org.id, s)}>
+                                                            <SelectTrigger><SelectValue placeholder="Mudar Status" /></SelectTrigger>
+                                                            <SelectContent><SelectItem value="active">Ativo</SelectItem><SelectItem value="overdue">Vencido</SelectItem><SelectItem value="locked">Bloqueado</SelectItem></SelectContent>
                                                         </Select>
                                                      </div>
+                                                    <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'users')}><Users className="mr-2 h-4 w-4" /> Gerenciar Usuários</DropdownMenuItem>
+                                                    <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'modules')}><SlidersHorizontal className="mr-2 h-4 w-4" /> Gerenciar Módulos</DropdownMenuItem>
                                                     <DropdownMenuSeparator />
-                                                     <AlertDialogTrigger asChild>
-                                                        <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive">
-                                                            <Trash2 className="mr-2 h-4 w-4" /> Excluir Organização
-                                                        </DropdownMenuItem>
-                                                     </AlertDialogTrigger>
+                                                     <AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Excluir Organização</DropdownMenuItem></AlertDialogTrigger>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                             <AlertDialogContent>
-                                                <AlertDialogHeader>
-                                                    <AlertDialogTitle>Excluir "{org.name}"?</AlertDialogTitle>
-                                                    <AlertDialogDescription>
-                                                        Essa ação é irreversível e excluirá a organização, todos os usuários, filiais, produtos, vendas e outros dados associados.
-                                                    </AlertDialogDescription>
-                                                </AlertDialogHeader>
-                                                <AlertDialogFooter>
-                                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                    <AlertDialogAction onClick={() => handleDeleteOrganization(org.id)} className={buttonVariants({ variant: "destructive" })}>
-                                                        Sim, excluir tudo
-                                                    </AlertDialogAction>
-                                                </AlertDialogFooter>
+                                                <AlertDialogHeader><AlertDialogTitle>Excluir "{org.name}"?</AlertDialogTitle><AlertDialogDescription>Essa ação é irreversível e excluirá a organização e todos os seus dados.</AlertDialogDescription></AlertDialogHeader>
+                                                <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteOrganization(org.id)} className={buttonVariants({ variant: "destructive" })}>Sim, excluir</AlertDialogAction></AlertDialogFooter>
                                             </AlertDialogContent>
                                         </AlertDialog>
                                     </TableCell>
@@ -192,6 +321,8 @@ function SuperAdminPage() {
                     </Table>
                 </CardContent>
             </Card>
+             {selectedOrg && <ModulesSettingsDialog organization={selectedOrg} isOpen={isModuleDialogOpen} onOpenChange={setIsModuleDialogOpen} />}
+             {selectedOrg && <OrgUsersDialog organization={selectedOrg} isOpen={isUsersDialogOpen} onOpenChange={setIsUsersDialogOpen} />}
         </div>
     );
 }

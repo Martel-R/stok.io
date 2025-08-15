@@ -112,9 +112,11 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                         <div className="flex justify-between items-baseline">
                              <div>
                                 <h4 className="font-semibold">{sub.planName} - R$ {sub.price.toLocaleString('pt-BR', {minimumFractionDigits: 2})} / mês</h4>
-                                <p className="text-sm text-muted-foreground">
-                                    Contrato de {format(sub.startDate.toDate(), 'dd/MM/yy')} até {format(sub.endDate.toDate(), 'dd/MM/yy')}
-                                </p>
+                                {sub.startDate && sub.endDate && (
+                                    <p className="text-sm text-muted-foreground">
+                                        Contrato de {format(sub.startDate.toDate(), 'dd/MM/yy')} até {format(sub.endDate.toDate(), 'dd/MM/yy')}
+                                    </p>
+                                )}
                             </div>
                         </div>
 
@@ -134,7 +136,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                                     </TableHeader>
                                     <TableBody>
                                         {sub.paymentRecords && sub.paymentRecords.length > 0 ? (
-                                            sub.paymentRecords.sort((a,b) => a.date.toDate() - b.date.toDate()).map((p) => (
+                                            sub.paymentRecords.sort((a,b) => a.date.toDate().getTime() - b.date.toDate().getTime()).map((p) => (
                                                 <TableRow key={p.id}>
                                                     <TableCell>{p.date ? format(p.date.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
                                                     <TableCell>R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
@@ -601,3 +603,4 @@ function SuperAdminPage() {
 }
 
 export default SuperAdminPage;
+

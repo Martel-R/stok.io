@@ -288,7 +288,7 @@ function PermissionProfileForm({
 }) {
     const [formData, setFormData] = useState<Partial<PermissionProfile>>({});
     
-    const allModuleConfig = React.useMemo(() => [
+    const allModuleConfig = [
         { key: 'dashboard', label: 'Início', icon: Home },
         { key: 'customers', label: 'Clientes', icon: Users },
         { key: 'services', label: 'Serviços', icon: Briefcase },
@@ -301,11 +301,9 @@ function PermissionProfileForm({
         { key: 'assistant', label: 'Oráculo AI', icon: Bot },
         { key: 'reports', label: 'Relatórios', icon: FileText },
         { key: 'settings', label: 'Configurações', icon: Settings },
-    ] as const, []);
+    ] as const;
 
-    const activeModuleConfig = React.useMemo(() => 
-        allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]?.view),
-    [allModuleConfig, organization.enabledModules]);
+    const activeModuleConfig = allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]?.view);
 
     useEffect(() => {
         const defaultPermissions: Partial<EnabledModules> = {};
@@ -489,3 +487,5 @@ function SuperAdminPage() {
 }
 
 export default SuperAdminPage;
+
+    

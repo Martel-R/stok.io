@@ -1,5 +1,4 @@
 
-
 'use client';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
@@ -76,34 +75,33 @@ export default function AssistantPage() {
       
       // Inventory
       const stockProductsQuery = query(collection(db, 'products'), where('branchId', '==', branchId));
-      const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', branchId));
-      
       let productsData: Product[] = [];
-      
-      const unsubStockProducts = onSnapshot(stockProductsQuery, (productsSnapshot) => {
-          productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-          // Rerun context generation when products change
-           const entriesData = (unsubEntries as any)?.()?.docs.map((doc: any) => doc.data() as StockEntry) || [];
-           generateInventoryContext(productsData, entriesData);
-      });
-      unsubs.push(unsubStockProducts);
-      
-      const unsubEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
-          const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
-          // Rerun context generation when entries change
-          generateInventoryContext(productsData, entriesData);
-      });
-      unsubs.push(unsubEntries);
+      let entriesData: StockEntry[] = [];
 
-      const generateInventoryContext = (products: Product[], entries: StockEntry[]) => {
-          const context = products.map(product => {
-              const stock = entries
+      const generateInventoryContext = () => {
+          if (productsData.length === 0) return;
+          const context = productsData.map(product => {
+              const stock = entriesData
                 .filter(e => e.productId === product.id)
                 .reduce((sum, e) => sum + e.quantity, 0);
               return `${product.name}: ${stock} unidades`;
           }).join(', ');
           setInventoryContext(context);
       };
+
+      const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', branchId));
+      const unsubEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
+          entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
+          generateInventoryContext();
+      });
+
+      const unsubStockProducts = onSnapshot(stockProductsQuery, (productsSnapshot) => {
+          productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+          generateInventoryContext();
+      });
+      
+      unsubs.push(unsubStockProducts);
+      unsubs.push(unsubEntries);
       
       // Sales
       unsubs.push(onSnapshot(query(collection(db, 'sales'), where('branchId', '==', branchId)), (s) => {
@@ -248,4 +246,5 @@ export default function AssistantPage() {
     </div>
   );
 }
+
 

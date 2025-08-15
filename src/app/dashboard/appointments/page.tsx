@@ -47,18 +47,30 @@ function AppointmentForm({
     initialDate: Date;
 }) {
     const { currentBranch } = useAuth();
-    const [formData, setFormData] = useState<Partial<Appointment>>({});
     
-    const [selectedService, setSelectedService] = useState<Service | null>(null);
+    const getDefaultState = () => ({
+        start: setHours(setMinutes(initialDate, 0), 9),
+        status: 'scheduled' as AppointmentStatus,
+        notes: '',
+    });
+
+    const [formData, setFormData] = useState<Partial<Appointment>>(appointment || getDefaultState());
+    
+    const [selectedService, setSelectedService] = useState<Service | null>(
+        appointment && appointment.serviceId ? services.find(s => s.id === appointment.serviceId) || null : null
+    );
     
     useEffect(() => {
-        const defaultState: Partial<Appointment> = {
-            start: setHours(setMinutes(initialDate, 0), 9),
-            status: 'scheduled',
-            notes: '',
-        };
-        setFormData(appointment ? { ...appointment } : defaultState);
-    }, [appointment, initialDate]);
+        if (appointment) {
+            setFormData(appointment);
+            if (appointment.serviceId) {
+                setSelectedService(services.find(s => s.id === appointment.serviceId) || null);
+            }
+        } else {
+            setFormData(getDefaultState());
+            setSelectedService(null);
+        }
+    }, [appointment, initialDate, services]);
 
     useEffect(() => {
         if (formData.serviceId) {

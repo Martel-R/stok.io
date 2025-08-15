@@ -20,13 +20,13 @@ interface ModulePermissionRowProps {
 }
 
 export function ModulePermissionRow({ module, permissions, onPermissionChange }: ModulePermissionRowProps) {
-    const Icon = module.icon;
+    const IconComponent = module.icon;
     const isViewEnabled = permissions?.view ?? false;
 
     return (
         <TableRow>
             <TableCell className="font-medium flex items-center gap-2">
-                <Icon className="h-4 w-4"/> {module.label}
+                <IconComponent className="h-4 w-4"/> {module.label}
             </TableCell>
             <TableCell className="text-center">
                 <Checkbox

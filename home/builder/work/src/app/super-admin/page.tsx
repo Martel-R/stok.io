@@ -1,18 +1,19 @@
 
+
 // src/app/super-admin/page.tsx
 'use client';
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc, addDoc } from 'firebase/firestore';
-import type { Organization, User, PaymentStatus, EnabledModules, PermissionProfile, ModulePermissions } from '@/lib/types';
+import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc, addDoc, serverTimestamp, arrayUnion, Timestamp } from 'firebase/firestore';
+import type { Organization, User, PaymentStatus, EnabledModules, PermissionProfile, Subscription, PaymentRecord, PaymentRecordStatus } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, Home, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -21,10 +22,389 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-
+import { PermissionProfileForm } from '@/components/permission-profile-form';
+import { format, eachMonthOfInterval, startOfMonth } from 'date-fns';
+import { Separator } from '@/components/ui/separator';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { DateRange } from 'react-day-picker';
+import { cn } from '@/lib/utils';
+import { Textarea } from '@/components/ui/textarea';
 
 type OrgWithUser = Organization & { owner?: User };
+
+// Helper to safely convert a Firestore Timestamp or a JS Date to a JS Date
+const toDate = (date: any): Date | undefined => {
+    if (!date) return undefined;
+    if (date instanceof Date) return date;
+    if (date instanceof Timestamp) return date.toDate();
+    return undefined;
+};
+
+
+function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void, adminUser: User | null }) {
+    const { toast } = useToast();
+    const [subDetails, setSubDetails] = useState<Partial<Subscription>>(organization.subscription || {});
+    const [editingRecord, setEditingRecord] = useState<PaymentRecord | null>(null);
+    const [payingRecord, setPayingRecord] = useState<PaymentRecord | null>(null);
+    
+    useEffect(() => {
+        setSubDetails(organization.subscription || {});
+    }, [organization.subscription]);
+
+    const handleCreateOrUpdateSubscription = async () => {
+        if (!adminUser || !subDetails.planName || !subDetails.price) {
+            toast({title: 'Dados incompletos', description: 'Plano e preço são obrigatórios.', variant: 'destructive'});
+            return;
+        };
+
+        const startDate = toDate(subDetails.startDate);
+        const endDate = toDate(subDetails.endDate);
+
+        const paymentRecords = (subDetails.paymentRecords || []);
+        if (startDate && endDate) {
+             const months = eachMonthOfInterval({ start: startDate, end: endDate });
+             months.forEach((monthDate) => {
+                const alreadyExists = paymentRecords.some(p => {
+                    const pDate = toDate(p.date);
+                    return pDate && pDate.getMonth() === monthDate.getMonth() && pDate.getFullYear() === monthDate.getFullYear();
+                });
+                if (!alreadyExists) {
+                    paymentRecords.push({
+                        id: doc(collection(db, 'dummy')).id, // Temporary unique ID
+                        date: Timestamp.fromDate(startOfMonth(monthDate)),
+                        amount: subDetails.price || 0,
+                        status: 'pending',
+                    });
+                }
+            });
+        }
+
+        const newSubscriptionData: Subscription = {
+            ...subDetails,
+            planName: subDetails.planName,
+            price: subDetails.price,
+            startDate: subDetails.startDate || null,
+            endDate: subDetails.endDate || null,
+            paymentRecords,
+        };
+        try {
+            await updateDoc(doc(db, 'organizations', organization.id), {
+                subscription: newSubscriptionData
+            });
+            toast({ title: 'Assinatura salva e parcelas geradas com sucesso!' });
+        } catch (error) {
+            console.error(error);
+            toast({ title: 'Erro ao salvar assinatura', variant: 'destructive' });
+        }
+    }
+    
+    const handleRegisterPayment = async (updatedRecord: PaymentRecord) => {
+        if (!organization.subscription || !adminUser) return;
+    
+        const updatedRecords = organization.subscription.paymentRecords.map(record => {
+            if (record.id === updatedRecord.id) {
+                return { 
+                    ...updatedRecord, 
+                    status: 'paid' as PaymentRecordStatus, 
+                    recordedBy: adminUser.id,
+                    paidDate: new Date(),
+                };
+            }
+            return record;
+        });
+
+        try {
+            await updateDoc(doc(db, 'organizations', organization.id), {
+                'subscription.paymentRecords': updatedRecords
+            });
+            toast({ title: 'Pagamento registrado com sucesso!' });
+            setPayingRecord(null);
+        } catch (error) {
+            console.error(error);
+            toast({ title: 'Erro ao registrar pagamento', variant: 'destructive' });
+        }
+    };
+
+    const handleSaveRecord = async (recordToSave: PaymentRecord) => {
+        if (!organization.subscription) return;
+
+        let updatedRecords;
+        const existingRecordIndex = organization.subscription.paymentRecords.findIndex(r => r.id === recordToSave.id);
+
+        if (existingRecordIndex > -1) {
+            updatedRecords = [...organization.subscription.paymentRecords];
+            updatedRecords[existingRecordIndex] = recordToSave;
+            toast({ title: 'Parcela atualizada!' });
+        } else {
+            updatedRecords = [...(organization.subscription.paymentRecords || []), recordToSave];
+            toast({ title: 'Nova parcela criada!' });
+        }
+
+         try {
+            await updateDoc(doc(db, 'organizations', organization.id), { 'subscription.paymentRecords': updatedRecords });
+            setEditingRecord(null);
+        } catch (error) {
+            toast({ title: 'Erro ao salvar parcela', variant: 'destructive' });
+        }
+    };
+    
+    const handleDeleteRecord = async (recordId: string) => {
+        if (!organization.subscription) return;
+        const updatedRecords = organization.subscription.paymentRecords.filter(r => r.id !== recordId);
+        try {
+            await updateDoc(doc(db, 'organizations', organization.id), { 'subscription.paymentRecords': updatedRecords });
+            toast({ title: 'Parcela excluída!', variant: 'destructive' });
+        } catch (error) {
+            toast({ title: 'Erro ao excluir parcela', variant: 'destructive' });
+        }
+    };
+
+    const openNewRecordForm = () => {
+        setEditingRecord({
+            id: doc(collection(db, 'dummy')).id,
+            date: Timestamp.now(),
+            amount: subDetails.price || 0,
+            status: 'pending'
+        });
+    };
+    
+    if (!isOpen) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-4xl">
+                <DialogHeader>
+                    <DialogTitle>Gerenciar Assinatura: {organization.name}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-6 py-4 max-h-[70vh] overflow-y-auto">
+                    <div className="space-y-4 p-4 border rounded-lg">
+                        <h3 className="font-semibold">Detalhes do Contrato</h3>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="planName">Nome do Plano</Label>
+                                <Input id="planName" value={subDetails.planName || ''} onChange={e => setSubDetails(p => ({...p, planName: e.target.value}))} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="planPrice">Preço Mensal (R$)</Label>
+                                <Input id="planPrice" type="number" value={subDetails.price || ''} onChange={e => setSubDetails(p => ({...p, price: parseFloat(e.target.value) || 0}))} />
+                            </div>
+                         </div>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                             <div className="space-y-2">
+                                <Label>Data de Início</Label>
+                                <Popover>
+                                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{subDetails.startDate ? format(toDate(subDetails.startDate)!, 'dd/MM/yyyy') : 'Escolha uma data'}</Button></PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={toDate(subDetails.startDate)} onSelect={d => setSubDetails(p => ({...p, startDate: d}))} /></PopoverContent>
+                                </Popover>
+                             </div>
+                             <div className="space-y-2">
+                                <Label>Data de Fim</Label>
+                                 <Popover>
+                                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{subDetails.endDate ? format(toDate(subDetails.endDate)!, 'dd/MM/yyyy') : 'Escolha uma data'}</Button></PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={toDate(subDetails.endDate)} onSelect={d => setSubDetails(p => ({...p, endDate: d}))} /></PopoverContent>
+                                </Popover>
+                             </div>
+                         </div>
+                         <Button onClick={handleCreateOrUpdateSubscription}>Salvar Contrato e Gerar Parcelas</Button>
+                    </div>
+
+                     <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                            <h3 className="font-semibold">Histórico de Parcelas</h3>
+                            <Button variant="outline" size="sm" onClick={openNewRecordForm}>
+                                <PlusCircle className="mr-2 h-4 w-4" />
+                                Criar Parcela
+                            </Button>
+                        </div>
+                        <div className="max-h-96 overflow-y-auto mt-2 pr-2">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Vencimento</TableHead>
+                                        <TableHead>Valor</TableHead>
+                                        <TableHead>Data Pag.</TableHead>
+                                        <TableHead>Valor Pago</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead className="text-right">Ações</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {subDetails.paymentRecords && subDetails.paymentRecords.length > 0 ? (
+                                        subDetails.paymentRecords.sort((a,b) => toDate(a.date)!.getTime() - toDate(b.date)!.getTime()).map((p) => (
+                                            <TableRow key={p.id}>
+                                                <TableCell>{p.date ? format(toDate(p.date)!, 'dd/MM/yyyy') : 'N/A'}</TableCell>
+                                                <TableCell>R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
+                                                <TableCell>{p.paidDate ? format(toDate(p.paidDate)!, 'dd/MM/yyyy') : '-'}</TableCell>
+                                                <TableCell>{p.paidAmount ? `R$ ${p.paidAmount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`: '-'}</TableCell>
+                                                <TableCell>
+                                                     <Badge className={cn(p.status === 'paid' && 'bg-green-100 text-green-800')} variant={p.status === 'paid' ? 'secondary' : 'destructive'}>
+                                                        {p.status}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <AlertDialog>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal/></Button></DropdownMenuTrigger>
+                                                            <DropdownMenuContent>
+                                                                {p.status === 'pending' && <DropdownMenuItem onSelect={() => setPayingRecord(p)}>Registrar Pagamento</DropdownMenuItem>}
+                                                                <DropdownMenuItem onSelect={() => setEditingRecord(p)}>Editar</DropdownMenuItem>
+                                                                <AlertDialogTrigger asChild>
+                                                                    <DropdownMenuItem className="text-destructive">Excluir</DropdownMenuItem>
+                                                                </AlertDialogTrigger>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                        <AlertDialogContent>
+                                                            <AlertDialogHeader>
+                                                                <AlertDialogTitle>Excluir Parcela?</AlertDialogTitle>
+                                                                <AlertDialogDescription>Deseja realmente excluir a parcela com vencimento em {p.date ? format(toDate(p.date)!, 'dd/MM/yyyy') : 'N/A'}?</AlertDialogDescription>
+                                                            </AlertDialogHeader>
+                                                            <AlertDialogFooter>
+                                                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                                <AlertDialogAction onClick={() => handleDeleteRecord(p.id)} className={buttonVariants({ variant: "destructive" })}>Sim, Excluir</AlertDialogAction>
+                                                            </AlertDialogFooter>
+                                                        </AlertDialogContent>
+                                                    </AlertDialog>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))
+                                    ) : (
+                                        <TableRow><TableCell colSpan={6} className="text-center">Nenhuma parcela gerada.</TableCell></TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </div>
+                     </div>
+                </div>
+
+                {editingRecord && (
+                    <Dialog open={!!editingRecord} onOpenChange={(open) => !open && setEditingRecord(null)}>
+                        <DialogContent>
+                            <DialogHeader><DialogTitle>Editar Parcela</DialogTitle></DialogHeader>
+                            <EditRecordForm record={editingRecord} onSave={handleSaveRecord} onCancel={() => setEditingRecord(null)} />
+                        </DialogContent>
+                    </Dialog>
+                )}
+
+                <RegisterPaymentDialog 
+                    record={payingRecord}
+                    isOpen={!!payingRecord}
+                    onOpenChange={(open) => !open && setPayingRecord(null)}
+                    onSave={handleRegisterPayment}
+                />
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+function EditRecordForm({record, onSave, onCancel}: {record: PaymentRecord, onSave: (r: PaymentRecord) => void, onCancel: () => void}) {
+    const [formData, setFormData] = useState(record);
+
+    useEffect(() => {
+        setFormData(record);
+    }, [record]);
+    
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData);
+    }
+    
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+             <div className="space-y-2">
+                <Label>Data de Vencimento</Label>
+                <Popover>
+                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{formData.date ? format(toDate(formData.date)!, 'dd/MM/yyyy') : 'Escolha uma data'}</Button></PopoverTrigger>
+                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={toDate(formData.date)} onSelect={d => setFormData(p => ({...p, date: d ? Timestamp.fromDate(d) : p.date}))} /></PopoverContent>
+                </Popover>
+            </div>
+             <div className="space-y-2">
+                <Label>Valor (R$)</Label>
+                <Input type="number" value={formData.amount} onChange={e => setFormData(p => ({...p, amount: parseFloat(e.target.value) || 0}))} />
+            </div>
+             <DialogFooter>
+                 <Button type="button" variant="ghost" onClick={onCancel}>Cancelar</Button>
+                 <Button type="submit">Salvar</Button>
+            </DialogFooter>
+        </form>
+    );
+}
+
+function RegisterPaymentDialog({
+    record, isOpen, onOpenChange, onSave
+}: {
+    record: PaymentRecord | null,
+    isOpen: boolean,
+    onOpenChange: (open: boolean) => void,
+    onSave: (record: PaymentRecord) => void,
+}) {
+    const [formData, setFormData] = useState<Partial<PaymentRecord>>({});
+
+    useEffect(() => {
+        if (record) {
+            setFormData({
+                ...record,
+                paidDate: new Date(),
+                paidAmount: record.amount,
+                paymentMethod: '',
+                notes: '',
+            });
+        }
+    }, [record]);
+
+    if (!isOpen || !record) return null;
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData as PaymentRecord);
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Registrar Pagamento de Parcela</DialogTitle>
+                     <DialogDescription>
+                        Vencimento em {format(toDate(record.date)!, 'dd/MM/yyyy')} no valor de R$ {record.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}.
+                    </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+                     <div className="grid grid-cols-2 gap-4">
+                         <div className="space-y-2">
+                            <Label>Data do Pagamento</Label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-start font-normal"><CalendarIcon className="mr-2 h-4 w-4"/>{formData.paidDate ? format(toDate(formData.paidDate)!, 'dd/MM/yyyy') : 'Selecione'}</Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0">
+                                    <Calendar mode="single" selected={toDate(formData.paidDate)} onSelect={(d) => setFormData(p => ({...p, paidDate: d}))} />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Valor Pago (R$)</Label>
+                            <Input type="number" value={formData.paidAmount || ''} onChange={e => setFormData(p => ({...p, paidAmount: parseFloat(e.target.value) || 0}))}/>
+                        </div>
+                     </div>
+                     <div className="space-y-2">
+                        <Label>Forma de Pagamento</Label>
+                        <Input value={formData.paymentMethod || ''} onChange={e => setFormData(p => ({...p, paymentMethod: e.target.value}))} placeholder="Ex: PIX, Boleto, Cartão..."/>
+                     </div>
+                     <div className="space-y-2">
+                        <Label>Observações</Label>
+                        <Textarea value={formData.notes || ''} onChange={e => setFormData(p => ({...p, notes: e.target.value}))} />
+                     </div>
+                    <DialogFooter>
+                        <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
+                        <Button type="submit">Confirmar Pagamento</Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+
 
 function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void }) {
     const { toast } = useToast();
@@ -37,7 +417,9 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
     }, [organization]);
 
     const handleModuleToggle = async (module: keyof EnabledModules, checked: boolean) => {
-        const updatedModules = { ...enabledModules, [module]: { view: checked, edit: checked, delete: checked } };
+        // When enabling a module, enable all its permissions by default.
+        const newPermissions = checked ? { view: true, edit: true, delete: true } : { view: false, edit: false, delete: false };
+        const updatedModules = { ...enabledModules, [module]: newPermissions };
         
         setEnabledModules(updatedModules);
 
@@ -47,7 +429,12 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
             toast({ title: 'Módulo atualizado com sucesso!' });
         } catch (error) {
             toast({ title: 'Erro ao atualizar módulo', variant: 'destructive' });
-            setEnabledModules(prev => ({...prev, [module]: { ...prev[module], view: !checked, edit: !checked, delete: !checked }}));
+            // Revert on error
+            setEnabledModules(prev => {
+                const reverted = {...prev};
+                delete reverted[module];
+                return reverted;
+            });
         }
     };
 
@@ -77,7 +464,7 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
                             <Label htmlFor={`module-${mod.key}`} className="text-base">{mod.label}</Label>
                             <Switch
                                 id={`module-${mod.key}`}
-                                checked={enabledModules[mod.key]?.view ?? false}
+                                checked={!!enabledModules[mod.key]}
                                 onCheckedChange={(checked) => handleModuleToggle(mod.key, checked)}
                             />
                         </div>
@@ -226,7 +613,6 @@ function OrgProfilesDialog({ organization, isOpen, onOpenChange }: { organizatio
     };
 
     const handleDelete = async (id: string) => {
-        // Here you should check if any user is using this profile before deleting
         await deleteDoc(doc(db, 'permissionProfiles', id));
         toast({ title: 'Perfil excluído!', variant: 'destructive' });
     };
@@ -277,85 +663,8 @@ function OrgProfilesDialog({ organization, isOpen, onOpenChange }: { organizatio
     )
 }
 
-function PermissionProfileForm({
-    profile, organization, onSave, onDelete, onDone
-}: {
-    profile?: PermissionProfile,
-    organization: Organization,
-    onSave: (data: Partial<PermissionProfile>) => void,
-    onDelete: (id: string) => void,
-    onDone: () => void,
-}) {
-    const [formData, setFormData] = useState<Partial<PermissionProfile>>({});
-    
-    const allModuleConfig = [
-        { key: 'dashboard', label: 'Início', icon: Home },
-        { key: 'customers', label: 'Clientes', icon: Users },
-        { key: 'services', label: 'Serviços', icon: Briefcase },
-        { key: 'appointments', label: 'Agendamentos', icon: Calendar },
-        { key: 'products', label: 'Produtos', icon: Package },
-        { key: 'combos', label: 'Combos', icon: Gift },
-        { key: 'kits', label: 'Kits', icon: Component },
-        { key: 'inventory', label: 'Estoque', icon: BarChart },
-        { key: 'pos', label: 'Frente de Caixa', icon: ShoppingCart },
-        { key: 'assistant', label: 'Oráculo AI', icon: Bot },
-        { key: 'reports', label: 'Relatórios', icon: FileText },
-        { key: 'settings', label: 'Configurações', icon: Settings },
-    ] as const;
-
-    const activeModuleConfig = allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]?.view);
-
-    useEffect(() => {
-        const defaultPermissions: Partial<EnabledModules> = {};
-        activeModuleConfig.forEach(mod => {
-            defaultPermissions[mod.key] = { view: false, edit: false, delete: false };
-        });
-        const initialPermissions = profile?.permissions 
-            ? { ...defaultPermissions, ...profile.permissions } 
-            : defaultPermissions;
-        setFormData({ ...profile, name: profile?.name || '', permissions: initialPermissions as EnabledModules });
-    }, [profile, activeModuleConfig]);
-
-    const handlePermissionChange = (module: keyof EnabledModules, permission: keyof ModulePermissions, checked: boolean) => {
-        setFormData(prev => {
-            const newPermissions = { ...prev.permissions };
-            const currentModulePerms = newPermissions[module] || { view: false, edit: false, delete: false };
-            const updatedModulePerms = { ...currentModulePerms, [permission]: checked };
-            if (permission === 'view' && !checked) { updatedModulePerms.edit = false; updatedModulePerms.delete = false; }
-            if ((permission === 'edit' || permission === 'delete') && checked) { updatedModulePerms.view = true; }
-            return { ...prev, permissions: {...newPermissions, [module]: updatedModulePerms} as EnabledModules };
-        });
-    };
-    
-    const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSave(formData); }
-
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-            <Input value={formData.name || ''} onChange={(e) => setFormData(p => ({...p, name: e.target.value}))} placeholder="Nome do Perfil" required />
-            <Table>
-                <TableHeader><TableRow><TableHead>Módulo</TableHead><TableHead>Ver</TableHead><TableHead>Editar</TableHead><TableHead>Excluir</TableHead></TableRow></TableHeader>
-                <TableBody>
-                    {activeModuleConfig.map(mod => (
-                        <TableRow key={mod.key}>
-                            <TableCell><mod.icon className="inline mr-2 h-4"/>{mod.label}</TableCell>
-                            <TableCell><Checkbox checked={formData.permissions?.[mod.key]?.view ?? false} onCheckedChange={(c) => handlePermissionChange(mod.key, 'view', c === true)} /></TableCell>
-                            <TableCell><Checkbox checked={formData.permissions?.[mod.key]?.edit ?? false} onCheckedChange={(c) => handlePermissionChange(mod.key, 'edit', c === true)} disabled={!formData.permissions?.[mod.key]?.view} /></TableCell>
-                            <TableCell><Checkbox checked={formData.permissions?.[mod.key]?.delete ?? false} onCheckedChange={(c) => handlePermissionChange(mod.key, 'delete', c === true)} disabled={!formData.permissions?.[mod.key]?.view} /></TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-            <DialogFooter>
-                {profile?.id && <Button variant="destructive" type="button" onClick={() => onDelete(profile.id)}>Excluir</Button>}
-                <Button variant="ghost" type="button" onClick={onDone}>Cancelar</Button>
-                <Button type="submit">Salvar Perfil</Button>
-            </DialogFooter>
-        </form>
-    )
-}
-
 function SuperAdminPage() {
-    const { user, loading: authLoading } = useAuth();
+    const { user, loading: authLoading, startImpersonation } = useAuth();
     const router = useRouter();
     const [organizations, setOrganizations] = useState<OrgWithUser[]>([]);
     const [loading, setLoading] = useState(true);
@@ -363,10 +672,11 @@ function SuperAdminPage() {
     const [isModuleDialogOpen, setIsModuleDialogOpen] = useState(false);
     const [isUsersDialogOpen, setIsUsersDialogOpen] = useState(false);
     const [isProfilesDialogOpen, setIsProfilesDialogOpen] = useState(false);
+    const [isSubscriptionDialogOpen, setIsSubscriptionDialogOpen] = useState(false);
     const { toast } = useToast();
 
     useEffect(() => {
-        if (!authLoading && (!user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL)) {
+        if (!authLoading && user && user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL && !user.isImpersonating) {
             router.push('/dashboard');
         }
     }, [user, authLoading, router]);
@@ -414,11 +724,12 @@ function SuperAdminPage() {
         return <Badge variant={status === 'locked' ? 'destructive' : 'secondary'} className={variants[status]}>{status}</Badge>;
     }
     
-    const handleOpenDialog = (org: OrgWithUser, type: 'modules' | 'users' | 'profiles') => {
+    const handleOpenDialog = (org: OrgWithUser, type: 'modules' | 'users' | 'profiles' | 'subscription') => {
         setSelectedOrg(org);
         if (type === 'modules') setIsModuleDialogOpen(true);
         if (type === 'users') setIsUsersDialogOpen(true);
         if (type === 'profiles') setIsProfilesDialogOpen(true);
+        if (type === 'subscription') setIsSubscriptionDialogOpen(true);
     };
 
     if (authLoading || loading || !user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
@@ -439,14 +750,28 @@ function SuperAdminPage() {
                 </CardHeader>
                 <CardContent>
                     <Table>
-                        <TableHeader><TableRow><TableHead>Organização</TableHead><TableHead>Proprietário</TableHead><TableHead>Email</TableHead><TableHead>Status Pag.</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
+                        <TableHeader><TableRow><TableHead>Organização</TableHead><TableHead>Proprietário</TableHead><TableHead>Status Pag.</TableHead><TableHead>Próx. Venc.</TableHead><TableHead>Acessar</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
                         <TableBody>
                             {organizations.map((org) => (
                                 <TableRow key={org.id}>
                                     <TableCell className="font-medium">{org.name}</TableCell>
                                     <TableCell>{org.owner?.name || 'N/A'}</TableCell>
-                                    <TableCell>{org.owner?.email || 'N/A'}</TableCell>
                                     <TableCell>{getStatusBadge(org.paymentStatus)}</TableCell>
+                                    <TableCell>
+                                        {org.subscription?.paymentRecords
+                                            ?.filter(p => p.status === 'pending')
+                                            .sort((a,b) => toDate(a.date)!.getTime() - toDate(b.date)!.getTime())
+                                            [0] 
+                                            ? format(toDate(org.subscription.paymentRecords.find(p => p.status === 'pending')!.date)!, 'dd/MM/yyyy') 
+                                            : <Badge variant="outline">N/A</Badge>
+                                        }
+                                    </TableCell>
+                                    <TableCell>
+                                        <Button variant="outline" size="sm" onClick={() => startImpersonation(org.id)}>
+                                            <LogIn className="mr-2 h-4 w-4"/>
+                                            Acessar Painel
+                                        </Button>
+                                    </TableCell>
                                     <TableCell className="text-right">
                                         <AlertDialog>
                                             <DropdownMenu>
@@ -460,6 +785,7 @@ function SuperAdminPage() {
                                                             <SelectContent><SelectItem value="active">Ativo</SelectItem><SelectItem value="overdue">Vencido</SelectItem><SelectItem value="locked">Bloqueado</SelectItem></SelectContent>
                                                         </Select>
                                                      </div>
+                                                    <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'subscription')}><DollarSign className="mr-2 h-4 w-4" /> Gerenciar Assinatura</DropdownMenuItem>
                                                     <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'users')}><Users className="mr-2 h-4 w-4" /> Gerenciar Usuários</DropdownMenuItem>
                                                     <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'profiles')}><Pencil className="mr-2 h-4 w-4" /> Gerenciar Perfis</DropdownMenuItem>
                                                     <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'modules')}><SlidersHorizontal className="mr-2 h-4 w-4" /> Gerenciar Módulos</DropdownMenuItem>
@@ -482,10 +808,9 @@ function SuperAdminPage() {
              {selectedOrg && <ModulesSettingsDialog organization={selectedOrg} isOpen={isModuleDialogOpen} onOpenChange={setIsModuleDialogOpen} />}
              {selectedOrg && <OrgUsersDialog organization={selectedOrg} isOpen={isUsersDialogOpen} onOpenChange={setIsUsersDialogOpen} />}
              {selectedOrg && <OrgProfilesDialog organization={selectedOrg} isOpen={isProfilesDialogOpen} onOpenChange={setIsProfilesDialogOpen} />}
+             {selectedOrg && <SubscriptionDialog organization={selectedOrg} isOpen={isSubscriptionDialogOpen} onOpenChange={setIsSubscriptionDialogOpen} adminUser={user}/>}
         </div>
     );
 }
 
 export default SuperAdminPage;
-
-    

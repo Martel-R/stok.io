@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React from 'react';
@@ -9,7 +8,7 @@ import { Icons } from '@/components/icons';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Home, Package, BarChart, ShoppingCart, Bot, FileText, LogOut, Loader2, Users, Settings, ChevronsUpDown, Check, Building, Gift, AlertTriangle, CreditCard, Component, LifeBuoy, Calendar, Briefcase, Menu } from 'lucide-react';
+import { Home, Package, BarChart, ShoppingCart, Bot, FileText, LogOut, Loader2, Users, Settings, ChevronsUpDown, Check, Building, Gift, AlertTriangle, CreditCard, Component, LifeBuoy, Calendar, Briefcase, Menu, LogIn } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -18,25 +17,26 @@ import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import Image from 'next/image';
+import type { Organization } from '@/lib/types';
 
 function DashboardNav() {
     const pathname = usePathname();
     const { user } = useAuth();
     
     const navItems = [
-        { href: '/dashboard', label: 'Início', icon: Home, roles: ['admin', 'manager'], module: 'dashboard' },
-        { href: '/dashboard/appointments', label: 'Agendamentos', icon: Calendar, roles: ['admin', 'manager', 'professional'], module: 'appointments' },
-        { href: '/dashboard/customers', label: 'Clientes', icon: Users, roles: ['admin', 'manager'], module: 'customers' },
-        { href: '/dashboard/services', label: 'Serviços', icon: Briefcase, roles: ['admin', 'manager'], module: 'services' },
-        { href: '/dashboard/products', label: 'Produtos', icon: Package, roles: ['admin', 'manager'], module: 'products' },
-        { href: '/dashboard/combos', label: 'Combos', icon: Gift, roles: ['admin', 'manager'], module: 'combos' },
-        { href: '/dashboard/kits', label: 'Kits', icon: Component, roles: ['admin', 'manager'], module: 'kits' },
-        { href: '/dashboard/inventory', label: 'Estoque', icon: BarChart, roles: ['admin', 'manager', 'atendimento'], module: 'inventory' },
-        { href: '/dashboard/pos', label: 'Frente de Caixa', icon: ShoppingCart, roles: ['admin', 'manager', 'atendimento'], module: 'pos' },
-        { href: '/dashboard/assistant', label: 'Oráculo AI', icon: Bot, roles: ['admin', 'manager'], module: 'assistant' },
-        { href: '/dashboard/reports', label: 'Relatórios', icon: FileText, roles: ['admin'], module: 'reports' },
-        { href: '/dashboard/settings', label: 'Configurações', icon: Settings, roles: ['admin'], module: 'settings' },
-        { href: '/dashboard/help', label: 'Ajuda & Tutorial', icon: LifeBuoy, roles: ['admin', 'manager', 'atendimento', 'professional'], module: 'dashboard' },
+        { href: '/dashboard', label: 'Início', icon: Home, module: 'dashboard' },
+        { href: '/dashboard/appointments', label: 'Agendamentos', icon: Calendar, module: 'appointments' },
+        { href: '/dashboard/customers', label: 'Clientes', icon: Users, module: 'customers' },
+        { href: '/dashboard/services', label: 'Serviços', icon: Briefcase, module: 'services' },
+        { href: '/dashboard/products', label: 'Produtos', icon: Package, module: 'products' },
+        { href: '/dashboard/combos', label: 'Combos', icon: Gift, module: 'combos' },
+        { href: '/dashboard/kits', label: 'Kits', icon: Component, module: 'kits' },
+        { href: '/dashboard/inventory', label: 'Estoque', icon: BarChart, module: 'inventory' },
+        { href: '/dashboard/pos', label: 'Frente de Caixa', icon: ShoppingCart, module: 'pos' },
+        { href: '/dashboard/assistant', label: 'Oráculo AI', icon: Bot, module: 'assistant' },
+        { href: '/dashboard/reports', label: 'Relatórios', icon: FileText, module: 'reports' },
+        { href: '/dashboard/settings', label: 'Configurações', icon: Settings, module: 'settings' },
+        { href: '/dashboard/help', label: 'Ajuda & Tutorial', icon: LifeBuoy, module: 'dashboard' },
     ];
 
     const isActive = (href: string) => {
@@ -46,17 +46,17 @@ function DashboardNav() {
       return pathname === href;
     }
     
-    const isModuleEnabled = (module: string) => {
-        if (!user?.enabledModules) return true; // Default to true if not set
-        return user.enabledModules[module as keyof typeof user.enabledModules] ?? true;
+    const canViewModule = (module: string) => {
+        if (!user?.enabledModules) return true; // Fallback to show all if not defined
+        const moduleKey = module as keyof typeof user.enabledModules;
+        return user.enabledModules[moduleKey]?.view ?? false;
     }
 
 
     return (
         <SidebarMenu>
             {navItems
-                .filter(item => user && item.roles.includes(user.role))
-                .filter(item => isModuleEnabled(item.module))
+                .filter(item => canViewModule(item.module))
                 .map((item) => (
                     <SidebarMenuItem key={item.href}>
                         <Link href={item.href}>
@@ -120,6 +120,54 @@ function BranchSwitcher() {
                                         )}
                                     />
                                     {branch.name}
+                                </CommandItem>
+                            ))}
+                        </CommandGroup>
+                    </CommandList>
+                </Command>
+            </PopoverContent>
+        </Popover>
+    );
+}
+
+function OrganizationSwitcher() {
+    const { organizations, startImpersonation, user } = useAuth();
+    const [open, setOpen] = useState(false);
+
+    if (user?.isImpersonating || user?.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
+        return null;
+    }
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={open}
+                    className="w-[250px] justify-between"
+                >
+                     <Building className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate">Trocar de Organização</span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[250px] p-0">
+                <Command>
+                    <CommandInput placeholder="Buscar organização..." />
+                    <CommandList>
+                        <CommandEmpty>Nenhuma organização encontrada.</CommandEmpty>
+                        <CommandGroup>
+                            {organizations.map((org) => (
+                                <CommandItem
+                                    key={org.id}
+                                    value={org.name}
+                                    onSelect={() => {
+                                        startImpersonation(org.id);
+                                        setOpen(false);
+                                    }}
+                                >
+                                    {org.name}
                                 </CommandItem>
                             ))}
                         </CommandGroup>
@@ -217,6 +265,23 @@ function SystemLockedScreen() {
     )
 }
 
+function ImpersonationExitButton() {
+    const { user, stopImpersonation } = useAuth();
+
+    if (!user?.isImpersonating) {
+        return null;
+    }
+
+    return (
+        <div className="fixed bottom-4 right-4 z-50">
+            <Button onClick={stopImpersonation} variant="destructive">
+                <LogOut className="mr-2" />
+                Sair da Personificação
+            </Button>
+        </div>
+    )
+}
+
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
     const { user } = useAuth();
     const { setIsOpen } = useSidebar();
@@ -236,7 +301,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
 
     }, [user?.organization]);
 
-    if(user?.paymentStatus === 'locked') {
+    if(user?.paymentStatus === 'locked' && !user?.isImpersonating) {
         return <SystemLockedScreen />;
     }
 
@@ -274,7 +339,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                             <Menu />
                             <span className="sr-only">Abrir Menu</span>
                         </Button>
-                        <BranchSwitcher />
+                        {user?.isImpersonating ? <BranchSwitcher /> : <OrganizationSwitcher />}
                     </div>
                     <div className="flex w-full items-center justify-end gap-4">
                         <UserNav />
@@ -287,6 +352,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                      </div>
                 </main>
             </div>
+             <ImpersonationExitButton />
         </div>
     )
 }

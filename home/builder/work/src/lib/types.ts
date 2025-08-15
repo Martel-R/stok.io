@@ -64,6 +64,7 @@ export interface User {
   enabledModules?: EnabledModules;
   customerId?: string; // Link to customer profile if role is 'customer'
   availability?: Availability;
+  isImpersonating?: boolean;
 }
 
 export type AnamnesisQuestionType = 'text' | 'boolean' | 'boolean_with_text' | 'integer' | 'decimal';
@@ -112,7 +113,7 @@ export interface Service {
     professionalIds: string[]; // IDs of users with 'professional' role
     isActive: boolean;
     organizationId: string;
-    linkedProducts?: ServiceProduct[];
+    linkedProducts: ServiceProduct[];
 }
 
 export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no-show' | 'rescheduled' | 'pending-confirmation';
@@ -295,6 +296,29 @@ export interface BrandingSettings {
     primaryColor?: string; // HSL format string e.g. "240 10% 3.9%"
 }
 
+export type PaymentRecordStatus = 'pending' | 'paid' | 'overdue';
+
+export interface PaymentRecord {
+    id: string;
+    date: any; // Timestamp for the due date
+    paidDate?: any; // Timestamp for when it was paid
+    amount: number;
+    paidAmount?: number;
+    status: PaymentRecordStatus;
+    recordedBy?: string; // User ID of admin who recorded it
+    paymentMethod?: string;
+    notes?: string;
+}
+
+export interface Subscription {
+    planName: string;
+    price: number;
+    startDate: any; // Timestamp
+    endDate: any; // Timestamp
+    paymentRecords: PaymentRecord[];
+}
+
+
 export interface Organization {
     id: string;
     name: string;
@@ -302,4 +326,5 @@ export interface Organization {
     paymentStatus: PaymentStatus;
     enabledModules: EnabledModules;
     branding?: BrandingSettings;
+    subscription?: Subscription;
 }

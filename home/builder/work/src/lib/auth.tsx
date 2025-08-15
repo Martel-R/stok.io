@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React from 'react';
@@ -28,6 +27,7 @@ interface UserWithOrg extends User {
 interface AuthContextType {
   isAuthenticated: boolean;
   user: UserWithOrg | null;
+  organizations: Organization[];
   branches: Branch[];
   currentBranch: Branch | null;
   setCurrentBranch: (branch: Branch) => void;
@@ -51,16 +51,16 @@ interface AuthContextType {
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
 
 const defaultPermissions: EnabledModules = {
-    dashboard: { view: true, edit: false, delete: false },
+    dashboard: { view: true, edit: true, delete: true },
     products: { view: true, edit: true, delete: true },
     combos: { view: true, edit: true, delete: true },
-    inventory: { view: true, edit: true, delete: false },
-    pos: { view: true, edit: false, delete: false },
-    assistant: { view: true, edit: false, delete: false },
-    reports: { view: true, edit: false, delete: false },
-    settings: { view: true, edit: false, delete: false },
+    inventory: { view: true, edit: true, delete: true },
+    pos: { view: true, edit: true, delete: true },
+    assistant: { view: true, edit: true, delete: true },
+    reports: { view: true, edit: true, delete: true },
+    settings: { view: true, edit: true, delete: true },
     kits: { view: true, edit: true, delete: true },
-    customers: { view: true, edit: true, delete: false },
+    customers: { view: true, edit: true, delete: true },
     appointments: { view: true, edit: true, delete: true },
     services: { view: true, edit: true, delete: true },
 };
@@ -80,6 +80,7 @@ const professionalPermissions: EnabledModules = {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<UserWithOrg | null>(null);
+  const [organizations, setOrganizations] = React.useState<Organization[]>([]);
   const [branches, setBranches] = React.useState<Branch[]>([]);
   const [currentBranch, setCurrentBranchState] = React.useState<Branch | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -91,12 +92,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let branchesUnsubscribe: Unsubscribe | null = null;
     let orgUnsubscribe: Unsubscribe | null = null;
     let profilesUnsubscribe: Unsubscribe | null = null;
+    let allOrgsUnsubscribe: Unsubscribe | null = null;
 
     const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseAuthUser | null) => {
       setLoading(true);
       if (branchesUnsubscribe) branchesUnsubscribe();
       if (orgUnsubscribe) orgUnsubscribe();
       if (profilesUnsubscribe) profilesUnsubscribe();
+      if (allOrgsUnsubscribe) allOrgsUnsubscribe();
 
       if (firebaseUser) {
         const userDocRef = doc(db, "users", firebaseUser.uid);
@@ -104,7 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         let currentUser: User;
         if (userDocSnap.exists()) {
-            currentUser = userDocSnap.data() as User;
+            currentUser = { id: userDocSnap.id, ...userDocSnap.data() } as User;
         } else {
              const usersSnapshot = await getDocs(collection(db, "users"));
              const isFirstUser = usersSnapshot.empty;
@@ -133,7 +136,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         setUser({ ...currentUser, isImpersonating });
 
-        if (effectiveOrgId) {
+        if (isSuperAdmin && !isImpersonating) {
+            allOrgsUnsubscribe = onSnapshot(collection(db, 'organizations'), (snapshot) => {
+                setOrganizations(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as Organization)));
+            });
+            setUser(prev => prev ? ({...prev, enabledModules: defaultPermissions}) : null);
+        } else if (effectiveOrgId) {
             const orgDocRef = doc(db, "organizations", effectiveOrgId);
             orgUnsubscribe = onSnapshot(orgDocRef, (orgDoc) => {
                 if (orgDoc.exists()) {
@@ -150,10 +158,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         if (isImpersonating) {
                             finalPermissions = { ...defaultPermissions, ...orgModules };
                         } else if (currentUser.role === 'admin' && !userProfile) {
-                            // First admin case, or profile not found, grant full permissions based on org modules
                             finalPermissions = { ...defaultPermissions, ...orgModules };
                         } else if (userProfile?.permissions) {
-                            // Filter user permissions by what's enabled in the organization
                             for (const key in userProfile.permissions) {
                                 const moduleKey = key as keyof EnabledModules;
                                 if (orgModules[moduleKey]) {
@@ -196,6 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setBranches([]);
         setCurrentBranchState(null);
+        setOrganizations([]);
       }
       setLoading(false);
     });
@@ -205,6 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (branchesUnsubscribe) branchesUnsubscribe();
       if (orgUnsubscribe) orgUnsubscribe();
       if (profilesUnsubscribe) profilesUnsubscribe();
+      if (allOrgsUnsubscribe) allOrgsUnsubscribe();
     };
   }, []);
   
@@ -533,7 +541,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, loading, pathname, router, user]);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, deleteTestData, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, deleteTestData, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations }}>
       {children}
     </AuthContext.Provider>
   );
@@ -546,4 +554,3 @@ export const useAuth = () => {
   }
   return context;
 };
-

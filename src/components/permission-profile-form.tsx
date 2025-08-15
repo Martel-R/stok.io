@@ -7,11 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Checkbox } from '@/components/ui/checkbox';
 import { DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings } from 'lucide-react';
-
+import { ModulePermissionRow } from '@/components/module-permission-row';
 
 export function PermissionProfileForm({
     profile, organization, onSave, onDelete, onDone
@@ -81,36 +80,6 @@ export function PermissionProfileForm({
             return { ...prev, permissions: {...newPermissions, [module]: updatedModulePerms} as EnabledModules };
         });
     };
-    
-    const handleSelectAll = (permission: keyof ModulePermissions, checked: boolean) => {
-        setFormData(prev => {
-            const newPermissions = { ...prev.permissions } as EnabledModules;
-            activeModuleConfig.forEach(mod => {
-                const currentModulePerms = newPermissions[mod.key] || { view: false, edit: false, delete: false };
-                const updatedModulePerms = { ...currentModulePerms, [permission]: checked };
-
-                if (permission === 'view' && !checked) {
-                    updatedModulePerms.edit = false;
-                    updatedModulePerms.delete = false;
-                }
-                if ((permission === 'edit' || permission === 'delete') && checked) {
-                    updatedModulePerms.view = true;
-                }
-                newPermissions[mod.key] = updatedModulePerms;
-            });
-            return { ...prev, permissions: newPermissions };
-        });
-    };
-
-    const getSelectAllState = (permission: keyof ModulePermissions): boolean | 'indeterminate' => {
-        const selectedCount = activeModuleConfig
-            .filter(mod => formData.permissions?.[mod.key]?.[permission])
-            .length;
-        
-        if (selectedCount === 0) return false;
-        if (selectedCount === activeModuleConfig.length) return true;
-        return 'indeterminate';
-    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -135,65 +104,19 @@ export function PermissionProfileForm({
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Módulo</TableHead>
-                                <TableHead className="text-center">
-                                    <div className="flex flex-col items-center gap-1">
-                                        <Checkbox
-                                            checked={getSelectAllState('view')}
-                                            onCheckedChange={(checked) => handleSelectAll('view', checked === true)}
-                                            id="select-all-view"
-                                        />
-                                        <Label htmlFor="select-all-view" className="cursor-pointer">Visualizar</Label>
-                                    </div>
-                                </TableHead>
-                                <TableHead className="text-center">
-                                     <div className="flex flex-col items-center gap-1">
-                                        <Checkbox
-                                            checked={getSelectAllState('edit')}
-                                            onCheckedChange={(checked) => handleSelectAll('edit', checked === true)}
-                                            id="select-all-edit"
-                                        />
-                                        <Label htmlFor="select-all-edit" className="cursor-pointer">Editar</Label>
-                                    </div>
-                                </TableHead>
-                                <TableHead className="text-center">
-                                     <div className="flex flex-col items-center gap-1">
-                                        <Checkbox
-                                            checked={getSelectAllState('delete')}
-                                            onCheckedChange={(checked) => handleSelectAll('delete', checked === true)}
-                                            id="select-all-delete"
-                                        />
-                                        <Label htmlFor="select-all-delete" className="cursor-pointer">Excluir</Label>
-                                    </div>
-                                </TableHead>
+                                <TableHead className="text-center">Visualizar</TableHead>
+                                <TableHead className="text-center">Editar</TableHead>
+                                <TableHead className="text-center">Excluir</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {activeModuleConfig.map(mod => (
-                                <TableRow key={mod.key}>
-                                    <TableCell className="font-medium flex items-center gap-2">
-                                        <mod.icon className="h-4 w-4"/> {mod.label}
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        <Checkbox
-                                            checked={formData.permissions?.[mod.key]?.view ?? false}
-                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'view', checked === true)}
-                                        />
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        <Checkbox
-                                            checked={formData.permissions?.[mod.key]?.edit ?? false}
-                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'edit', checked === true)}
-                                            disabled={!formData.permissions?.[mod.key]?.view}
-                                        />
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        <Checkbox
-                                            checked={formData.permissions?.[mod.key]?.delete ?? false}
-                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'delete', checked === true)}
-                                            disabled={!formData.permissions?.[mod.key]?.view}
-                                        />
-                                    </TableCell>
-                                </TableRow>
+                                <ModulePermissionRow 
+                                    key={mod.key}
+                                    module={mod}
+                                    permissions={formData.permissions?.[mod.key]}
+                                    onPermissionChange={handlePermissionChange}
+                                />
                             ))}
                         </TableBody>
                     </Table>

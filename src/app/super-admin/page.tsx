@@ -31,6 +31,15 @@ import { DateRange } from 'react-day-picker';
 
 type OrgWithUser = Organization & { owner?: User };
 
+// Helper to safely convert a Firestore Timestamp or a JS Date to a JS Date
+const toDate = (date: any): Date | undefined => {
+    if (!date) return undefined;
+    if (date instanceof Date) return date;
+    if (date.toDate instanceof Function) return date.toDate();
+    return undefined;
+};
+
+
 function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void, adminUser: User | null }) {
     const { toast } = useToast();
     const [subDetails, setSubDetails] = useState<Partial<Subscription>>(organization.subscription || {});
@@ -41,22 +50,27 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
 
     const handleCreateOrUpdateSubscription = async () => {
         if (!adminUser || !subDetails.planName || !subDetails.price || !subDetails.startDate || !subDetails.endDate) {
-            toast({title: 'Dados incompletos', variant: 'destructive'});
+            toast({title: 'Dados incompletos', description: 'Plano, preço e datas de início/fim são obrigatórios.', variant: 'destructive'});
             return;
         };
 
-        const startDate = subDetails.startDate instanceof Timestamp ? subDetails.startDate.toDate() : subDetails.startDate;
-        const endDate = subDetails.endDate instanceof Timestamp ? subDetails.endDate.toDate() : subDetails.endDate;
+        const startDate = toDate(subDetails.startDate);
+        const endDate = toDate(subDetails.endDate);
+
+        if (!startDate || !endDate) {
+            toast({title: 'Datas inválidas', variant: 'destructive'});
+            return;
+        }
 
         const months = eachMonthOfInterval({ start: startDate, end: endDate });
 
-        const paymentRecords: PaymentRecord[] = months.map((monthDate, index) => {
-            const existingRecord = organization.subscription?.paymentRecords.find(p => 
+        const paymentRecords: PaymentRecord[] = months.map((monthDate) => {
+            const existingRecord = (organization.subscription?.paymentRecords || []).find(p => 
                 p.date.toDate().getMonth() === monthDate.getMonth() && 
                 p.date.toDate().getFullYear() === monthDate.getFullYear()
             );
             return existingRecord || {
-                id: doc(collection(db, 'dummy')).id,
+                id: doc(collection(db, 'dummy')).id, // Temporary unique ID
                 date: Timestamp.fromDate(startOfMonth(monthDate)),
                 amount: subDetails.price || 0,
                 status: 'pending',
@@ -67,8 +81,8 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
             ...subDetails,
             planName: subDetails.planName,
             price: subDetails.price,
-            startDate: subDetails.startDate,
-            endDate: subDetails.endDate,
+            startDate: Timestamp.fromDate(startDate),
+            endDate: Timestamp.fromDate(endDate),
             paymentRecords,
         };
         try {
@@ -129,15 +143,15 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                              <div className="space-y-2">
                                 <Label>Data de Início</Label>
                                 <Popover>
-                                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{subDetails.startDate ? format((subDetails.startDate as any).toDate(), 'dd/MM/yyyy') : 'Escolha uma data'}</Button></PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={(subDetails.startDate as any)?.toDate()} onSelect={d => setSubDetails(p => ({...p, startDate: d}))} /></PopoverContent>
+                                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{subDetails.startDate ? format(toDate(subDetails.startDate)!, 'dd/MM/yyyy') : 'Escolha uma data'}</Button></PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={toDate(subDetails.startDate)} onSelect={d => setSubDetails(p => ({...p, startDate: d}))} /></PopoverContent>
                                 </Popover>
                              </div>
                              <div className="space-y-2">
                                 <Label>Data de Fim</Label>
                                  <Popover>
-                                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{subDetails.endDate ? format((subDetails.endDate as any).toDate(), 'dd/MM/yyyy') : 'Escolha uma data'}</Button></PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={(subDetails.endDate as any)?.toDate()} onSelect={d => setSubDetails(p => ({...p, endDate: d}))} /></PopoverContent>
+                                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{subDetails.endDate ? format(toDate(subDetails.endDate)!, 'dd/MM/yyyy') : 'Escolha uma data'}</Button></PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={toDate(subDetails.endDate)} onSelect={d => setSubDetails(p => ({...p, endDate: d}))} /></PopoverContent>
                                 </Popover>
                              </div>
                          </div>
@@ -159,9 +173,9 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                                 </TableHeader>
                                 <TableBody>
                                     {subDetails.paymentRecords && subDetails.paymentRecords.length > 0 ? (
-                                        subDetails.paymentRecords.sort((a,b) => a.date.toDate().getTime() - b.date.toDate().getTime()).map((p) => (
+                                        subDetails.paymentRecords.sort((a,b) => toDate(a.date)!.getTime() - toDate(b.date)!.getTime()).map((p) => (
                                             <TableRow key={p.id}>
-                                                <TableCell>{p.date ? format(p.date.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
+                                                <TableCell>{p.date ? format(toDate(p.date)!, 'dd/MM/yyyy') : 'N/A'}</TableCell>
                                                 <TableCell>R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
                                                 <TableCell><Badge variant={p.status === 'paid' ? 'default' : 'destructive'}>{p.status}</Badge></TableCell>
                                                 <TableCell className="text-right">
@@ -542,7 +556,15 @@ function SuperAdminPage() {
                                     <TableCell className="font-medium">{org.name}</TableCell>
                                     <TableCell>{org.owner?.name || 'N/A'}</TableCell>
                                     <TableCell>{getStatusBadge(org.paymentStatus)}</TableCell>
-                                    <TableCell>{org.subscription?.paymentRecords?.find(p => p.status === 'pending')?.date ? format((org.subscription.paymentRecords.find(p => p.status === 'pending')!.date as any).toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
+                                    <TableCell>
+                                        {org.subscription?.paymentRecords
+                                            ?.filter(p => p.status === 'pending')
+                                            .sort((a,b) => toDate(a.date)!.getTime() - toDate(b.date)!.getTime())
+                                            [0] 
+                                            ? format(toDate(org.subscription.paymentRecords.find(p => p.status === 'pending')!.date)!, 'dd/MM/yyyy') 
+                                            : <Badge variant="outline">N/A</Badge>
+                                        }
+                                    </TableCell>
                                     <TableCell className="text-right">
                                         <AlertDialog>
                                             <DropdownMenu>
@@ -585,4 +607,5 @@ function SuperAdminPage() {
 }
 
 export default SuperAdminPage;
+
 

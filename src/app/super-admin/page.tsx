@@ -106,7 +106,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                 return { 
                     ...record, 
                     status: 'paid' as PaymentRecordStatus, 
-                    paidDate: serverTimestamp(),
+                    paidDate: new Date(),
                     paidAmount: record.amount,
                     recordedBy: adminUser.id,
                 };
@@ -731,5 +731,3 @@ function SuperAdminPage() {
 }
 
 export default SuperAdminPage;
-
-    

@@ -5,7 +5,7 @@
 import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import type { User, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile, Subscription } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
@@ -231,7 +231,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const newSubscription: Subscription = {
           planName: 'Plano Pro',
           price: 99.90,
-          nextDueDate: addMonths(new Date(), 1),
+          startDate: Timestamp.now(),
+          endDate: Timestamp.fromDate(addMonths(new Date(), 12)),
           paymentRecords: [],
       };
       

@@ -33,47 +33,52 @@ type OrgWithUser = Organization & { owner?: User };
 
 function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void, adminUser: User | null }) {
     const { toast } = useToast();
+    const [subDetails, setSubDetails] = useState<Partial<Subscription>>(organization.subscription || {});
     
-    // State for the new subscription form
-    const [planName, setPlanName] = useState('Plano Pro');
-    const [price, setPrice] = useState(99.90);
-    const [contractDates, setContractDates] = useState<DateRange | undefined>({ from: new Date(), to: addMonths(new Date(), 12) });
-    
-    const [isSaving, setIsSaving] = useState(false);
+    useEffect(() => {
+        setSubDetails(organization.subscription || {});
+    }, [organization.subscription]);
 
-    const handleCreateSubscription = async () => {
-        if (!adminUser || !contractDates?.from || !contractDates?.to) return;
-        setIsSaving(true);
-        
-        const months = eachMonthOfInterval({
-            start: contractDates.from,
-            end: contractDates.to
+    const handleCreateOrUpdateSubscription = async () => {
+        if (!adminUser || !subDetails.planName || !subDetails.price || !subDetails.startDate || !subDetails.endDate) {
+            toast({title: 'Dados incompletos', variant: 'destructive'});
+            return;
+        };
+
+        const startDate = subDetails.startDate instanceof Timestamp ? subDetails.startDate.toDate() : subDetails.startDate;
+        const endDate = subDetails.endDate instanceof Timestamp ? subDetails.endDate.toDate() : subDetails.endDate;
+
+        const months = eachMonthOfInterval({ start: startDate, end: endDate });
+
+        const paymentRecords: PaymentRecord[] = months.map((monthDate, index) => {
+            const existingRecord = organization.subscription?.paymentRecords.find(p => 
+                p.date.toDate().getMonth() === monthDate.getMonth() && 
+                p.date.toDate().getFullYear() === monthDate.getFullYear()
+            );
+            return existingRecord || {
+                id: doc(collection(db, 'dummy')).id,
+                date: Timestamp.fromDate(startOfMonth(monthDate)),
+                amount: subDetails.price || 0,
+                status: 'pending',
+            };
         });
 
-        const paymentRecords: PaymentRecord[] = months.map(monthDate => ({
-            id: doc(collection(db, 'dummy')).id, // Generate a unique ID for each record
-            date: Timestamp.fromDate(startOfMonth(monthDate)),
-            amount: price,
-            status: 'pending',
-        }));
-
-        const newSubscription: Subscription = {
-            planName,
-            price,
-            startDate: Timestamp.fromDate(contractDates.from),
-            endDate: Timestamp.fromDate(contractDates.to),
+        const newSubscriptionData: Subscription = {
+            ...subDetails,
+            planName: subDetails.planName,
+            price: subDetails.price,
+            startDate: subDetails.startDate,
+            endDate: subDetails.endDate,
             paymentRecords,
         };
         try {
             await updateDoc(doc(db, 'organizations', organization.id), {
-                subscription: newSubscription
+                subscription: newSubscriptionData
             });
-            toast({ title: 'Assinatura e parcelas criadas com sucesso!' });
+            toast({ title: 'Assinatura salva com sucesso!' });
         } catch (error) {
             console.error(error);
-            toast({ title: 'Erro ao criar assinatura', variant: 'destructive' });
-        } finally {
-            setIsSaving(false);
+            toast({ title: 'Erro ao salvar assinatura', variant: 'destructive' });
         }
     }
     
@@ -98,7 +103,6 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
         }
     };
     
-    const sub = organization.subscription;
     if (!isOpen) return null;
 
     return (
@@ -107,101 +111,79 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                 <DialogHeader>
                     <DialogTitle>Gerenciar Assinatura: {organization.name}</DialogTitle>
                 </DialogHeader>
-                {sub ? (
-                    <div className="space-y-6 py-4 max-h-[70vh] overflow-y-auto">
-                        <div className="flex justify-between items-baseline">
-                             <div>
-                                <h4 className="font-semibold">{sub.planName} - R$ {sub.price.toLocaleString('pt-BR', {minimumFractionDigits: 2})} / mês</h4>
-                                {sub.startDate && sub.endDate && (
-                                    <p className="text-sm text-muted-foreground">
-                                        Contrato de {format(sub.startDate.toDate(), 'dd/MM/yy')} até {format(sub.endDate.toDate(), 'dd/MM/yy')}
-                                    </p>
-                                )}
-                            </div>
-                        </div>
-
-                         <Separator />
-                         
-                         <div className="space-y-2">
-                            <h4 className="font-semibold">Histórico de Parcelas</h4>
-                            <div className="max-h-96 overflow-y-auto mt-2 pr-2">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Vencimento</TableHead>
-                                            <TableHead>Valor</TableHead>
-                                            <TableHead>Status</TableHead>
-                                            <TableHead className="text-right">Ações</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {sub.paymentRecords && sub.paymentRecords.length > 0 ? (
-                                            sub.paymentRecords.sort((a,b) => a.date.toDate().getTime() - b.date.toDate().getTime()).map((p) => (
-                                                <TableRow key={p.id}>
-                                                    <TableCell>{p.date ? format(p.date.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
-                                                    <TableCell>R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
-                                                    <TableCell><Badge variant={p.status === 'paid' ? 'default' : 'destructive'}>{p.status}</Badge></TableCell>
-                                                    <TableCell className="text-right">
-                                                         {p.status === 'pending' && (
-                                                            <Button size="sm" variant="outline" onClick={() => handleRegisterPayment(p.id)}>
-                                                                <CheckCircle className="mr-2 h-4 w-4"/>
-                                                                Registrar Pagamento
-                                                            </Button>
-                                                         )}
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))
-                                        ) : (
-                                            <TableRow><TableCell colSpan={4} className="text-center">Nenhuma parcela encontrada.</TableCell></TableRow>
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </div>
-                         </div>
-                    </div>
-                ) : (
-                    <div className="space-y-4 py-4">
-                        <p className="text-muted-foreground">Nenhuma assinatura encontrada. Crie uma abaixo.</p>
+                <div className="space-y-6 py-4 max-h-[70vh] overflow-y-auto">
+                    {/* Subscription Form */}
+                    <div className="space-y-4 p-4 border rounded-lg">
+                        <h3 className="font-semibold">Detalhes do Contrato</h3>
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="planName">Nome do Plano</Label>
-                                <Input id="planName" value={planName} onChange={e => setPlanName(e.target.value)} />
+                                <Input id="planName" value={subDetails.planName || ''} onChange={e => setSubDetails(p => ({...p, planName: e.target.value}))} />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="planPrice">Preço Mensal (R$)</Label>
-                                <Input id="planPrice" type="number" value={price} onChange={e => setPrice(parseFloat(e.target.value) || 0)} />
+                                <Input id="planPrice" type="number" value={subDetails.price || ''} onChange={e => setSubDetails(p => ({...p, price: parseFloat(e.target.value) || 0}))} />
                             </div>
                          </div>
-                         <div className="space-y-2">
-                             <Label>Período do Contrato</Label>
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                    <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                        <CalendarIcon className="mr-2 h-4 w-4" />
-                                        {contractDates?.from ? (
-                                            contractDates.to ? (
-                                                `${format(contractDates.from, 'dd/MM/yy')} - ${format(contractDates.to, 'dd/MM/yy')}`
-                                            ) : (format(contractDates.from, 'dd/MM/yy'))
-                                        ) : 'Escolha o período'}
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0" align="start">
-                                    <Calendar
-                                        initialFocus
-                                        mode="range"
-                                        defaultMonth={contractDates?.from}
-                                        selected={contractDates}
-                                        onSelect={setContractDates}
-                                        numberOfMonths={2}
-                                    />
-                                </PopoverContent>
-                            </Popover>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                             <div className="space-y-2">
+                                <Label>Data de Início</Label>
+                                <Popover>
+                                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{subDetails.startDate ? format((subDetails.startDate as any).toDate(), 'dd/MM/yyyy') : 'Escolha uma data'}</Button></PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={(subDetails.startDate as any)?.toDate()} onSelect={d => setSubDetails(p => ({...p, startDate: d}))} /></PopoverContent>
+                                </Popover>
+                             </div>
+                             <div className="space-y-2">
+                                <Label>Data de Fim</Label>
+                                 <Popover>
+                                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{subDetails.endDate ? format((subDetails.endDate as any).toDate(), 'dd/MM/yyyy') : 'Escolha uma data'}</Button></PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={(subDetails.endDate as any)?.toDate()} onSelect={d => setSubDetails(p => ({...p, endDate: d}))} /></PopoverContent>
+                                </Popover>
+                             </div>
                          </div>
-                        <Button onClick={handleCreateSubscription} className="w-full" disabled={isSaving}>
-                            {isSaving ? <Loader2 className="mr-2 animate-spin"/> : 'Criar Assinatura e Gerar Parcelas'}
-                        </Button>
+                         <Button onClick={handleCreateOrUpdateSubscription}>Salvar Alterações e Gerar Parcelas</Button>
                     </div>
-                )}
+
+                    {/* Payment Records Table */}
+                     <div className="space-y-2">
+                        <h3 className="font-semibold">Histórico de Parcelas</h3>
+                        <div className="max-h-96 overflow-y-auto mt-2 pr-2">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Vencimento</TableHead>
+                                        <TableHead>Valor</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead className="text-right">Ações</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {subDetails.paymentRecords && subDetails.paymentRecords.length > 0 ? (
+                                        subDetails.paymentRecords.sort((a,b) => a.date.toDate().getTime() - b.date.toDate().getTime()).map((p) => (
+                                            <TableRow key={p.id}>
+                                                <TableCell>{p.date ? format(p.date.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
+                                                <TableCell>R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
+                                                <TableCell><Badge variant={p.status === 'paid' ? 'default' : 'destructive'}>{p.status}</Badge></TableCell>
+                                                <TableCell className="text-right">
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal/></Button></DropdownMenuTrigger>
+                                                        <DropdownMenuContent>
+                                                            {p.status === 'pending' && <DropdownMenuItem onSelect={() => handleRegisterPayment(p.id)}>Registrar Pagamento</DropdownMenuItem>}
+                                                            <DropdownMenuItem disabled>Editar</DropdownMenuItem>
+                                                            <DropdownMenuItem disabled className="text-destructive">Excluir</DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))
+                                    ) : (
+                                        <TableRow><TableCell colSpan={4} className="text-center">Nenhuma parcela gerada.</TableCell></TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </div>
+                     </div>
+                </div>
             </DialogContent>
         </Dialog>
     )
@@ -560,7 +542,7 @@ function SuperAdminPage() {
                                     <TableCell className="font-medium">{org.name}</TableCell>
                                     <TableCell>{org.owner?.name || 'N/A'}</TableCell>
                                     <TableCell>{getStatusBadge(org.paymentStatus)}</TableCell>
-                                    <TableCell>{org.subscription?.paymentRecords?.find(p => p.status === 'pending')?.date ? format(org.subscription.paymentRecords.find(p => p.status === 'pending')!.date.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
+                                    <TableCell>{org.subscription?.paymentRecords?.find(p => p.status === 'pending')?.date ? format((org.subscription.paymentRecords.find(p => p.status === 'pending')!.date as any).toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
                                     <TableCell className="text-right">
                                         <AlertDialog>
                                             <DropdownMenu>

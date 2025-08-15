@@ -9,7 +9,7 @@ import { Icons } from '@/components/icons';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Home, Package, BarChart, ShoppingCart, Bot, FileText, LogOut, Loader2, Users, Settings, ChevronsUpDown, Check, Building, Gift, AlertTriangle, CreditCard, Component, LifeBuoy, Calendar, Briefcase, Menu } from 'lucide-react';
+import { Home, Package, BarChart, ShoppingCart, Bot, FileText, LogOut, Loader2, Users, Settings, ChevronsUpDown, Check, Building, Gift, AlertTriangle, CreditCard, Component, LifeBuoy, Calendar, Briefcase, Menu, LogIn } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -217,6 +217,23 @@ function SystemLockedScreen() {
     )
 }
 
+function ImpersonationExitButton() {
+    const { user, stopImpersonation } = useAuth();
+
+    if (!user?.isImpersonating) {
+        return null;
+    }
+
+    return (
+        <div className="fixed bottom-4 right-4 z-50">
+            <Button onClick={stopImpersonation} variant="destructive">
+                <LogOut className="mr-2" />
+                Sair da Personificação
+            </Button>
+        </div>
+    )
+}
+
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
     const { user } = useAuth();
     const { setIsOpen } = useSidebar();
@@ -236,7 +253,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
 
     }, [user?.organization]);
 
-    if(user?.paymentStatus === 'locked') {
+    if(user?.paymentStatus === 'locked' && !user?.isImpersonating) {
         return <SystemLockedScreen />;
     }
 
@@ -287,6 +304,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                      </div>
                 </main>
             </div>
+             <ImpersonationExitButton />
         </div>
     )
 }

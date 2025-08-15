@@ -1,4 +1,5 @@
 
+
 // src/app/super-admin/page.tsx
 'use client';
 import * as React from 'react';
@@ -12,7 +13,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -98,7 +99,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
         }
     }
     
-    const handleSavePayment = async (updatedRecord: PaymentRecord) => {
+    const handleRegisterPayment = async (updatedRecord: PaymentRecord) => {
         if (!organization.subscription || !adminUser) return;
     
         const updatedRecords = organization.subscription.paymentRecords.map(record => {
@@ -135,7 +136,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
             updatedRecords[existingRecordIndex] = recordToSave;
             toast({ title: 'Parcela atualizada!' });
         } else {
-            updatedRecords = [...organization.subscription.paymentRecords, recordToSave];
+            updatedRecords = [...(organization.subscription.paymentRecords || []), recordToSave];
             toast({ title: 'Nova parcela criada!' });
         }
 
@@ -176,7 +177,6 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                     <DialogTitle>Gerenciar Assinatura: {organization.name}</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-6 py-4 max-h-[70vh] overflow-y-auto">
-                    {/* Subscription Form */}
                     <div className="space-y-4 p-4 border rounded-lg">
                         <h3 className="font-semibold">Detalhes do Contrato</h3>
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -208,7 +208,6 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                          <Button onClick={handleCreateOrUpdateSubscription}>Salvar Contrato e Gerar Parcelas</Button>
                     </div>
 
-                    {/* Payment Records Table */}
                      <div className="space-y-2">
                         <div className="flex justify-between items-center">
                             <h3 className="font-semibold">Histórico de Parcelas</h3>
@@ -277,7 +276,6 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                      </div>
                 </div>
 
-                {/* Edit Record Dialog */}
                 {editingRecord && (
                     <Dialog open={!!editingRecord} onOpenChange={(open) => !open && setEditingRecord(null)}>
                         <DialogContent>
@@ -287,12 +285,11 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                     </Dialog>
                 )}
 
-                {/* Register Payment Dialog */}
                 <RegisterPaymentDialog 
                     record={payingRecord}
                     isOpen={!!payingRecord}
                     onOpenChange={(open) => !open && setPayingRecord(null)}
-                    onSave={handleSavePayment}
+                    onSave={handleRegisterPayment}
                 />
             </DialogContent>
         </Dialog>
@@ -615,7 +612,6 @@ function OrgProfilesDialog({ organization, isOpen, onOpenChange }: { organizatio
     };
 
     const handleDelete = async (id: string) => {
-        // Here you should check if any user is using this profile before deleting
         await deleteDoc(doc(db, 'permissionProfiles', id));
         toast({ title: 'Perfil excluído!', variant: 'destructive' });
     };
@@ -667,7 +663,7 @@ function OrgProfilesDialog({ organization, isOpen, onOpenChange }: { organizatio
 }
 
 function SuperAdminPage() {
-    const { user, loading: authLoading } = useAuth();
+    const { user, loading: authLoading, startImpersonation } = useAuth();
     const router = useRouter();
     const [organizations, setOrganizations] = useState<OrgWithUser[]>([]);
     const [loading, setLoading] = useState(true);
@@ -753,7 +749,7 @@ function SuperAdminPage() {
                 </CardHeader>
                 <CardContent>
                     <Table>
-                        <TableHeader><TableRow><TableHead>Organização</TableHead><TableHead>Proprietário</TableHead><TableHead>Status Pag.</TableHead><TableHead>Próx. Venc.</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
+                        <TableHeader><TableRow><TableHead>Organização</TableHead><TableHead>Proprietário</TableHead><TableHead>Status Pag.</TableHead><TableHead>Próx. Venc.</TableHead><TableHead>Acessar</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
                         <TableBody>
                             {organizations.map((org) => (
                                 <TableRow key={org.id}>
@@ -768,6 +764,12 @@ function SuperAdminPage() {
                                             ? format(toDate(org.subscription.paymentRecords.find(p => p.status === 'pending')!.date)!, 'dd/MM/yyyy') 
                                             : <Badge variant="outline">N/A</Badge>
                                         }
+                                    </TableCell>
+                                    <TableCell>
+                                        <Button variant="outline" size="sm" onClick={() => startImpersonation(org.id)}>
+                                            <LogIn className="mr-2 h-4 w-4"/>
+                                            Acessar Painel
+                                        </Button>
                                     </TableCell>
                                     <TableCell className="text-right">
                                         <AlertDialog>

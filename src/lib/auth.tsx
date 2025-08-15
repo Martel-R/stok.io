@@ -22,6 +22,7 @@ const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availa
 
 interface UserWithOrg extends User {
     organization?: Organization;
+    isImpersonating?: boolean;
 }
 
 interface AuthContextType {
@@ -43,6 +44,8 @@ interface AuthContextType {
   logout: () => void;
   loading: boolean;
   cancelLogin: () => void;
+  startImpersonation: (orgId: string) => void;
+  stopImpersonation: () => void;
 }
 
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
@@ -121,11 +124,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
             currentUser = newUser;
         }
-        
-        setUser(currentUser);
 
-        if (currentUser.organizationId) {
-            const orgDocRef = doc(db, "organizations", currentUser.organizationId);
+        const isSuperAdmin = currentUser.email === process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL;
+        const impersonatedOrgId = localStorage.getItem('impersonatedOrgId');
+        const isImpersonating = isSuperAdmin && !!impersonatedOrgId;
+
+        const effectiveOrgId = isImpersonating ? impersonatedOrgId : currentUser.organizationId;
+        
+        setUser({ ...currentUser, isImpersonating });
+
+        if (effectiveOrgId) {
+            const orgDocRef = doc(db, "organizations", effectiveOrgId);
             orgUnsubscribe = onSnapshot(orgDocRef, async (orgDoc) => {
                 if (orgDoc.exists()) {
                     const orgData = orgDoc.data() as Organization;
@@ -139,19 +148,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     setUser(prevUser => prevUser ? { 
                         ...prevUser, 
                         paymentStatus: orgData.paymentStatus, 
-                        enabledModules: modules,
+                        enabledModules: isImpersonating ? defaultPermissions : modules, // Super admin sees all
                         organization: orgData,
                     } : null);
                 }
             });
 
-             // Listen to permission profiles
-            const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', currentUser.organizationId));
+            const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId));
             profilesUnsubscribe = onSnapshot(profilesQuery, async (profilesSnap) => {
                 const profiles = profilesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
                 const userProfile = profiles.find(p => p.id === currentUser.role);
 
-                if (userProfile) {
+                if (userProfile && !isImpersonating) {
                      setUser(prevUser => prevUser ? { 
                         ...prevUser, 
                         enabledModules: userProfile.permissions
@@ -159,10 +167,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
             });
 
-            const q = query(collection(db, "branches"), where("organizationId", "==", currentUser.organizationId));
+            const q = query(collection(db, "branches"), where("organizationId", "==", effectiveOrgId));
             branchesUnsubscribe = onSnapshot(q, (snapshot) => {
-                const userBranches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
-                const userFilteredBranches = userBranches.filter(b => b.userIds.includes(currentUser.id));
+                const orgBranches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+                const userFilteredBranches = isImpersonating ? orgBranches : orgBranches.filter(b => b.userIds.includes(currentUser.id));
                 setBranches(userFilteredBranches);
 
                 const storedBranchId = localStorage.getItem('currentBranchId');
@@ -278,8 +286,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const createUser = async (email: string, name: string, role: string, organizationId: string, customerId?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
     try {
-        // This trick allows creating a user without signing in the admin out.
-        // It's a common workaround for admin SDK-like functionality on the client.
         const { getApp, initializeApp, deleteApp } = await import('firebase/app');
         const { getAuth: getAuth_local, createUserWithEmailAndPassword: createUserWithEmailAndPassword_local, sendPasswordResetEmail: sendPasswordResetEmail_local, signOut: signOut_local } = await import('firebase/auth');
 
@@ -303,7 +309,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         await setDoc(doc(db, "users", firebaseUser.uid), newUser);
 
-        // Send password reset email right away
         await sendPasswordResetEmail_local(tempAuthInstance, email);
 
         await signOut_local(tempAuthInstance);
@@ -365,12 +370,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await signOut(auth);
         setUser(null);
         localStorage.removeItem('currentBranchId');
+        localStorage.removeItem('impersonatedOrgId');
         router.push('/login');
     } catch (error) {
         console.error("Firebase Logout Error:", error);
     } finally {
         setLoading(false);
     }
+  };
+
+  const startImpersonation = (orgId: string) => {
+    localStorage.setItem('impersonatedOrgId', orgId);
+    router.push('/dashboard');
+    window.location.reload(); // Force a full reload to re-trigger the auth provider
+  };
+  
+  const stopImpersonation = () => {
+    localStorage.removeItem('impersonatedOrgId');
+    localStorage.removeItem('currentBranchId');
+    router.push('/super-admin');
+    window.location.reload();
   };
 
   const setCurrentBranch = (branch: Branch) => {
@@ -390,7 +409,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const userRef = doc(db, 'users', user.id);
         const updateData = { ...data };
-        delete updateData.paymentStatus; // Do not allow user to update their own payment status
+        delete updateData.paymentStatus;
         await updateDoc(userRef, updateData);
         
         setUser(prev => prev ? { ...prev, ...data } : null);
@@ -509,7 +528,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, loading, pathname, router, user]);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, deleteTestData, updateOrganizationModules, updateOrganizationBranding }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, deleteTestData, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation }}>
       {children}
     </AuthContext.Provider>
   );

@@ -39,7 +39,9 @@ export function PermissionProfileForm({
         { key: 'settings', label: 'Configurações', icon: Settings },
     ] as const;
 
-    const activeModuleConfig = allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]);
+    const activeModuleConfig = React.useMemo(() => 
+        allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]),
+    [allModuleConfig, organization.enabledModules]);
 
     useEffect(() => {
         const defaultPermissions: Partial<EnabledModules> = {};
@@ -79,7 +81,7 @@ export function PermissionProfileForm({
             return { ...prev, permissions: {...newPermissions, [module]: updatedModulePerms} as EnabledModules };
         });
     };
-
+    
     const handleSelectAll = (permission: keyof ModulePermissions, checked: boolean) => {
         setFormData(prev => {
             const newPermissions = { ...prev.permissions } as EnabledModules;

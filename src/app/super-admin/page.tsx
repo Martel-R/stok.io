@@ -5,7 +5,7 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc, addDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc, addDoc, serverTimestamp, arrayUnion, Timestamp } from 'firebase/firestore';
 import type { Organization, User, PaymentStatus, EnabledModules, PermissionProfile, Subscription } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
@@ -13,7 +13,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, CalendarIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -25,12 +25,16 @@ import { Input } from '@/components/ui/input';
 import { PermissionProfileForm } from '@/components/permission-profile-form';
 import { format, addMonths } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 
 type OrgWithUser = Organization & { owner?: User };
 
 function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void, adminUser: User | null }) {
     const { toast } = useToast();
-    const [paymentAmount, setPaymentAmount] = useState<number>(organization.subscription?.price || 0);
+    const [paymentAmount, setPaymentAmount] = useState<number>(organization.subscription?.price || 99.90);
+    const [paymentDate, setPaymentDate] = useState<Date | undefined>(new Date());
+    
     const [newPlanName, setNewPlanName] = useState('Plano Pro');
     const [newPlanPrice, setNewPlanPrice] = useState(99.90);
     const [newPlanDate, setNewPlanDate] = useState(format(addMonths(new Date(), 1), 'yyyy-MM-dd'));
@@ -40,7 +44,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
         const newSubscription: Subscription = {
             planName: newPlanName,
             price: newPlanPrice,
-            nextDueDate: new Date(newPlanDate),
+            nextDueDate: Timestamp.fromDate(new Date(newPlanDate)),
             paymentRecords: [],
         };
         try {
@@ -55,25 +59,20 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
     }
 
     const handleRegisterPayment = async () => {
-        if (!organization.subscription || !adminUser) return;
+        if (!organization.subscription || !adminUser || !paymentDate) return;
         
         const newPayment = {
             id: doc(collection(db, 'paymentRecords')).id,
-            date: serverTimestamp(),
+            date: Timestamp.fromDate(paymentDate),
             amount: paymentAmount,
             recordedBy: adminUser.id,
         };
         
-        const nextDueDate = addMonths(organization.subscription.nextDueDate.toDate(), 1);
-
         try {
             await updateDoc(doc(db, 'organizations', organization.id), {
-                'subscription.nextDueDate': nextDueDate,
-                'subscription.paymentRecords': arrayUnion(newPayment),
-                'paymentStatus': 'active'
+                'subscription.paymentRecords': arrayUnion(newPayment)
             });
             toast({ title: 'Pagamento registrado com sucesso!' });
-            onOpenChange(false);
         } catch (error) {
             console.error(error);
             toast({ title: 'Erro ao registrar pagamento', variant: 'destructive' });
@@ -98,14 +97,32 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                         </div>
                         <Separator />
                         <div className="space-y-2">
-                             <h4 className="font-semibold">Registrar Novo Pagamento</h4>
-                             <Label htmlFor="paymentAmount">Valor</Label>
-                             <Input 
-                                id="paymentAmount"
-                                type="number"
-                                value={paymentAmount}
-                                onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
-                             />
+                             <h4 className="font-semibold">Lançar Pagamento</h4>
+                             <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <Label htmlFor="paymentAmount">Valor</Label>
+                                    <Input 
+                                        id="paymentAmount"
+                                        type="number"
+                                        value={paymentAmount}
+                                        onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
+                                    />
+                                </div>
+                                 <div className="space-y-1">
+                                    <Label htmlFor="paymentDate">Data do Pagamento</Label>
+                                     <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                {paymentDate ? format(paymentDate, 'dd/MM/yyyy') : <span>Escolha uma data</span>}
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0">
+                                            <Calendar mode="single" selected={paymentDate} onSelect={setPaymentDate} initialFocus />
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
+                             </div>
                              <Button onClick={handleRegisterPayment} className="w-full">Registrar Pagamento</Button>
                         </div>
                          <Separator />
@@ -113,8 +130,8 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                             <h4 className="font-semibold">Histórico de Pagamentos</h4>
                             <div className="max-h-48 overflow-y-auto mt-2 space-y-2">
                                 {sub.paymentRecords && sub.paymentRecords.length > 0 ? (
-                                    sub.paymentRecords.map((p, i) => (
-                                        <div key={i} className="flex justify-between text-sm p-2 bg-muted rounded-md">
+                                    sub.paymentRecords.sort((a,b) => b.date.toDate() - a.date.toDate()).map((p, i) => (
+                                        <div key={p.id || i} className="flex justify-between text-sm p-2 bg-muted rounded-md">
                                             <span>{p.date ? format(p.date.toDate(), 'dd/MM/yyyy') : 'Registrando...'}</span>
                                             <span>R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
                                         </div>

@@ -297,7 +297,7 @@ export interface BrandingSettings {
 
 export interface PaymentRecord {
     id: string;
-    date: any; // serverTimestamp
+    date: any; // Can be a past or future date, so store as Timestamp
     amount: number;
     recordedBy: string; // User ID of admin who recorded it
 }
@@ -305,7 +305,7 @@ export interface PaymentRecord {
 export interface Subscription {
     planName: string;
     price: number;
-    nextDueDate: any; // serverTimestamp
+    nextDueDate: any; // Timestamp
     paymentRecords: PaymentRecord[];
 }
 

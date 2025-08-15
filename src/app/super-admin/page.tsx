@@ -4,14 +4,14 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc, addDoc } from 'firebase/firestore';
-import type { Organization, User, PaymentStatus, EnabledModules, PermissionProfile } from '@/lib/types';
+import type { Organization, User, PaymentStatus, EnabledModules, PermissionProfile, ModulePermissions } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, Home, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -20,6 +20,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+
 
 type OrgWithUser = Organization & { owner?: User };
 
@@ -34,14 +36,8 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
     }, [organization]);
 
     const handleModuleToggle = async (module: keyof EnabledModules, checked: boolean) => {
-        const updatedModules = { ...enabledModules, [module]: { ...enabledModules[module], view: checked } };
+        const updatedModules = { ...enabledModules, [module]: { view: checked, edit: checked, delete: checked } };
         
-        // If view is disabled, disable edit and delete as well.
-        if (!checked) {
-            updatedModules[module].edit = false;
-            updatedModules[module].delete = false;
-        }
-
         setEnabledModules(updatedModules);
 
         try {
@@ -50,7 +46,7 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
             toast({ title: 'Módulo atualizado com sucesso!' });
         } catch (error) {
             toast({ title: 'Erro ao atualizar módulo', variant: 'destructive' });
-            setEnabledModules(prev => ({...prev, [module]: { ...prev[module], view: !checked }}));
+            setEnabledModules(prev => ({...prev, [module]: { ...prev[module], view: !checked, edit: !checked, delete: !checked }}));
         }
     };
 
@@ -132,13 +128,6 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
         setIsFormOpen(false);
     };
 
-     const handleDeleteUser = async (userId: string) => {
-        // Caution: This doesn't delete the Firebase Auth user, only the Firestore record.
-        // For a full solution, this should call a Cloud Function.
-        await deleteDoc(doc(db, "users", userId));
-        toast({ title: "Usuário removido da organização", variant: "destructive" });
-    };
-
     if (!isOpen || !organization) return null;
 
     return (
@@ -191,12 +180,179 @@ function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: P
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
-            <Input name="name" value={formData.name} onChange={handleChange} placeholder="Nome do usuário" required />
-            <Input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="Email" required disabled={!!user} />
+            <Input name="name" value={formData.name || ''} onChange={handleChange} placeholder="Nome do usuário" required />
+            <Input name="email" type="email" value={formData.email || ''} onChange={handleChange} placeholder="Email" required disabled={!!user} />
             <Select value={formData.role} onValueChange={handleRoleChange}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{profiles.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
             <DialogFooter><Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button><Button type="submit">Salvar</Button></DialogFooter>
         </form>
     );
+}
+
+function OrgProfilesDialog({ organization, isOpen, onOpenChange }: { organization: OrgWithUser | null; isOpen: boolean; onOpenChange: (open: boolean) => void }) {
+    const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [editingProfile, setEditingProfile] = useState<PermissionProfile | undefined>(undefined);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (!isOpen || !organization) return;
+        setLoading(true);
+        const q = query(collection(db, 'permissionProfiles'), where('organizationId', '==', organization.id));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
+            setProfiles(data);
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, [isOpen, organization]);
+
+    const handleSave = async (profileData: Partial<PermissionProfile>) => {
+        if (!organization) return;
+        try {
+            if (editingProfile?.id) {
+                await updateDoc(doc(db, 'permissionProfiles', editingProfile.id), profileData);
+                toast({ title: 'Perfil atualizado!' });
+            } else {
+                await addDoc(collection(db, 'permissionProfiles'), { ...profileData, organizationId: organization.id });
+                toast({ title: 'Perfil criado!' });
+            }
+            setIsFormOpen(false);
+            setEditingProfile(undefined);
+        } catch (error) {
+            toast({ title: 'Erro ao salvar perfil', variant: 'destructive' });
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        // Here you should check if any user is using this profile before deleting
+        await deleteDoc(doc(db, 'permissionProfiles', id));
+        toast({ title: 'Perfil excluído!', variant: 'destructive' });
+    };
+
+    if (!isOpen || !organization) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-4xl">
+                <DialogHeader>
+                    <DialogTitle>Gerenciar Perfis de "{organization.name}"</DialogTitle>
+                </DialogHeader>
+                 <div className="py-4">
+                     <div className="flex justify-end mb-4">
+                        <Button onClick={() => { setEditingProfile(undefined); setIsFormOpen(true); }}><PlusCircle className="mr-2" /> Adicionar Perfil</Button>
+                    </div>
+                     <Table>
+                        <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Permissões</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                            {loading ? <TableRow><TableCell colSpan={3} className="text-center"><Loader2 className="animate-spin mx-auto"/></TableCell></TableRow> :
+                             profiles.map(p => (
+                                <TableRow key={p.id}>
+                                    <TableCell>{p.name}</TableCell>
+                                    <TableCell>
+                                        <div className="flex flex-wrap gap-1">
+                                            {Object.entries(p.permissions).filter(([, perms]) => perms.view).map(([key]) => <Badge key={key} variant="outline">{key}</Badge>)}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="sm" onClick={() => { setEditingProfile(p); setIsFormOpen(true); }}>Editar</Button>
+                                    </TableCell>
+                                </TableRow>
+                             ))
+                            }
+                        </TableBody>
+                    </Table>
+                 </div>
+                 {isFormOpen && (
+                     <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                         <DialogContent className="max-w-2xl">
+                             <DialogHeader><DialogTitle>{editingProfile ? 'Editar Perfil' : 'Novo Perfil'}</DialogTitle></DialogHeader>
+                             <PermissionProfileForm profile={editingProfile} organization={organization} onSave={handleSave} onDelete={handleDelete} onDone={() => setIsFormOpen(false)} />
+                         </DialogContent>
+                     </Dialog>
+                 )}
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+function PermissionProfileForm({
+    profile, organization, onSave, onDelete, onDone
+}: {
+    profile?: PermissionProfile,
+    organization: Organization,
+    onSave: (data: Partial<PermissionProfile>) => void,
+    onDelete: (id: string) => void,
+    onDone: () => void,
+}) {
+    const [formData, setFormData] = useState<Partial<PermissionProfile>>({});
+    
+    const allModuleConfig = React.useMemo(() => [
+        { key: 'dashboard', label: 'Início', icon: Home },
+        { key: 'customers', label: 'Clientes', icon: Users },
+        { key: 'services', label: 'Serviços', icon: Briefcase },
+        { key: 'appointments', label: 'Agendamentos', icon: Calendar },
+        { key: 'products', label: 'Produtos', icon: Package },
+        { key: 'combos', label: 'Combos', icon: Gift },
+        { key: 'kits', label: 'Kits', icon: Component },
+        { key: 'inventory', label: 'Estoque', icon: BarChart },
+        { key: 'pos', label: 'Frente de Caixa', icon: ShoppingCart },
+        { key: 'assistant', label: 'Oráculo AI', icon: Bot },
+        { key: 'reports', label: 'Relatórios', icon: FileText },
+        { key: 'settings', label: 'Configurações', icon: Settings },
+    ] as const, []);
+
+    const activeModuleConfig = React.useMemo(() => 
+        allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]?.view),
+    [allModuleConfig, organization.enabledModules]);
+
+    useEffect(() => {
+        const defaultPermissions: Partial<EnabledModules> = {};
+        activeModuleConfig.forEach(mod => {
+            defaultPermissions[mod.key] = { view: false, edit: false, delete: false };
+        });
+        const initialPermissions = profile?.permissions 
+            ? { ...defaultPermissions, ...profile.permissions } 
+            : defaultPermissions;
+        setFormData({ ...profile, name: profile?.name || '', permissions: initialPermissions as EnabledModules });
+    }, [profile, activeModuleConfig]);
+
+    const handlePermissionChange = (module: keyof EnabledModules, permission: keyof ModulePermissions, checked: boolean) => {
+        setFormData(prev => {
+            const newPermissions = { ...prev.permissions };
+            const currentModulePerms = newPermissions[module] || { view: false, edit: false, delete: false };
+            const updatedModulePerms = { ...currentModulePerms, [permission]: checked };
+            if (permission === 'view' && !checked) { updatedModulePerms.edit = false; updatedModulePerms.delete = false; }
+            if ((permission === 'edit' || permission === 'delete') && checked) { updatedModulePerms.view = true; }
+            return { ...prev, permissions: {...newPermissions, [module]: updatedModulePerms} as EnabledModules };
+        });
+    };
+    
+    const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSave(formData); }
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+            <Input value={formData.name || ''} onChange={(e) => setFormData(p => ({...p, name: e.target.value}))} placeholder="Nome do Perfil" required />
+            <Table>
+                <TableHeader><TableRow><TableHead>Módulo</TableHead><TableHead>Ver</TableHead><TableHead>Editar</TableHead><TableHead>Excluir</TableHead></TableRow></TableHeader>
+                <TableBody>
+                    {activeModuleConfig.map(mod => (
+                        <TableRow key={mod.key}>
+                            <TableCell><mod.icon className="inline mr-2 h-4"/>{mod.label}</TableCell>
+                            <TableCell><Checkbox checked={formData.permissions?.[mod.key]?.view ?? false} onCheckedChange={(c) => handlePermissionChange(mod.key, 'view', c === true)} /></TableCell>
+                            <TableCell><Checkbox checked={formData.permissions?.[mod.key]?.edit ?? false} onCheckedChange={(c) => handlePermissionChange(mod.key, 'edit', c === true)} disabled={!formData.permissions?.[mod.key]?.view} /></TableCell>
+                            <TableCell><Checkbox checked={formData.permissions?.[mod.key]?.delete ?? false} onCheckedChange={(c) => handlePermissionChange(mod.key, 'delete', c === true)} disabled={!formData.permissions?.[mod.key]?.view} /></TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+            <DialogFooter>
+                {profile?.id && <Button variant="destructive" type="button" onClick={() => onDelete(profile.id)}>Excluir</Button>}
+                <Button variant="ghost" type="button" onClick={onDone}>Cancelar</Button>
+                <Button type="submit">Salvar Perfil</Button>
+            </DialogFooter>
+        </form>
+    )
 }
 
 function SuperAdminPage() {
@@ -207,6 +363,7 @@ function SuperAdminPage() {
     const [selectedOrg, setSelectedOrg] = useState<OrgWithUser | null>(null);
     const [isModuleDialogOpen, setIsModuleDialogOpen] = useState(false);
     const [isUsersDialogOpen, setIsUsersDialogOpen] = useState(false);
+    const [isProfilesDialogOpen, setIsProfilesDialogOpen] = useState(false);
     const { toast } = useToast();
 
     useEffect(() => {
@@ -258,10 +415,11 @@ function SuperAdminPage() {
         return <Badge variant={status === 'locked' ? 'destructive' : 'secondary'} className={variants[status]}>{status}</Badge>;
     }
     
-    const handleOpenDialog = (org: OrgWithUser, type: 'modules' | 'users') => {
+    const handleOpenDialog = (org: OrgWithUser, type: 'modules' | 'users' | 'profiles') => {
         setSelectedOrg(org);
         if (type === 'modules') setIsModuleDialogOpen(true);
         if (type === 'users') setIsUsersDialogOpen(true);
+        if (type === 'profiles') setIsProfilesDialogOpen(true);
     };
 
     if (authLoading || loading || !user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
@@ -304,6 +462,7 @@ function SuperAdminPage() {
                                                         </Select>
                                                      </div>
                                                     <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'users')}><Users className="mr-2 h-4 w-4" /> Gerenciar Usuários</DropdownMenuItem>
+                                                    <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'profiles')}><Pencil className="mr-2 h-4 w-4" /> Gerenciar Perfis</DropdownMenuItem>
                                                     <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'modules')}><SlidersHorizontal className="mr-2 h-4 w-4" /> Gerenciar Módulos</DropdownMenuItem>
                                                     <DropdownMenuSeparator />
                                                      <AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Excluir Organização</DropdownMenuItem></AlertDialogTrigger>
@@ -323,6 +482,7 @@ function SuperAdminPage() {
             </Card>
              {selectedOrg && <ModulesSettingsDialog organization={selectedOrg} isOpen={isModuleDialogOpen} onOpenChange={setIsModuleDialogOpen} />}
              {selectedOrg && <OrgUsersDialog organization={selectedOrg} isOpen={isUsersDialogOpen} onOpenChange={setIsUsersDialogOpen} />}
+             {selectedOrg && <OrgProfilesDialog organization={selectedOrg} isOpen={isProfilesDialogOpen} onOpenChange={setIsProfilesDialogOpen} />}
         </div>
     );
 }

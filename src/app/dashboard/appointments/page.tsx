@@ -489,13 +489,40 @@ export default function AppointmentsPage() {
     const handleStartAttendance = async (app: Appointment) => {
         if (!user || !currentBranch) return;
         if (app.attendanceId) {
-            router.push(`/dashboard/attendance/${app.attendanceId}`);
+            router.push(`/dashboard/pos`);
             return;
         }
+
         const batch = writeBatch(db);
         const attendanceRef = doc(collection(db, 'attendances'));
         const appointmentRef = doc(db, 'appointments', app.id);
         const service = services.find(s => s.id === app.serviceId);
+
+        const items: AttendanceItem[] = [];
+        if (service) {
+            items.push({ id: service.id, name: service.name, type: 'service', quantity: 1, price: service.price, total: service.price });
+            // Add linked products
+            if(service.linkedProducts) {
+                const productDocs = await getDocs(query(collection(db, 'products'), where('branchId', '==', currentBranch.id)));
+                const branchProducts = productDocs.docs.map(d => ({id: d.id, ...d.data()}) as Product);
+
+                service.linkedProducts.forEach(lp => {
+                    const product = branchProducts.find(p => p.id === lp.productId);
+                    if (product) {
+                        items.push({
+                            id: product.id,
+                            name: product.name,
+                            type: 'product',
+                            quantity: lp.quantity,
+                            price: product.price,
+                            total: product.price * lp.quantity
+                        });
+                    }
+                });
+            }
+        }
+        const total = items.reduce((acc, item) => acc + item.total, 0);
+
         const newAttendance: Omit<Attendance, 'id'> = {
             organizationId: user.organizationId,
             branchId: currentBranch.id,
@@ -505,17 +532,17 @@ export default function AppointmentsPage() {
             professionalId: app.professionalId,
             professionalName: app.professionalName,
             date: serverTimestamp(),
-            items: service ? [{ id: service.id, name: service.name, type: 'service', quantity: 1, price: service.price, total: service.price }] : [],
+            items,
             photos: [],
             status: 'in-progress',
             paymentStatus: 'pending',
-            total: service?.price || 0,
+            total,
         };
         batch.set(attendanceRef, newAttendance);
-        batch.update(appointmentRef, { attendanceId: attendanceRef.id });
+        batch.update(appointmentRef, { attendanceId: attendanceRef.id, status: 'completed' });
         try {
             await batch.commit();
-            router.push(`/dashboard/attendance/${attendanceRef.id}`);
+            router.push(`/dashboard/pos`);
         } catch (error) {
             console.error("Failed to start attendance:", error);
             toast({ title: 'Erro ao iniciar atendimento', variant: 'destructive' });

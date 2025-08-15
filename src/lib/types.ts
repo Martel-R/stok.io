@@ -96,6 +96,12 @@ export interface Customer {
     anamnesisAnswers?: AnamnesisAnswer[];
 }
 
+export interface ServiceProduct {
+    productId: string;
+    productName: string;
+    quantity: number;
+}
+
 export interface Service {
     id: string;
     name: string;
@@ -106,6 +112,7 @@ export interface Service {
     professionalIds: string[]; // IDs of users with 'professional' role
     isActive: boolean;
     organizationId: string;
+    linkedProducts: ServiceProduct[];
 }
 
 export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no-show' | 'rescheduled' | 'pending-confirmation';

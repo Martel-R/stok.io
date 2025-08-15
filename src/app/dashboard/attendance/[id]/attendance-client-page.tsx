@@ -259,7 +259,7 @@ export default function AttendanceClientPage({ id }: { id: string }) {
             await updateDoc(doc(db, 'attendances', id), { ...dataToSave, status });
             toast({ title: `Atendimento ${status === 'completed' ? 'finalizado' : 'salvo'} com sucesso!` });
              if (status === 'completed') {
-                router.push('/dashboard/appointments');
+                router.push('/dashboard/pos');
             }
         } catch (error) {
             toast({ title: 'Erro ao salvar', variant: 'destructive' });

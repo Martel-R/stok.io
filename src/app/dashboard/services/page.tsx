@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
-import type { Service, User, PermissionProfile } from '@/lib/types';
+import type { Service, User, PermissionProfile, Product, ServiceProduct } from '@/lib/types';
 import { MoreHorizontal, PlusCircle, Briefcase, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -25,13 +25,26 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 
 
-function ServiceForm({ service, professionals, onSave, onDone }: { service?: Service; professionals: User[]; onSave: (data: Partial<Service>) => void; onDone: () => void }) {
+function ServiceForm({ service, professionals, products, onSave, onDone }: { 
+    service?: Service; 
+    professionals: User[]; 
+    products: Product[];
+    onSave: (data: Partial<Service>) => void; 
+    onDone: () => void 
+}) {
     const [formData, setFormData] = useState<Partial<Service>>(
         service || { 
-            name: '', description: '', category: '', duration: 30, price: 0, professionalIds: [], isActive: true
+            name: '', description: '', category: '', duration: 30, price: 0, professionalIds: [], isActive: true, linkedProducts: []
         }
     );
     const [popoverOpen, setPopoverOpen] = useState(false);
+    const [productPopoverOpen, setProductPopoverOpen] = useState(false);
+
+    useEffect(() => {
+        setFormData(service || { 
+            name: '', description: '', category: '', duration: 30, price: 0, professionalIds: [], isActive: true, linkedProducts: []
+        });
+    }, [service]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -46,6 +59,30 @@ function ServiceForm({ service, professionals, onSave, onDone }: { service?: Ser
             return { ...prev, professionalIds: newIds };
         });
     };
+
+    const addLinkedProduct = (product: Product) => {
+        setFormData(prev => {
+            const existing = prev.linkedProducts?.find(p => p.productId === product.id);
+            if (existing) return prev;
+            const newProduct: ServiceProduct = { productId: product.id, productName: product.name, quantity: 1 };
+            return { ...prev, linkedProducts: [...(prev.linkedProducts || []), newProduct] };
+        });
+        setProductPopoverOpen(false);
+    };
+
+    const updateLinkedProductQuantity = (productId: string, quantity: number) => {
+        setFormData(prev => ({
+            ...prev,
+            linkedProducts: prev.linkedProducts?.map(p => p.productId === productId ? { ...p, quantity: quantity } : p)
+        }));
+    };
+    
+    const removeLinkedProduct = (productId: string) => {
+         setFormData(prev => ({
+            ...prev,
+            linkedProducts: prev.linkedProducts?.filter(p => p.productId !== productId)
+        }));
+    };
     
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -58,25 +95,25 @@ function ServiceForm({ service, professionals, onSave, onDone }: { service?: Ser
             <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                     <Label htmlFor="name">Nome do Serviço</Label>
-                    <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
+                    <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} required />
                 </div>
                  <div className="space-y-2">
                     <Label htmlFor="category">Categoria</Label>
-                    <Input id="category" name="category" value={formData.category} onChange={handleChange} required />
+                    <Input id="category" name="category" value={formData.category || ''} onChange={handleChange} required />
                 </div>
             </div>
              <div className="space-y-2">
                 <Label htmlFor="description">Descrição</Label>
-                <Textarea id="description" name="description" value={formData.description} onChange={handleChange} />
+                <Textarea id="description" name="description" value={formData.description || ''} onChange={handleChange} />
             </div>
              <div className="grid grid-cols-2 gap-4">
                  <div className="space-y-2">
                     <Label htmlFor="price">Preço (R$)</Label>
-                    <Input id="price" name="price" type="number" step="0.01" value={formData.price} onChange={handleChange} required />
+                    <Input id="price" name="price" type="number" step="0.01" value={formData.price || 0} onChange={handleChange} required />
                 </div>
                  <div className="space-y-2">
                     <Label htmlFor="duration">Duração (minutos)</Label>
-                    <Input id="duration" name="duration" type="number" value={formData.duration} onChange={handleChange} required />
+                    <Input id="duration" name="duration" type="number" value={formData.duration || 0} onChange={handleChange} required />
                 </div>
             </div>
             <div className="space-y-2">
@@ -119,6 +156,47 @@ function ServiceForm({ service, professionals, onSave, onDone }: { service?: Ser
                     </PopoverContent>
                 </Popover>
             </div>
+             <div className="space-y-2">
+                <Label>Produtos Vinculados</Label>
+                <div className="space-y-2 rounded-md border p-2">
+                    {formData.linkedProducts?.map(p => (
+                        <div key={p.productId} className="flex items-center justify-between gap-2">
+                            <span className="text-sm flex-grow">{p.productName}</span>
+                            <Input
+                                type="number"
+                                value={p.quantity}
+                                onChange={(e) => updateLinkedProductQuantity(p.productId, parseInt(e.target.value, 10) || 1)}
+                                className="w-20 h-8"
+                            />
+                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeLinkedProduct(p.productId)}>
+                                <Trash2 className="h-4 w-4 text-destructive"/>
+                            </Button>
+                        </div>
+                    ))}
+                    <Popover open={productPopoverOpen} onOpenChange={setProductPopoverOpen}>
+                        <PopoverTrigger asChild>
+                             <Button type="button" variant="outline" className="w-full">
+                                <PlusCircle className="mr-2 h-4 w-4" /> Adicionar Produto
+                            </Button>
+                        </PopoverTrigger>
+                         <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                            <Command>
+                                <CommandInput placeholder="Buscar produto..." />
+                                <CommandList>
+                                    <CommandEmpty>Nenhum produto encontrado.</CommandEmpty>
+                                    <CommandGroup>
+                                        {products.map(product => (
+                                            <CommandItem key={product.id} onSelect={() => addLinkedProduct(product)}>
+                                                {product.name}
+                                            </CommandItem>
+                                        ))}
+                                    </CommandGroup>
+                                </CommandList>
+                            </Command>
+                         </PopoverContent>
+                    </Popover>
+                </div>
+            </div>
             <div className="flex items-center space-x-2">
                 <Switch 
                     id="isActive" 
@@ -139,11 +217,12 @@ function ServiceForm({ service, professionals, onSave, onDone }: { service?: Ser
 export default function ServicesPage() {
     const [services, setServices] = useState<Service[]>([]);
     const [professionals, setProfessionals] = useState<User[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingService, setEditingService] = useState<Service | undefined>(undefined);
     const { toast } = useToast();
-    const { user } = useAuth();
+    const { user, currentBranch } = useAuth();
 
     const can = useMemo(() => ({
         view: user?.enabledModules?.services?.view ?? false,
@@ -152,7 +231,7 @@ export default function ServicesPage() {
     }), [user]);
 
     useEffect(() => {
-        if (!user?.organizationId) {
+        if (!user?.organizationId || !currentBranch?.id) {
             setLoading(false);
             return;
         }
@@ -161,6 +240,11 @@ export default function ServicesPage() {
         const servicesUnsub = onSnapshot(servicesQuery, (snapshot) => {
             setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Service)));
             setLoading(false);
+        });
+
+        const productsQuery = query(collection(db, 'products'), where("branchId", "==", currentBranch.id));
+        const productsUnsub = onSnapshot(productsQuery, (snapshot) => {
+            setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
         });
 
         // Fetch the "Professional" profile ID first
@@ -189,11 +273,12 @@ export default function ServicesPage() {
 
         return () => {
             servicesUnsub();
+            productsUnsub();
             if (profsUnsub) {
                 profsUnsub();
             }
         };
-    }, [user]);
+    }, [user, currentBranch]);
 
     const handleSave = async (data: Partial<Service>) => {
         if (!user?.organizationId) {
@@ -281,6 +366,7 @@ export default function ServicesPage() {
                             <ServiceForm
                                 service={editingService}
                                 professionals={professionals}
+                                products={products}
                                 onSave={handleSave}
                                 onDone={() => setIsFormOpen(false)}
                             />
@@ -293,10 +379,8 @@ export default function ServicesPage() {
                 <TableHeader>
                     <TableRow>
                         <TableHead>Nome</TableHead>
-                        <TableHead>Categoria</TableHead>
                         <TableHead>Duração</TableHead>
                         <TableHead>Preço</TableHead>
-                        <TableHead>Profissionais</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-center">Ações</TableHead>
                     </TableRow>
@@ -306,10 +390,8 @@ export default function ServicesPage() {
                         Array.from({ length: 3 }).map((_, i) => (
                             <TableRow key={i}>
                                 <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-                                <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                                 <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                                 <TableCell><Skeleton className="h-5 w-20" /></TableCell>
-                                <TableCell><Skeleton className="h-5 w-40" /></TableCell>
                                 <TableCell><Skeleton className="h-6 w-20" /></TableCell>
                                 <TableCell className="text-center"><Skeleton className="h-8 w-8 mx-auto rounded-full" /></TableCell>
                             </TableRow>
@@ -318,14 +400,8 @@ export default function ServicesPage() {
                         services.map((service) => (
                             <TableRow key={service.id}>
                                 <TableCell className="font-medium">{service.name}</TableCell>
-                                <TableCell>{service.category}</TableCell>
                                 <TableCell>{service.duration} min</TableCell>
                                 <TableCell>R$ {service.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
-                                <TableCell>
-                                    <div className="flex flex-wrap gap-1">
-                                        {getProfessionalNames(service.professionalIds)}
-                                    </div>
-                                </TableCell>
                                 <TableCell>
                                     <Badge variant={service.isActive ? 'secondary' : 'outline'}>
                                         {service.isActive ? "Ativo" : "Inativo"}
@@ -348,7 +424,7 @@ export default function ServicesPage() {
                         ))
                     ) : (
                         <TableRow>
-                            <TableCell colSpan={7} className="h-24 text-center">
+                            <TableCell colSpan={5} className="h-24 text-center">
                                 Nenhum serviço encontrado. Comece a cadastrar!
                             </TableCell>
                         </TableRow>

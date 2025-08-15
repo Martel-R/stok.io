@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
@@ -10,13 +11,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, Timestamp, writeBatch, serverTimestamp, getDocs } from 'firebase/firestore';
-import type { Appointment, Customer, Service, User, AppointmentStatus, Attendance, AnamnesisAnswer, PermissionProfile } from '@/lib/types';
+import type { Appointment, Customer, Service, User, AppointmentStatus, Attendance, AnamnesisAnswer, PermissionProfile, AttendanceItem, Product } from '@/lib/types';
 import { MoreHorizontal, PlusCircle, Calendar, Users, Briefcase, Check, ChevronsUpDown, Clock, RefreshCw, PlayCircle, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
-import { format, addMinutes, setHours, setMinutes, startOfDay, endOfDay, isSameDay, getHours, getMinutes, addDays, startOfWeek, endOfWeek, eachDayOfInterval, getWeek, isSameMonth } from 'date-fns';
+import { format, addMinutes, setHours, setMinutes, startOfDay, endOfDay, isSameDay, getHours, getMinutes, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -276,7 +277,12 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                                 const anamnesisDone = isAnamnesisComplete(customer);
 
                                 return (
-                                    <Card key={app.id} className="absolute w-[calc(100%-1rem)] p-3 overflow-hidden" style={{ top: `${top}px`, height: `${height}px`, minHeight: '40px' }}>
+                                    <Card 
+                                        key={app.id} 
+                                        className="absolute w-[calc(100%-1rem)] p-3 overflow-hidden cursor-pointer" 
+                                        style={{ top: `${top}px`, height: `${height}px`, minHeight: '40px' }}
+                                        onClick={() => onEdit(app)}
+                                    >
                                         <div className="flex justify-between items-start gap-2 h-full">
                                             <div className="space-y-1 flex-grow overflow-hidden">
                                                 <CardTitle className="text-sm truncate">{app.serviceName}</CardTitle>
@@ -286,7 +292,7 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                                             </div>
                                             <div className="flex flex-col items-end gap-1 shrink-0">
                                                 {getStatusBadge(app.status)}
-                                                <div className="flex items-center gap-1">
+                                                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                                                     {app.status === 'pending-confirmation' && can.edit ? (
                                                         <Button size="sm" className="h-7" onClick={() => onEdit(app)}><Check className="mr-1 h-3 w-3" />Confirmar</Button>
                                                     ) : can.edit ? (
@@ -335,7 +341,7 @@ function WeekView({ appointments, date, onEdit, onStartAttendance, onReschedule,
                     <ScrollArea className="h-[70vh]">
                     <div className="p-2 space-y-2">
                         {appointments.filter(a => isSameDay(a.start, day)).map(app => (
-                            <Card key={app.id} className="p-2">
+                            <Card key={app.id} className="p-2 cursor-pointer" onClick={() => onEdit(app)}>
                                 <p className="font-bold text-xs truncate">{app.serviceName}</p>
                                 <p className="text-xs text-muted-foreground truncate">{app.customerName}</p>
                                 <p className="text-xs text-muted-foreground">{format(app.start, 'HH:mm')}</p>

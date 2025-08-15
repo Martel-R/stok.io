@@ -1,4 +1,5 @@
 
+
 // src/app/super-admin/page.tsx
 'use client';
 import * as React from 'react';
@@ -30,12 +31,34 @@ type OrgWithUser = Organization & { owner?: User };
 function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void, adminUser: User | null }) {
     const { toast } = useToast();
     const [paymentAmount, setPaymentAmount] = useState<number>(organization.subscription?.price || 0);
+    const [newPlanName, setNewPlanName] = useState('Plano Pro');
+    const [newPlanPrice, setNewPlanPrice] = useState(99.90);
+    const [newPlanDate, setNewPlanDate] = useState(format(addMonths(new Date(), 1), 'yyyy-MM-dd'));
+
+    const handleCreateSubscription = async () => {
+        if (!adminUser) return;
+        const newSubscription: Subscription = {
+            planName: newPlanName,
+            price: newPlanPrice,
+            nextDueDate: new Date(newPlanDate),
+            paymentRecords: [],
+        };
+        try {
+            await updateDoc(doc(db, 'organizations', organization.id), {
+                subscription: newSubscription
+            });
+            toast({ title: 'Assinatura criada com sucesso!' });
+        } catch (error) {
+            console.error(error);
+            toast({ title: 'Erro ao criar assinatura', variant: 'destructive' });
+        }
+    }
 
     const handleRegisterPayment = async () => {
         if (!organization.subscription || !adminUser) return;
         
         const newPayment = {
-            id: doc(collection(db, 'paymentRecords')).id, // Just for local key, not stored
+            id: doc(collection(db, 'paymentRecords')).id,
             date: serverTimestamp(),
             amount: paymentAmount,
             recordedBy: adminUser.id,
@@ -92,7 +115,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                                 {sub.paymentRecords && sub.paymentRecords.length > 0 ? (
                                     sub.paymentRecords.map((p, i) => (
                                         <div key={i} className="flex justify-between text-sm p-2 bg-muted rounded-md">
-                                            <span>{format(p.date.toDate(), 'dd/MM/yyyy')}</span>
+                                            <span>{p.date ? format(p.date.toDate(), 'dd/MM/yyyy') : 'Registrando...'}</span>
                                             <span>R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
                                         </div>
                                     ))
@@ -103,7 +126,22 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                          </div>
                     </div>
                 ) : (
-                    <p>Nenhuma informação de assinatura encontrada.</p>
+                    <div className="space-y-4 py-4">
+                        <p className="text-muted-foreground">Nenhuma assinatura encontrada para esta organização. Crie uma abaixo.</p>
+                         <div className="space-y-2">
+                            <Label htmlFor="planName">Nome do Plano</Label>
+                            <Input id="planName" value={newPlanName} onChange={e => setNewPlanName(e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="planPrice">Preço (R$)</Label>
+                            <Input id="planPrice" type="number" value={newPlanPrice} onChange={e => setNewPlanPrice(parseFloat(e.target.value) || 0)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="nextDueDate">Próximo Vencimento</Label>
+                            <Input id="nextDueDate" type="date" value={newPlanDate} onChange={e => setNewPlanDate(e.target.value)} />
+                        </div>
+                        <Button onClick={handleCreateSubscription} className="w-full">Criar Assinatura</Button>
+                    </div>
                 )}
             </DialogContent>
         </Dialog>

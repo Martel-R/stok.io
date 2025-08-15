@@ -141,53 +141,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             allOrgsUnsubscribe = onSnapshot(collection(db, 'organizations'), (snapshot) => {
                 const orgs = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as Organization));
                 setOrganizations(orgs);
-                // For super admin not impersonating, set first org as the "context"
-                if (orgs.length > 0) {
-                    const firstOrg = orgs[0];
-                     setUser(prev => prev ? ({
-                        ...prev, 
-                        enabledModules: defaultPermissions, 
-                        organizationId: firstOrg.id,
-                        organization: firstOrg
-                    }) : null);
-                } else {
-                    setUser(prev => prev ? ({...prev, enabledModules: defaultPermissions}) : null);
-                }
+                // For super admin not impersonating, set a default state
+                setUser(prev => prev ? ({...prev, enabledModules: defaultPermissions, organization: orgs[0]}) : null);
             });
         } else if (effectiveOrgId) {
             const orgDocRef = doc(db, "organizations", effectiveOrgId);
             orgUnsubscribe = onSnapshot(orgDocRef, (orgDoc) => {
                 if (orgDoc.exists()) {
                     const orgData = orgDoc.data() as Organization;
-
-                    const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId));
-                    profilesUnsubscribe = onSnapshot(profilesQuery, (profilesSnap) => {
-                        const profiles = profilesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
-                        const userProfile = profiles.find(p => p.id === currentUser.role);
-                        const orgModules = orgData.enabledModules || {};
-                        
-                        let finalPermissions: Partial<EnabledModules> = {};
-
-                        if (isImpersonating || currentUser.email === process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
-                            finalPermissions = { ...defaultPermissions, ...orgModules };
-                        } else if (currentUser.role === 'admin' && !userProfile) {
-                            finalPermissions = { ...defaultPermissions, ...orgModules };
-                        } else if (userProfile?.permissions) {
-                            for (const key in userProfile.permissions) {
-                                const moduleKey = key as keyof EnabledModules;
-                                if (orgModules[moduleKey]) {
-                                    finalPermissions[moduleKey] = userProfile.permissions[moduleKey];
-                                }
-                            }
-                        }
-
-                        setUser(prevUser => prevUser ? { 
+                    
+                    if (isImpersonating) {
+                         setUser(prevUser => prevUser ? { 
                             ...prevUser, 
                             paymentStatus: orgData.paymentStatus, 
                             organization: orgData,
-                            enabledModules: finalPermissions as EnabledModules
+                            enabledModules: { ...defaultPermissions, ...(orgData.enabledModules || {}) } as EnabledModules,
+                            organizationId: orgData.id
                         } : null);
-                    });
+                    } else {
+                        // Regular user logic
+                        const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId));
+                        profilesUnsubscribe = onSnapshot(profilesQuery, (profilesSnap) => {
+                            const profiles = profilesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
+                            const userProfile = profiles.find(p => p.id === currentUser.role);
+                            const orgModules = orgData.enabledModules || {};
+                            
+                            let finalPermissions: Partial<EnabledModules> = {};
+
+                            if (currentUser.role === 'admin' && !userProfile) { // Case for first admin before profiles are set
+                                finalPermissions = { ...defaultPermissions, ...orgModules };
+                            } else if (userProfile?.permissions) {
+                                for (const key in orgModules) {
+                                    const moduleKey = key as keyof EnabledModules;
+                                    if (orgModules[moduleKey]) {
+                                        finalPermissions[moduleKey] = userProfile.permissions[moduleKey] || { view: false, edit: false, delete: false };
+                                    }
+                                }
+                            }
+
+                            setUser(prevUser => prevUser ? { 
+                                ...prevUser, 
+                                paymentStatus: orgData.paymentStatus, 
+                                organization: orgData,
+                                enabledModules: finalPermissions as EnabledModules
+                            } : null);
+                        });
+                    }
                 }
             });
 
@@ -567,5 +566,6 @@ export const useAuth = () => {
   }
   return context;
 };
+
 
 

@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React from 'react';
@@ -9,7 +8,7 @@ import { Icons } from '@/components/icons';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Home, Package, BarChart, ShoppingCart, Bot, FileText, LogOut, Loader2, Users, Settings, ChevronsUpDown, Check, Building, Gift, AlertTriangle, CreditCard, Component, LifeBuoy, Calendar, Briefcase, Menu, LogIn } from 'lucide-react';
+import { Home, Package, BarChart, ShoppingCart, Bot, FileText, LogOut, Loader2, Users, Settings, ChevronsUpDown, Check, Building, Gift, AlertTriangle, CreditCard, Component, LifeBuoy, Calendar, Briefcase, Menu, LogIn, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -87,7 +86,7 @@ function BranchSwitcher() {
                     className="w-[250px] justify-between"
                 >
                      <Building className="mr-2 h-4 w-4 shrink-0" />
-                     <div className="flex flex-col items-start">
+                     <div className="flex flex-col items-start text-left">
                         <span className="text-xs text-muted-foreground -mb-1">{user?.isImpersonating ? "Organização" : "Filial"}</span>
                         <span className="truncate font-semibold">{user?.isImpersonating ? user.organization?.name : currentBranch?.name || "Selecione a filial"}</span>
                      </div>
@@ -99,7 +98,7 @@ function BranchSwitcher() {
                     <CommandInput placeholder="Buscar..." />
                     <CommandList>
                         <CommandEmpty>Nenhum resultado.</CommandEmpty>
-                        {isSuperAdmin && !user?.isImpersonating && (
+                        {isSuperAdmin && !user?.isImpersonating && organizations.length > 0 && (
                             <>
                                 <CommandGroup heading="Organizações">
                                     {organizations.map((org) => (
@@ -111,7 +110,7 @@ function BranchSwitcher() {
                                                 setOpen(false);
                                             }}
                                         >
-                                             <Check className={cn("mr-2 h-4 w-4", user?.organizationId === org.id && user?.isImpersonating ? "opacity-100" : "opacity-0")}/>
+                                            <ShieldAlert className="mr-2 h-4 w-4" />
                                             {org.name}
                                         </CommandItem>
                                     ))}

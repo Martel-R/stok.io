@@ -3,14 +3,14 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
-import { answerBusinessQuestion } from '@/ai/flows/answer-inventory-questions';
+import { answerBusinessQuestion } from '@/ai/flows/answer-business-questions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Send, Loader2, Lock } from 'lucide-react';
-import type { Product, Service, Customer, Appointment, StockEntry } from '@/lib/types';
+import type { Product, Service, Customer, Appointment, StockEntry, Sale, PaymentCondition } from '@/lib/types';
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { format } from 'date-fns';
@@ -20,10 +20,7 @@ interface Message {
   text: string;
 }
 
-const convertAppointmentDate = (docData: any): Appointment => {
-    const convert = (field: any) => field instanceof Timestamp ? field.toDate() : new Date();
-    return { ...docData, start: convert(docData.start), end: convert(docData.end) } as Appointment;
-};
+const convertDate = (field: any) => field instanceof Timestamp ? field.toDate() : new Date();
 
 export default function AssistantPage() {
   const { user, currentBranch } = useAuth();
@@ -38,6 +35,8 @@ export default function AssistantPage() {
   const [customersContext, setCustomersContext] = useState('');
   const [appointmentsContext, setAppointmentsContext] = useState('');
   const [inventoryContext, setInventoryContext] = useState('');
+  const [salesContext, setSalesContext] = useState('');
+  const [paymentConditionsContext, setPaymentConditionsContext] = useState('');
 
   const hasAccess = user?.enabledModules?.assistant?.view ?? false;
 
@@ -45,32 +44,26 @@ export default function AssistantPage() {
       if (!hasAccess || !currentBranch || !user?.organizationId) return;
 
       const unsubs: (()=>void)[] = [];
+      const orgId = user.organizationId;
+      const branchId = currentBranch.id;
 
       // Products
-      const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
-      unsubs.push(onSnapshot(productsQuery, (snapshot) => {
-          const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-          setProductsContext(JSON.stringify(data.map(({name, category, price}) => ({name, category, price}))));
-      }));
+      unsubs.push(onSnapshot(query(collection(db, 'products'), where('branchId', '==', branchId)), (s) => 
+        setProductsContext(JSON.stringify(s.docs.map(d => d.data()).map(({name, category, price}) => ({name, category, price}))))));
 
       // Services
-      const servicesQuery = query(collection(db, 'services'), where('organizationId', '==', user.organizationId));
-      unsubs.push(onSnapshot(servicesQuery, (snapshot) => {
-          const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Service));
-          setServicesContext(JSON.stringify(data.map(({name, price, duration}) => ({name, price, duration}))));
-      }));
+      unsubs.push(onSnapshot(query(collection(db, 'services'), where('organizationId', '==', orgId)), (s) => 
+        setServicesContext(JSON.stringify(s.docs.map(d => d.data()).map(({name, price, duration}) => ({name, price, duration})))))
+      );
       
       // Customers
-      const customersQuery = query(collection(db, 'customers'), where('organizationId', '==', user.organizationId));
-      unsubs.push(onSnapshot(customersQuery, (snapshot) => {
-          const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
-          setCustomersContext(JSON.stringify(data.map(({name, email, phone}) => ({name, email, phone}))));
-      }));
+      unsubs.push(onSnapshot(query(collection(db, 'customers'), where('organizationId', '==', orgId)), (s) => 
+        setCustomersContext(JSON.stringify(s.docs.map(d => d.data()).map(({name, email, phone}) => ({name, email, phone})))))
+      );
 
       // Appointments
-      const appointmentsQuery = query(collection(db, 'appointments'), where('branchId', '==', currentBranch.id));
-      unsubs.push(onSnapshot(appointmentsQuery, (snapshot) => {
-          const data = snapshot.docs.map(doc => convertAppointmentDate({ id: doc.id, ...doc.data() }));
+      unsubs.push(onSnapshot(query(collection(db, 'appointments'), where('branchId', '==', branchId)), (s) => {
+          const data = s.docs.map(d => ({...d.data(), start: convertDate(d.data().start)}));
           setAppointmentsContext(JSON.stringify(data.map(({customerName, serviceName, professionalName, start, status}) => ({
               cliente: customerName, 
               servico: serviceName,
@@ -80,12 +73,12 @@ export default function AssistantPage() {
           }))));
       }));
       
-      // Inventory (existing logic)
-      const stockProductsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
+      // Inventory
+      const stockProductsQuery = query(collection(db, 'products'), where('branchId', '==', branchId));
       unsubs.push(onSnapshot(stockProductsQuery, (productsSnapshot) => {
           const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-          const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
-          const entriesUnsub = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
+          const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', branchId));
+          unsubs.push(onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
               const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
               const context = productsData.map(product => {
                   const stock = entriesData
@@ -94,9 +87,26 @@ export default function AssistantPage() {
                   return `${product.name}: ${stock} unidades`;
               }).join(', ');
               setInventoryContext(context);
-          });
-          unsubs.push(entriesUnsub);
+          }));
       }));
+      
+      // Sales
+      unsubs.push(onSnapshot(query(collection(db, 'sales'), where('branchId', '==', branchId)), (s) => {
+          const data = s.docs.map(d => ({...d.data(), date: convertDate(d.data().date)}));
+           setSalesContext(JSON.stringify(data.map(({ cashier, total, date, items, payments }) => ({
+               vendedor: cashier,
+               total: total,
+               data: format(date, 'dd/MM/yyyy HH:mm'),
+               itens: items.map((i: any) => i.name).join(', '),
+               pagamento: payments.map((p: any) => p.conditionName).join(', ')
+           }))));
+      }));
+      
+      // Payment Conditions
+      unsubs.push(onSnapshot(query(collection(db, 'paymentConditions'), where('organizationId', '==', orgId)), (s) => {
+           setPaymentConditionsContext(JSON.stringify(s.docs.map(d => d.data()).map(({name, type, fee}) => ({name, type, fee}))));
+      }));
+
 
       setDataLoaded(true);
       return () => unsubs.forEach(unsub => unsub());
@@ -120,6 +130,8 @@ export default function AssistantPage() {
         customersContext,
         appointmentsContext,
         inventoryContext,
+        salesContext,
+        paymentConditionsContext,
       });
       const botMessage: Message = { sender: 'bot', text: response.answer };
       setMessages((prev) => [...prev, botMessage]);
@@ -155,7 +167,7 @@ export default function AssistantPage() {
       <Card className="flex-grow flex flex-col">
         <CardHeader>
             <CardTitle>Oráculo AI</CardTitle>
-            <CardDescription>Faça perguntas sobre seus produtos, serviços, clientes, agenda e estoque.</CardDescription>
+            <CardDescription>Faça perguntas sobre seus produtos, serviços, clientes, agenda, vendas e estoque.</CardDescription>
         </CardHeader>
         <CardContent className="flex-grow">
           <ScrollArea className="h-[calc(100vh-20rem)] pr-4">
@@ -163,7 +175,7 @@ export default function AssistantPage() {
               {messages.length === 0 && (
                 <div className="text-center text-muted-foreground">
                     <p>Olá! O que você gostaria de saber hoje?</p>
-                    <p className="text-xs">Ex: "Quantos laptops temos?" ou "Liste os agendamentos de amanhã".</p>
+                    <p className="text-xs">Ex: "Qual o produto mais vendido?" ou "Resuma as vendas de ontem".</p>
                 </div>
               )}
               {messages.map((message, index) => (

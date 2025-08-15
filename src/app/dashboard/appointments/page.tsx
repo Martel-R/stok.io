@@ -60,6 +60,8 @@ function AppointmentForm({
     useEffect(() => {
         if (formData.serviceId) {
             setSelectedService(services.find(s => s.id === formData.serviceId) || null);
+        } else {
+            setSelectedService(null);
         }
     }, [formData.serviceId, services]);
 
@@ -413,37 +415,36 @@ export default function AppointmentsPage() {
             return;
         }
 
-        const fetchRelatedData = async () => {
-            const unsubscribers: (() => void)[] = [];
+        const unsubscribers: (() => void)[] = [];
 
-            // Fetch Customers and Services
-            const customerQuery = query(collection(db, 'customers'), where('organizationId', '==', user.organizationId));
-            unsubscribers.push(onSnapshot(customerQuery, snap => setCustomers(snap.docs.map(d => ({id: d.id, ...d.data()}) as Customer))));
+        const customerQuery = query(collection(db, 'customers'), where('organizationId', '==', user.organizationId));
+        unsubscribers.push(onSnapshot(customerQuery, snap => setCustomers(snap.docs.map(d => ({id: d.id, ...d.data()}) as Customer))));
 
-            const serviceQuery = query(collection(db, 'services'), where('organizationId', '==', user.organizationId));
-            unsubscribers.push(onSnapshot(serviceQuery, snap => setServices(snap.docs.map(d => ({id: d.id, ...d.data()}) as Service))));
+        const serviceQuery = query(collection(db, 'services'), where('organizationId', '==', user.organizationId));
+        unsubscribers.push(onSnapshot(serviceQuery, snap => setServices(snap.docs.map(d => ({id: d.id, ...d.data()}) as Service))));
 
-            // Fetch Appointments
-            const appointmentQuery = query(collection(db, 'appointments'), where('branchId', '==', currentBranch.id));
-            unsubscribers.push(onSnapshot(appointmentQuery, snap => setAppointments(snap.docs.map(d => convertAppointmentDate({id: d.id, ...d.data()})))));
+        const appointmentQuery = query(collection(db, 'appointments'), where('branchId', '==', currentBranch.id));
+        unsubscribers.push(onSnapshot(appointmentQuery, snap => setAppointments(snap.docs.map(d => convertAppointmentDate({id: d.id, ...d.data()})))));
 
-            // Fetch Professionals
+        const fetchProfessionals = async () => {
             const profilesQuery = query(collection(db, 'permissionProfiles'), where("organizationId", "==", user.organizationId), where("name", "==", "Profissional"));
             const profileSnap = await getDocs(profilesQuery);
+
             if (!profileSnap.empty) {
                 const professionalProfileId = profileSnap.docs[0].id;
                 const professionalsQuery = query(collection(db, 'users'), where("organizationId", "==", user.organizationId), where("role", "==", professionalProfileId));
-                unsubscribers.push(onSnapshot(professionalsQuery, snap => setProfessionals(snap.docs.map(d => ({id: d.id, ...d.data()}) as User))));
+                const unsubProfs = onSnapshot(professionalsQuery, snap => setProfessionals(snap.docs.map(d => ({id: d.id, ...d.data()}) as User)));
+                unsubscribers.push(unsubProfs);
             } else {
-                console.warn("Perfil 'Profissional' não encontrado.");
+                console.warn("Perfil 'Profissional' não encontrado. Nenhum profissional será carregado.");
                 setProfessionals([]);
             }
-
             setLoading(false);
-            return () => unsubscribers.forEach(unsub => unsub());
         };
+        
+        fetchProfessionals();
 
-        fetchRelatedData();
+        return () => unsubscribers.forEach(unsub => unsub());
 
     }, [user, currentBranch]);
 

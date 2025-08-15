@@ -5,10 +5,11 @@
 import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc } from "firebase/firestore";
-import type { User, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile } from '@/lib/types';
+import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc, serverTimestamp } from "firebase/firestore";
+import type { User, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile, Subscription } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
+import { addMonths } from 'date-fns';
 
 const availableAvatars = [
     'https://placehold.co/100x100.png?text=🦊',
@@ -227,11 +228,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       batch.set(doc(db, "users", firebaseUser.uid), newUser);
       
+      const newSubscription: Subscription = {
+          planName: 'Plano Pro',
+          price: 99.90,
+          nextDueDate: addMonths(new Date(), 1),
+          paymentRecords: [],
+      };
+      
       batch.set(doc(db, "organizations", organizationId), { 
         ownerId: newUser.id, 
-        name: `${name}'s Company`,
+        name: name,
         paymentStatus: 'active',
-        enabledModules: defaultPermissions
+        enabledModules: defaultPermissions,
+        subscription: newSubscription
       });
       
       const adminProfile: Omit<PermissionProfile, 'id'> = {

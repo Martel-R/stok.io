@@ -4,15 +4,15 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc, addDoc } from 'firebase/firestore';
-import type { Organization, User, PaymentStatus, EnabledModules, PermissionProfile, ModulePermissions } from '@/lib/types';
+import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc, addDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import type { Organization, User, PaymentStatus, EnabledModules, PermissionProfile, Subscription } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -22,9 +22,94 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { PermissionProfileForm } from '@/components/permission-profile-form';
-
+import { format, addMonths } from 'date-fns';
+import { Separator } from '@/components/ui/separator';
 
 type OrgWithUser = Organization & { owner?: User };
+
+function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void, adminUser: User | null }) {
+    const { toast } = useToast();
+    const [paymentAmount, setPaymentAmount] = useState<number>(organization.subscription?.price || 0);
+
+    const handleRegisterPayment = async () => {
+        if (!organization.subscription || !adminUser) return;
+        
+        const newPayment = {
+            id: doc(collection(db, 'paymentRecords')).id, // Just for local key, not stored
+            date: serverTimestamp(),
+            amount: paymentAmount,
+            recordedBy: adminUser.id,
+        };
+        
+        const nextDueDate = addMonths(organization.subscription.nextDueDate.toDate(), 1);
+
+        try {
+            await updateDoc(doc(db, 'organizations', organization.id), {
+                'subscription.nextDueDate': nextDueDate,
+                'subscription.paymentRecords': arrayUnion(newPayment),
+                'paymentStatus': 'active'
+            });
+            toast({ title: 'Pagamento registrado com sucesso!' });
+            onOpenChange(false);
+        } catch (error) {
+            console.error(error);
+            toast({ title: 'Erro ao registrar pagamento', variant: 'destructive' });
+        }
+    };
+    
+    const sub = organization.subscription;
+    if (!isOpen) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Gerenciar Assinatura: {organization.name}</DialogTitle>
+                </DialogHeader>
+                {sub ? (
+                    <div className="space-y-4 py-4">
+                        <div>
+                            <p><strong>Plano:</strong> {sub.planName}</p>
+                            <p><strong>Valor:</strong> R$ {sub.price.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                            <p><strong>Próximo Vencimento:</strong> {format(sub.nextDueDate.toDate(), 'dd/MM/yyyy')}</p>
+                        </div>
+                        <Separator />
+                        <div className="space-y-2">
+                             <h4 className="font-semibold">Registrar Novo Pagamento</h4>
+                             <Label htmlFor="paymentAmount">Valor</Label>
+                             <Input 
+                                id="paymentAmount"
+                                type="number"
+                                value={paymentAmount}
+                                onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
+                             />
+                             <Button onClick={handleRegisterPayment} className="w-full">Registrar Pagamento</Button>
+                        </div>
+                         <Separator />
+                         <div>
+                            <h4 className="font-semibold">Histórico de Pagamentos</h4>
+                            <div className="max-h-48 overflow-y-auto mt-2 space-y-2">
+                                {sub.paymentRecords && sub.paymentRecords.length > 0 ? (
+                                    sub.paymentRecords.map((p, i) => (
+                                        <div key={i} className="flex justify-between text-sm p-2 bg-muted rounded-md">
+                                            <span>{format(p.date.toDate(), 'dd/MM/yyyy')}</span>
+                                            <span>R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">Nenhum pagamento registrado.</p>
+                                )}
+                            </div>
+                         </div>
+                    </div>
+                ) : (
+                    <p>Nenhuma informação de assinatura encontrada.</p>
+                )}
+            </DialogContent>
+        </Dialog>
+    )
+}
+
 
 function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void }) {
     const { toast } = useToast();
@@ -37,7 +122,9 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
     }, [organization]);
 
     const handleModuleToggle = async (module: keyof EnabledModules, checked: boolean) => {
-        const updatedModules = { ...enabledModules, [module]: { view: checked, edit: checked, delete: checked } };
+        // When enabling a module, enable all its permissions by default.
+        const newPermissions = checked ? { view: true, edit: true, delete: true } : { view: false, edit: false, delete: false };
+        const updatedModules = { ...enabledModules, [module]: newPermissions };
         
         setEnabledModules(updatedModules);
 
@@ -47,7 +134,12 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
             toast({ title: 'Módulo atualizado com sucesso!' });
         } catch (error) {
             toast({ title: 'Erro ao atualizar módulo', variant: 'destructive' });
-            setEnabledModules(prev => ({...prev, [module]: { ...prev[module], view: !checked, edit: !checked, delete: !checked }}));
+            // Revert on error
+            setEnabledModules(prev => {
+                const reverted = {...prev};
+                delete reverted[module];
+                return reverted;
+            });
         }
     };
 
@@ -77,7 +169,7 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
                             <Label htmlFor={`module-${mod.key}`} className="text-base">{mod.label}</Label>
                             <Switch
                                 id={`module-${mod.key}`}
-                                checked={enabledModules[mod.key]?.view ?? false}
+                                checked={!!enabledModules[mod.key]}
                                 onCheckedChange={(checked) => handleModuleToggle(mod.key, checked)}
                             />
                         </div>
@@ -286,6 +378,7 @@ function SuperAdminPage() {
     const [isModuleDialogOpen, setIsModuleDialogOpen] = useState(false);
     const [isUsersDialogOpen, setIsUsersDialogOpen] = useState(false);
     const [isProfilesDialogOpen, setIsProfilesDialogOpen] = useState(false);
+    const [isSubscriptionDialogOpen, setIsSubscriptionDialogOpen] = useState(false);
     const { toast } = useToast();
 
     useEffect(() => {
@@ -337,11 +430,12 @@ function SuperAdminPage() {
         return <Badge variant={status === 'locked' ? 'destructive' : 'secondary'} className={variants[status]}>{status}</Badge>;
     }
     
-    const handleOpenDialog = (org: OrgWithUser, type: 'modules' | 'users' | 'profiles') => {
+    const handleOpenDialog = (org: OrgWithUser, type: 'modules' | 'users' | 'profiles' | 'subscription') => {
         setSelectedOrg(org);
         if (type === 'modules') setIsModuleDialogOpen(true);
         if (type === 'users') setIsUsersDialogOpen(true);
         if (type === 'profiles') setIsProfilesDialogOpen(true);
+        if (type === 'subscription') setIsSubscriptionDialogOpen(true);
     };
 
     if (authLoading || loading || !user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
@@ -362,14 +456,14 @@ function SuperAdminPage() {
                 </CardHeader>
                 <CardContent>
                     <Table>
-                        <TableHeader><TableRow><TableHead>Organização</TableHead><TableHead>Proprietário</TableHead><TableHead>Email</TableHead><TableHead>Status Pag.</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
+                        <TableHeader><TableRow><TableHead>Organização</TableHead><TableHead>Proprietário</TableHead><TableHead>Status Pag.</TableHead><TableHead>Próx. Venc.</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
                         <TableBody>
                             {organizations.map((org) => (
                                 <TableRow key={org.id}>
                                     <TableCell className="font-medium">{org.name}</TableCell>
                                     <TableCell>{org.owner?.name || 'N/A'}</TableCell>
-                                    <TableCell>{org.owner?.email || 'N/A'}</TableCell>
                                     <TableCell>{getStatusBadge(org.paymentStatus)}</TableCell>
+                                    <TableCell>{org.subscription?.nextDueDate ? format(org.subscription.nextDueDate.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
                                     <TableCell className="text-right">
                                         <AlertDialog>
                                             <DropdownMenu>
@@ -383,6 +477,7 @@ function SuperAdminPage() {
                                                             <SelectContent><SelectItem value="active">Ativo</SelectItem><SelectItem value="overdue">Vencido</SelectItem><SelectItem value="locked">Bloqueado</SelectItem></SelectContent>
                                                         </Select>
                                                      </div>
+                                                    <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'subscription')}><DollarSign className="mr-2 h-4 w-4" /> Gerenciar Assinatura</DropdownMenuItem>
                                                     <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'users')}><Users className="mr-2 h-4 w-4" /> Gerenciar Usuários</DropdownMenuItem>
                                                     <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'profiles')}><Pencil className="mr-2 h-4 w-4" /> Gerenciar Perfis</DropdownMenuItem>
                                                     <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'modules')}><SlidersHorizontal className="mr-2 h-4 w-4" /> Gerenciar Módulos</DropdownMenuItem>
@@ -405,6 +500,7 @@ function SuperAdminPage() {
              {selectedOrg && <ModulesSettingsDialog organization={selectedOrg} isOpen={isModuleDialogOpen} onOpenChange={setIsModuleDialogOpen} />}
              {selectedOrg && <OrgUsersDialog organization={selectedOrg} isOpen={isUsersDialogOpen} onOpenChange={setIsUsersDialogOpen} />}
              {selectedOrg && <OrgProfilesDialog organization={selectedOrg} isOpen={isProfilesDialogOpen} onOpenChange={setIsProfilesDialogOpen} />}
+             {selectedOrg && <SubscriptionDialog organization={selectedOrg} isOpen={isSubscriptionDialogOpen} onOpenChange={setIsSubscriptionDialogOpen} adminUser={user}/>}
         </div>
     );
 }

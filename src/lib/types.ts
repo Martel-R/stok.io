@@ -295,6 +295,21 @@ export interface BrandingSettings {
     primaryColor?: string; // HSL format string e.g. "240 10% 3.9%"
 }
 
+export interface PaymentRecord {
+    id: string;
+    date: any; // serverTimestamp
+    amount: number;
+    recordedBy: string; // User ID of admin who recorded it
+}
+
+export interface Subscription {
+    planName: string;
+    price: number;
+    nextDueDate: any; // serverTimestamp
+    paymentRecords: PaymentRecord[];
+}
+
+
 export interface Organization {
     id: string;
     name: string;
@@ -302,4 +317,5 @@ export interface Organization {
     paymentStatus: PaymentStatus;
     enabledModules: EnabledModules;
     branding?: BrandingSettings;
+    subscription?: Subscription;
 }

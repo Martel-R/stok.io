@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState } from 'react';
@@ -60,10 +61,10 @@ export default function SignupPage() {
           </div>
           <form onSubmit={handleSignup} className="grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="name">Nome</Label>
+              <Label htmlFor="name">Nome da Empresa/Negócio</Label>
               <Input
                 id="name"
-                placeholder="Seu nome completo"
+                placeholder="Sua Empresa"
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -71,11 +72,11 @@ export default function SignupPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="email">E-mail</Label>
+              <Label htmlFor="email">E-mail do Administrador</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="m@exemplo.com"
+                placeholder="admin@suaempresa.com"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}

@@ -1,4 +1,5 @@
 
+
 'use client';
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
@@ -116,24 +117,24 @@ function GeneralReport() {
         return summary;
     }, [filteredSales, paymentConditions]);
     
+     const processProduct = (productMap: Map<string, { id: string; name: string, quantity: number, originalValue: number, finalValue: number }>, productId: string, name: string, quantity: number, originalValue: number, finalValue: number) => {
+        const existing = productMap.get(name) || { id: productId, name, quantity: 0, originalValue: 0, finalValue: 0 };
+        existing.quantity += quantity;
+        existing.originalValue += originalValue;
+        existing.finalValue += finalValue;
+        productMap.set(name, existing);
+    };
+
     const productsSold = useMemo(() => {
         const productMap = new Map<string, { id: string; name: string, quantity: number, originalValue: number, finalValue: number }>();
-        
-        const processProduct = (productId: string, name: string, quantity: number, originalValue: number, finalValue: number) => {
-            const existing = productMap.get(name) || { id: productId, name, quantity: 0, originalValue: 0, finalValue: 0 };
-            existing.quantity += quantity;
-            existing.originalValue += originalValue;
-            existing.finalValue += finalValue;
-            productMap.set(name, existing);
-        };
 
         filteredSales.forEach(sale => {
             (sale.items || []).forEach((item: any) => {
                  if (item.type === 'product') {
                      const product = products.find(p => p.id === item.id);
-                     if (product) {
+                     if (product && product.price && item.quantity) {
                         const value = item.quantity * product.price;
-                        processProduct(item.id, item.name, item.quantity, value, value);
+                        processProduct(productMap, item.id, item.name, item.quantity, value, value);
                      }
                  } else if (item.type === 'kit') {
                      const originalKitPrice = (item.chosenProducts || []).reduce((sum: number, p: any) => sum + (p.price || 0), 0);
@@ -145,10 +146,10 @@ function GeneralReport() {
                      
                      (item.chosenProducts || []).forEach((p: any) => {
                          const product = products.find(prod => prod.id === p.id);
-                         if (product) {
-                             const originalValue = item.quantity * product.price;
+                         if (product && p.price) {
+                             const originalValue = item.quantity * p.price;
                              const finalValue = originalValue * discountRatio;
-                             processProduct(p.id, p.name, item.quantity, originalValue, finalValue);
+                             processProduct(productMap, p.id, p.name, item.quantity, originalValue, finalValue);
                          }
                      });
                  } else if (item.type === 'combo') {
@@ -156,14 +157,14 @@ function GeneralReport() {
                     if (item.originalPrice > 0 && typeof item.finalPrice === 'number' && !isNaN(item.finalPrice)) {
                         discountRatio = item.finalPrice / item.originalPrice;
                     }
-                     if (isNaN(discountRatio)) discountRatio = 1;
+                    if (isNaN(discountRatio)) discountRatio = 1;
                     
                     (item.products || []).forEach((p: any) => {
                          const product = products.find(prod => prod.id === p.productId);
-                         if (product) {
-                            const originalValue = item.quantity * p.quantity * product.price;
-                            const finalValue = originalValue * discountRatio;
-                            processProduct(p.productId, p.productName, p.quantity * item.quantity, originalValue, finalValue);
+                         if (product && p.productPrice && p.quantity && item.quantity) {
+                           const originalValue = item.quantity * p.quantity * p.productPrice;
+                           const finalValue = originalValue * discountRatio;
+                           processProduct(productMap, p.productId, p.productName, p.quantity * item.quantity, originalValue, finalValue);
                          }
                      })
                  }
@@ -186,14 +187,107 @@ function GeneralReport() {
     
     const formatCurrency = (value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+    const exportToPDF = () => {
+        const doc = new jsPDF();
+        const dateStr = `Período: ${format(dateRange?.from || new Date(), 'dd/MM/yy')} a ${format(dateRange?.to || new Date(), 'dd/MM/yy')}`;
+        doc.text("Relatório Geral", 14, 16);
+        doc.text(dateStr, 14, 22);
+
+        autoTable(doc, {
+            head: [['Métrica', 'Valor']],
+            body: [
+                ['Vendas', financialData.salesCount],
+                ['Receita Bruta', formatCurrency(financialData.grossRevenue)],
+                ['Receita Líquida', formatCurrency(financialData.netRevenue)],
+                ['Produtos Únicos', productsSold.length],
+                ['Unidades Vendidas', productTotals.quantity.toLocaleString('pt-BR')],
+            ],
+            startY: 28,
+            headStyles: { fillColor: [63, 81, 181] }
+        });
+
+        autoTable(doc, {
+            head: [['Método Pag.', 'Bruto', 'Líquido']],
+            body: Object.entries(financialData.payments).map(([name, values]: [string, any]) => [
+                name,
+                formatCurrency(values.gross),
+                formatCurrency(values.net),
+            ]),
+            headStyles: { fillColor: [63, 81, 181] }
+        });
+        
+        doc.addPage();
+        doc.text("Produtos Vendidos", 14, 16);
+        autoTable(doc, {
+            head: [['Produto', 'Qtd.', 'Valor Bruto', 'Descontos', 'Valor Final']],
+            body: productsSold.map(p => [
+                p.name,
+                p.quantity,
+                formatCurrency(p.originalValue),
+                `-${formatCurrency(p.originalValue - p.finalValue)}`,
+                formatCurrency(p.finalValue)
+            ]),
+            foot: [[
+                'Total',
+                productTotals.quantity.toLocaleString('pt-BR'),
+                formatCurrency(productTotals.originalValue),
+                `-${formatCurrency(productTotals.originalValue - productTotals.finalValue)}`,
+                formatCurrency(productTotals.finalValue)
+            ]],
+            startY: 22,
+            headStyles: { fillColor: [63, 81, 181] },
+            footStyles: { fillColor: [224, 224, 224], textColor: 0, fontStyle: 'bold' }
+        });
+
+        doc.save(`relatorio_geral.pdf`);
+    };
+
+    const exportToExcel = () => {
+        const wb = XLSX.utils.book_new();
+
+        // Financial Summary
+        const ws1_data = [
+            ['Métrica', 'Valor'],
+            ['Vendas', financialData.salesCount],
+            ['Receita Bruta', financialData.grossRevenue],
+            ['Receita Líquida', financialData.netRevenue],
+            ['Produtos Únicos', productsSold.length],
+            ['Unidades Vendidas', productTotals.quantity],
+            [],
+            ['Método Pag.', 'Bruto', 'Líquido'],
+             ...Object.entries(financialData.payments).map(([name, values]: [string, any]) => [name, values.gross, values.net]),
+        ];
+        const ws1 = XLSX.utils.aoa_to_sheet(ws1_data);
+        XLSX.utils.book_append_sheet(wb, ws1, "Resumo Financeiro");
+
+        // Products Sold
+        const ws2_data = productsSold.map(p => ({
+            'Produto': p.name,
+            'Quantidade': p.quantity,
+            'Valor Bruto': p.originalValue,
+            'Descontos': p.originalValue - p.finalValue,
+            'Valor Final': p.finalValue
+        }));
+        const ws2 = XLSX.utils.json_to_sheet(ws2_data);
+        XLSX.utils.book_append_sheet(wb, ws2, "Produtos Vendidos");
+
+        XLSX.writeFile(wb, "relatorio_geral.xlsx");
+    };
+
+
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 printable-area">
             <Card>
                 <CardHeader>
-                    <div className="flex flex-col md:flex-row justify-between gap-4">
+                    <div className="flex flex-col md:flex-row justify-between gap-4 no-print">
                          <div className="flex flex-wrap gap-2">
                             <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
                             <DateRangePicker date={dateRange} onSelect={setDateRange} />
+                        </div>
+                         <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="mr-2" /> Imprimir</Button>
+                            <Button variant="outline" size="sm" onClick={exportToPDF}><FileDown className="mr-2" /> PDF</Button>
+                            <Button variant="outline" size="sm" onClick={exportToExcel}><FileDown className="mr-2" /> Excel</Button>
                         </div>
                     </div>
                 </CardHeader>
@@ -1177,7 +1271,7 @@ function ABCCurveReport() {
                         current.total += item.quantity * product.price;
                         productRevenue.set(item.name, current);
                     }
-                } else if (item.type === 'combo' && item.products && !isNaN(item.originalPrice) && !isNaN(item.finalPrice)) {
+                } else if (item.type === 'combo' && item.products && !isNaN(item.originalPrice) && item.finalPrice) {
                     let ratio = (item.originalPrice > 0 && !isNaN(item.finalPrice)) ? item.finalPrice / item.originalPrice : 1;
                     if(isNaN(ratio)) ratio = 1;
                     item.products.forEach((p: any) => {
@@ -1323,7 +1417,7 @@ export default function ReportsPage() {
         );
     }
 
-    if (!user || user.role !== 'admin') {
+    if (!user?.enabledModules?.reports?.view) {
         return (
             <div className="flex h-full items-center justify-center">
                 <Card className="w-full max-w-md text-center">
@@ -1331,7 +1425,7 @@ export default function ReportsPage() {
                         <CardTitle className="flex items-center justify-center gap-2"><Lock /> Acesso Negado</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <p>Este recurso está disponível apenas para a função de Administrador.</p>
+                        <p>Você não tem permissão para acessar a área de Relatórios.</p>
                     </CardContent>
                 </Card>
             </div>
@@ -1481,3 +1575,4 @@ function DateRangePicker({ date, onSelect, className }: { date: DateRange | unde
     </div>
   )
 }
+

@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React from 'react';
@@ -138,9 +139,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (isSuperAdmin && !isImpersonating) {
             allOrgsUnsubscribe = onSnapshot(collection(db, 'organizations'), (snapshot) => {
-                setOrganizations(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as Organization)));
+                const orgs = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as Organization));
+                setOrganizations(orgs);
+                // For super admin not impersonating, set first org as the "context"
+                if (orgs.length > 0) {
+                    const firstOrg = orgs[0];
+                     setUser(prev => prev ? ({
+                        ...prev, 
+                        enabledModules: defaultPermissions, 
+                        organizationId: firstOrg.id,
+                        organization: firstOrg
+                    }) : null);
+                } else {
+                    setUser(prev => prev ? ({...prev, enabledModules: defaultPermissions}) : null);
+                }
             });
-            setUser(prev => prev ? ({...prev, enabledModules: defaultPermissions}) : null);
         } else if (effectiveOrgId) {
             const orgDocRef = doc(db, "organizations", effectiveOrgId);
             orgUnsubscribe = onSnapshot(orgDocRef, (orgDoc) => {
@@ -155,7 +168,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         
                         let finalPermissions: Partial<EnabledModules> = {};
 
-                        if (isImpersonating) {
+                        if (isImpersonating || currentUser.email === process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
                             finalPermissions = { ...defaultPermissions, ...orgModules };
                         } else if (currentUser.role === 'admin' && !userProfile) {
                             finalPermissions = { ...defaultPermissions, ...orgModules };
@@ -554,3 +567,5 @@ export const useAuth = () => {
   }
   return context;
 };
+
+

@@ -51,16 +51,16 @@ interface AuthContextType {
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
 
 const defaultPermissions: EnabledModules = {
-    dashboard: { view: true, edit: false, delete: false },
+    dashboard: { view: true, edit: true, delete: true },
     products: { view: true, edit: true, delete: true },
     combos: { view: true, edit: true, delete: true },
-    inventory: { view: true, edit: true, delete: false },
-    pos: { view: true, edit: false, delete: false },
-    assistant: { view: true, edit: false, delete: false },
-    reports: { view: true, edit: false, delete: false },
-    settings: { view: true, edit: false, delete: false },
+    inventory: { view: true, edit: true, delete: true },
+    pos: { view: true, edit: true, delete: true },
+    assistant: { view: true, edit: true, delete: true },
+    reports: { view: true, edit: true, delete: true },
+    settings: { view: true, edit: true, delete: true },
     kits: { view: true, edit: true, delete: true },
-    customers: { view: true, edit: true, delete: false },
+    customers: { view: true, edit: true, delete: true },
     appointments: { view: true, edit: true, delete: true },
     services: { view: true, edit: true, delete: true },
 };
@@ -104,7 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         let currentUser: User;
         if (userDocSnap.exists()) {
-            currentUser = userDocSnap.data() as User;
+            currentUser = { id: userDocSnap.id, ...userDocSnap.data() } as User;
         } else {
              const usersSnapshot = await getDocs(collection(db, "users"));
              const isFirstUser = usersSnapshot.empty;
@@ -120,7 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
             await setDoc(userDocRef, newUser);
             if(isFirstUser) {
-                 await setDoc(doc(db, "organizations", organizationId), { ownerId: newUser.id, name: `${newUser.name}'s Organization`, paymentStatus: 'active' });
+                 await setDoc(doc(db, "organizations", organizationId), { ownerId: newUser.id, name: `Sua Organização`, paymentStatus: 'active' });
             }
             currentUser = newUser;
         }
@@ -133,7 +133,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         setUser({ ...currentUser, isImpersonating });
 
-        if (effectiveOrgId) {
+        if (isSuperAdmin && !isImpersonating) {
+            setUser(prev => prev ? ({...prev, enabledModules: defaultPermissions}) : null);
+        } else if (effectiveOrgId) {
             const orgDocRef = doc(db, "organizations", effectiveOrgId);
             orgUnsubscribe = onSnapshot(orgDocRef, (orgDoc) => {
                 if (orgDoc.exists()) {
@@ -145,27 +147,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         const userProfile = profiles.find(p => p.id === currentUser.role);
                         const orgModules = orgData.enabledModules || {};
                         
-                        let finalPermissions = defaultPermissions;
+                        let finalPermissions: Partial<EnabledModules> = {};
 
                         if (isImpersonating) {
                             finalPermissions = { ...defaultPermissions, ...orgModules };
+                        } else if (currentUser.role === 'admin' && !userProfile) {
+                            finalPermissions = { ...defaultPermissions, ...orgModules };
                         } else if (userProfile?.permissions) {
-                            // Filter user permissions by what's enabled in the organization
-                            const filteredUserPerms: Partial<EnabledModules> = {};
-                             for (const key in userProfile.permissions) {
+                            for (const key in userProfile.permissions) {
                                 const moduleKey = key as keyof EnabledModules;
-                                if (orgModules[moduleKey]?.view) { // Check if module is enabled for the org
-                                    filteredUserPerms[moduleKey] = userProfile.permissions[moduleKey];
+                                if (orgModules[moduleKey]) {
+                                    finalPermissions[moduleKey] = userProfile.permissions[moduleKey];
                                 }
                             }
-                            finalPermissions = filteredUserPerms as EnabledModules;
                         }
 
                         setUser(prevUser => prevUser ? { 
                             ...prevUser, 
                             paymentStatus: orgData.paymentStatus, 
                             organization: orgData,
-                            enabledModules: finalPermissions
+                            enabledModules: finalPermissions as EnabledModules
                         } : null);
                     });
                 }
@@ -545,3 +546,4 @@ export const useAuth = () => {
   }
   return context;
 };
+

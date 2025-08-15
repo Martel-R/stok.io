@@ -46,44 +46,161 @@ export function PermissionProfileForm({
         activeModuleConfig.forEach(mod => {
             defaultPermissions[mod.key] = { view: false, edit: false, delete: false };
         });
+
         const initialPermissions = profile?.permissions 
             ? { ...defaultPermissions, ...profile.permissions } 
             : defaultPermissions;
-        setFormData({ ...profile, name: profile?.name || '', permissions: initialPermissions as EnabledModules });
+
+        setFormData({
+            ...profile,
+            name: profile?.name || '',
+            permissions: initialPermissions as EnabledModules,
+        });
     }, [profile, activeModuleConfig]);
 
-    const handlePermissionChange = (module: keyof EnabledModules, permission: keyof ModulePermissions, checked: boolean) => {
+    const handlePermissionChange = (
+        module: keyof EnabledModules, 
+        permission: keyof ModulePermissions, 
+        checked: boolean
+    ) => {
         setFormData(prev => {
             const newPermissions = { ...prev.permissions };
             const currentModulePerms = newPermissions[module] || { view: false, edit: false, delete: false };
             const updatedModulePerms = { ...currentModulePerms, [permission]: checked };
-            if (permission === 'view' && !checked) { updatedModulePerms.edit = false; updatedModulePerms.delete = false; }
-            if ((permission === 'edit' || permission === 'delete') && checked) { updatedModulePerms.view = true; }
+            
+            if (permission === 'view' && !checked) {
+                updatedModulePerms.edit = false;
+                updatedModulePerms.delete = false;
+            }
+            if ((permission === 'edit' || permission === 'delete') && checked) {
+                 updatedModulePerms.view = true;
+            }
+
             return { ...prev, permissions: {...newPermissions, [module]: updatedModulePerms} as EnabledModules };
         });
     };
-    
-    const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSave(formData); }
+
+    const handleSelectAll = (permission: keyof ModulePermissions, checked: boolean) => {
+        setFormData(prev => {
+            const newPermissions = { ...prev.permissions } as EnabledModules;
+            activeModuleConfig.forEach(mod => {
+                const currentModulePerms = newPermissions[mod.key] || { view: false, edit: false, delete: false };
+                const updatedModulePerms = { ...currentModulePerms, [permission]: checked };
+
+                if (permission === 'view' && !checked) {
+                    updatedModulePerms.edit = false;
+                    updatedModulePerms.delete = false;
+                }
+                if ((permission === 'edit' || permission === 'delete') && checked) {
+                    updatedModulePerms.view = true;
+                }
+                newPermissions[mod.key] = updatedModulePerms;
+            });
+            return { ...prev, permissions: newPermissions };
+        });
+    };
+
+    const getSelectAllState = (permission: keyof ModulePermissions): boolean | 'indeterminate' => {
+        const selectedCount = activeModuleConfig
+            .filter(mod => formData.permissions?.[mod.key]?.[permission])
+            .length;
+        
+        if (selectedCount === 0) return false;
+        if (selectedCount === activeModuleConfig.length) return true;
+        return 'indeterminate';
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData);
+    }
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-            <Input value={formData.name || ''} onChange={(e) => setFormData(p => ({...p, name: e.target.value}))} placeholder="Nome do Perfil" required />
-            <Table>
-                <TableHeader><TableRow><TableHead>Módulo</TableHead><TableHead>Ver</TableHead><TableHead>Editar</TableHead><TableHead>Excluir</TableHead></TableRow></TableHeader>
-                <TableBody>
-                    {activeModuleConfig.map(mod => (
-                        <TableRow key={mod.key}>
-                            <TableCell><mod.icon className="inline mr-2 h-4"/>{mod.label}</TableCell>
-                            <TableCell><Checkbox checked={formData.permissions?.[mod.key]?.view ?? false} onCheckedChange={(c) => handlePermissionChange(mod.key, 'view', c === true)} /></TableCell>
-                            <TableCell><Checkbox checked={formData.permissions?.[mod.key]?.edit ?? false} onCheckedChange={(c) => handlePermissionChange(mod.key, 'edit', c === true)} disabled={!formData.permissions?.[mod.key]?.view} /></TableCell>
-                            <TableCell><Checkbox checked={formData.permissions?.[mod.key]?.delete ?? false} onCheckedChange={(c) => handlePermissionChange(mod.key, 'delete', c === true)} disabled={!formData.permissions?.[mod.key]?.view} /></TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-            <DialogFooter className="justify-between">
-                 {profile?.id && 
-                    <AlertDialog>
+            <div className="space-y-2">
+                <Label htmlFor="profileName">Nome do Perfil</Label>
+                <Input
+                    id="profileName"
+                    value={formData.name || ''}
+                    onChange={(e) => setFormData(prev => ({...prev, name: e.target.value}))}
+                    required
+                />
+            </div>
+            <div className="space-y-2">
+                <Label>Permissões dos Módulos</Label>
+                <div className="rounded-md border">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Módulo</TableHead>
+                                <TableHead className="text-center">
+                                    <div className="flex flex-col items-center gap-1">
+                                        <Checkbox
+                                            checked={getSelectAllState('view')}
+                                            onCheckedChange={(checked) => handleSelectAll('view', checked === true)}
+                                            id="select-all-view"
+                                        />
+                                        <Label htmlFor="select-all-view" className="cursor-pointer">Visualizar</Label>
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-center">
+                                     <div className="flex flex-col items-center gap-1">
+                                        <Checkbox
+                                            checked={getSelectAllState('edit')}
+                                            onCheckedChange={(checked) => handleSelectAll('edit', checked === true)}
+                                            id="select-all-edit"
+                                        />
+                                        <Label htmlFor="select-all-edit" className="cursor-pointer">Editar</Label>
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-center">
+                                     <div className="flex flex-col items-center gap-1">
+                                        <Checkbox
+                                            checked={getSelectAllState('delete')}
+                                            onCheckedChange={(checked) => handleSelectAll('delete', checked === true)}
+                                            id="select-all-delete"
+                                        />
+                                        <Label htmlFor="select-all-delete" className="cursor-pointer">Excluir</Label>
+                                    </div>
+                                </TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {activeModuleConfig.map(mod => (
+                                <TableRow key={mod.key}>
+                                    <TableCell className="font-medium flex items-center gap-2">
+                                        <mod.icon className="h-4 w-4"/> {mod.label}
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <Checkbox
+                                            checked={formData.permissions?.[mod.key]?.view ?? false}
+                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'view', checked === true)}
+                                        />
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <Checkbox
+                                            checked={formData.permissions?.[mod.key]?.edit ?? false}
+                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'edit', checked === true)}
+                                            disabled={!formData.permissions?.[mod.key]?.view}
+                                        />
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <Checkbox
+                                            checked={formData.permissions?.[mod.key]?.delete ?? false}
+                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'delete', checked === true)}
+                                            disabled={!formData.permissions?.[mod.key]?.view}
+                                        />
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
+            </div>
+            <DialogFooter className="justify-between pt-4">
+                <div>
+                {profile?.id && (
+                     <AlertDialog>
                         <AlertDialogTrigger asChild>
                            <Button variant="destructive" type="button">Excluir</Button>
                         </AlertDialogTrigger>
@@ -98,7 +215,8 @@ export function PermissionProfileForm({
                             </AlertDialogFooter>
                         </AlertDialogContent>
                     </AlertDialog>
-                }
+                )}
+                </div>
                 <div className="flex gap-2">
                     <Button variant="ghost" type="button" onClick={onDone}>Cancelar</Button>
                     <Button type="submit">Salvar Perfil</Button>

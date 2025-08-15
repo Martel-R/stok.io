@@ -293,7 +293,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { getApp, initializeApp, deleteApp } = await import('firebase/app');
         const { getAuth: getAuth_local, createUserWithEmailAndPassword: createUserWithEmailAndPassword_local, sendPasswordResetEmail: sendPasswordResetEmail_local, signOut: signOut_local } = await import('firebase/auth');
 
-        const tempAppName = `temp-auth-app-${Date.now()}`;
+        const tempAppName = `temp-auth-app-${'\'\'\''}${Date.now()}${'\'\'\''}`;
         const tempAppConfig = { ...getApp().options, appName: tempAppName };
         const tempApp = initializeApp(tempAppConfig, tempAppName);
         const tempAuthInstance = getAuth_local(tempApp);
@@ -516,7 +516,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if(isAuthPage) {
             if (user.role === 'customer') {
                 router.push('/portal');
-            } else if (user?.enabledModules?.pos.view && !user.enabledModules?.dashboard.view) {
+            } else if (user.enabledModules?.pos?.view && !user.enabledModules?.dashboard?.view) {
                  router.push('/dashboard/pos');
             } else {
                 router.push('/dashboard');
@@ -525,7 +525,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             router.push('/portal');
         } else if (user.role !== 'customer' && isPortalPage) {
             router.push('/dashboard');
-        } else if (user.enabledModules?.pos.view && !user.enabledModules?.dashboard.view && pathname === '/dashboard') {
+        } else if (user.enabledModules?.pos?.view && !user.enabledModules?.dashboard?.view && pathname === '/dashboard') {
              router.push('/dashboard/pos');
         }
     }

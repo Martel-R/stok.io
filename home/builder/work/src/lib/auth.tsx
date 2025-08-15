@@ -141,8 +141,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             allOrgsUnsubscribe = onSnapshot(collection(db, 'organizations'), (snapshot) => {
                 const orgs = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as Organization));
                 setOrganizations(orgs);
-                // For super admin not impersonating, set a default state
-                setUser(prev => prev ? ({...prev, enabledModules: defaultPermissions, organization: orgs[0]}) : null);
+                if (orgs.length > 0) {
+                     setUser(prev => prev ? ({
+                        ...prev, 
+                        enabledModules: defaultPermissions, 
+                        organizationId: orgs[0].id,
+                        organization: orgs[0]
+                    }) : null);
+                } else {
+                    setUser(prev => prev ? ({...prev, enabledModules: defaultPermissions}) : null);
+                }
             });
         } else if (effectiveOrgId) {
             const orgDocRef = doc(db, "organizations", effectiveOrgId);
@@ -150,50 +158,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 if (orgDoc.exists()) {
                     const orgData = orgDoc.data() as Organization;
                     
-                    if (isImpersonating) {
-                         setUser(prevUser => prevUser ? { 
+                    const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId));
+                    profilesUnsubscribe = onSnapshot(profilesQuery, (profilesSnap) => {
+                        const profiles = profilesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
+                        const userProfile = profiles.find(p => p.id === currentUser.role);
+                        const orgModules = orgData.enabledModules || {};
+                        
+                        let finalPermissions: Partial<EnabledModules> = {};
+
+                        if (isSuperAdmin && isImpersonating) {
+                            finalPermissions = { ...defaultPermissions, ...orgModules };
+                        } else if (currentUser.role === 'admin' && !userProfile) { // Case for first admin before profiles are set
+                            finalPermissions = { ...defaultPermissions, ...orgModules };
+                        } else if (userProfile?.permissions) {
+                             for (const key in orgModules) {
+                                const moduleKey = key as keyof EnabledModules;
+                                if (orgModules[moduleKey]) {
+                                    finalPermissions[moduleKey] = userProfile.permissions[moduleKey] || { view: false, edit: false, delete: false };
+                                }
+                            }
+                        }
+
+                        setUser(prevUser => prevUser ? { 
                             ...prevUser, 
                             paymentStatus: orgData.paymentStatus, 
                             organization: orgData,
-                            enabledModules: { ...defaultPermissions, ...(orgData.enabledModules || {}) } as EnabledModules,
-                            organizationId: orgData.id
+                            enabledModules: finalPermissions as EnabledModules
                         } : null);
-                    } else {
-                        // Regular user logic
-                        const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId));
-                        profilesUnsubscribe = onSnapshot(profilesQuery, (profilesSnap) => {
-                            const profiles = profilesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
-                            const userProfile = profiles.find(p => p.id === currentUser.role);
-                            const orgModules = orgData.enabledModules || {};
-                            
-                            let finalPermissions: Partial<EnabledModules> = {};
-
-                            if (currentUser.role === 'admin' && !userProfile) { // Case for first admin before profiles are set
-                                finalPermissions = { ...defaultPermissions, ...orgModules };
-                            } else if (userProfile?.permissions) {
-                                for (const key in orgModules) {
-                                    const moduleKey = key as keyof EnabledModules;
-                                    if (orgModules[moduleKey]) {
-                                        finalPermissions[moduleKey] = userProfile.permissions[moduleKey] || { view: false, edit: false, delete: false };
-                                    }
-                                }
-                            }
-
-                            setUser(prevUser => prevUser ? { 
-                                ...prevUser, 
-                                paymentStatus: orgData.paymentStatus, 
-                                organization: orgData,
-                                enabledModules: finalPermissions as EnabledModules
-                            } : null);
-                        });
-                    }
+                    });
                 }
             });
 
             const q = query(collection(db, "branches"), where("organizationId", "==", effectiveOrgId));
             branchesUnsubscribe = onSnapshot(q, (snapshot) => {
                 const orgBranches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
-                const userFilteredBranches = isImpersonating ? orgBranches : orgBranches.filter(b => b.userIds.includes(currentUser.id));
+                const userFilteredBranches = (isSuperAdmin && isImpersonating) ? orgBranches : orgBranches.filter(b => b.userIds.includes(currentUser.id));
                 setBranches(userFilteredBranches);
 
                 const storedBranchId = localStorage.getItem('currentBranchId');

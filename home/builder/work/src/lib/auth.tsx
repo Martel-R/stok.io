@@ -149,6 +149,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
                         if (isImpersonating) {
                             finalPermissions = { ...defaultPermissions, ...orgModules };
+                        } else if (currentUser.role === 'admin' && !userProfile) {
+                            // First admin case, or profile not found, grant full permissions based on org modules
+                            finalPermissions = { ...defaultPermissions, ...orgModules };
                         } else if (userProfile?.permissions) {
                             // Filter user permissions by what's enabled in the organization
                             for (const key in userProfile.permissions) {
@@ -543,3 +546,4 @@ export const useAuth = () => {
   }
   return context;
 };
+

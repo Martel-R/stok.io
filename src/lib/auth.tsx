@@ -135,35 +135,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (effectiveOrgId) {
             const orgDocRef = doc(db, "organizations", effectiveOrgId);
-            orgUnsubscribe = onSnapshot(orgDocRef, async (orgDoc) => {
+            orgUnsubscribe = onSnapshot(orgDocRef, (orgDoc) => {
                 if (orgDoc.exists()) {
                     const orgData = orgDoc.data() as Organization;
-                    let modules = orgData.enabledModules;
-                    
-                    if (!modules) {
-                        modules = defaultPermissions;
-                        await updateDoc(orgDocRef, { enabledModules: modules });
-                    }
-                    
-                    setUser(prevUser => prevUser ? { 
-                        ...prevUser, 
-                        paymentStatus: orgData.paymentStatus, 
-                        enabledModules: isImpersonating ? defaultPermissions : modules, // Super admin sees all
-                        organization: orgData,
-                    } : null);
-                }
-            });
 
-            const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId));
-            profilesUnsubscribe = onSnapshot(profilesQuery, async (profilesSnap) => {
-                const profiles = profilesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
-                const userProfile = profiles.find(p => p.id === currentUser.role);
+                    const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId));
+                    profilesUnsubscribe = onSnapshot(profilesQuery, (profilesSnap) => {
+                        const profiles = profilesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
+                        const userProfile = profiles.find(p => p.id === currentUser.role);
+                        const orgModules = orgData.enabledModules || {};
+                        
+                        let finalPermissions = defaultPermissions;
 
-                if (userProfile && !isImpersonating) {
-                     setUser(prevUser => prevUser ? { 
-                        ...prevUser, 
-                        enabledModules: userProfile.permissions
-                    } : null);
+                        if (isImpersonating) {
+                            finalPermissions = { ...defaultPermissions, ...orgModules };
+                        } else if (userProfile?.permissions) {
+                            // Filter user permissions by what's enabled in the organization
+                            const filteredUserPerms: Partial<EnabledModules> = {};
+                             for (const key in userProfile.permissions) {
+                                const moduleKey = key as keyof EnabledModules;
+                                if (orgModules[moduleKey]?.view) { // Check if module is enabled for the org
+                                    filteredUserPerms[moduleKey] = userProfile.permissions[moduleKey];
+                                }
+                            }
+                            finalPermissions = filteredUserPerms as EnabledModules;
+                        }
+
+                        setUser(prevUser => prevUser ? { 
+                            ...prevUser, 
+                            paymentStatus: orgData.paymentStatus, 
+                            organization: orgData,
+                            enabledModules: finalPermissions
+                        } : null);
+                    });
                 }
             });
 

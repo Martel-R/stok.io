@@ -305,6 +305,8 @@ export interface PaymentRecord {
     paidAmount?: number;
     status: PaymentRecordStatus;
     recordedBy?: string; // User ID of admin who recorded it
+    paymentMethod?: string;
+    notes?: string;
 }
 
 export interface Subscription {

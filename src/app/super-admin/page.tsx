@@ -28,6 +28,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { DateRange } from 'react-day-picker';
 import { cn } from '@/lib/utils';
+import { Textarea } from '@/components/ui/textarea';
 
 type OrgWithUser = Organization & { owner?: User };
 
@@ -44,47 +45,46 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
     const { toast } = useToast();
     const [subDetails, setSubDetails] = useState<Partial<Subscription>>(organization.subscription || {});
     const [editingRecord, setEditingRecord] = useState<PaymentRecord | null>(null);
+    const [payingRecord, setPayingRecord] = useState<PaymentRecord | null>(null);
     
     useEffect(() => {
         setSubDetails(organization.subscription || {});
     }, [organization.subscription]);
 
     const handleCreateOrUpdateSubscription = async () => {
-        if (!adminUser || !subDetails.planName || !subDetails.price || !subDetails.startDate || !subDetails.endDate) {
-            toast({title: 'Dados incompletos', description: 'Plano, preço e datas de início/fim são obrigatórios.', variant: 'destructive'});
+        if (!adminUser || !subDetails.planName || !subDetails.price) {
+            toast({title: 'Dados incompletos', description: 'Plano e preço são obrigatórios.', variant: 'destructive'});
             return;
         };
 
         const startDate = toDate(subDetails.startDate);
         const endDate = toDate(subDetails.endDate);
 
-        if (!startDate || !endDate) {
-            toast({title: 'Datas inválidas', variant: 'destructive'});
-            return;
-        }
-
-        const months = eachMonthOfInterval({ start: startDate, end: endDate });
-
-        const paymentRecords: PaymentRecord[] = months.map((monthDate) => {
-            const existingRecord = (organization.subscription?.paymentRecords || []).find(p => {
-                const pDate = toDate(p.date);
-                return pDate && pDate.getMonth() === monthDate.getMonth() && pDate.getFullYear() === monthDate.getFullYear();
+        const paymentRecords = (subDetails.paymentRecords || []);
+        if (startDate && endDate) {
+             const months = eachMonthOfInterval({ start: startDate, end: endDate });
+             months.forEach((monthDate) => {
+                const alreadyExists = paymentRecords.some(p => {
+                    const pDate = toDate(p.date);
+                    return pDate && pDate.getMonth() === monthDate.getMonth() && pDate.getFullYear() === monthDate.getFullYear();
+                });
+                if (!alreadyExists) {
+                    paymentRecords.push({
+                        id: doc(collection(db, 'dummy')).id, // Temporary unique ID
+                        date: Timestamp.fromDate(startOfMonth(monthDate)),
+                        amount: subDetails.price || 0,
+                        status: 'pending',
+                    });
+                }
             });
-
-            return existingRecord || {
-                id: doc(collection(db, 'dummy')).id, // Temporary unique ID
-                date: Timestamp.fromDate(startOfMonth(monthDate)),
-                amount: subDetails.price || 0,
-                status: 'pending',
-            };
-        });
+        }
 
         const newSubscriptionData: Subscription = {
             ...subDetails,
             planName: subDetails.planName,
             price: subDetails.price,
-            startDate: subDetails.startDate,
-            endDate: subDetails.endDate,
+            startDate: subDetails.startDate || null,
+            endDate: subDetails.endDate || null,
             paymentRecords,
         };
         try {
@@ -98,16 +98,14 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
         }
     }
     
-    const handleRegisterPayment = async (paymentRecordId: string) => {
+    const handleSavePayment = async (updatedRecord: PaymentRecord) => {
         if (!organization.subscription || !adminUser) return;
     
         const updatedRecords = organization.subscription.paymentRecords.map(record => {
-            if (record.id === paymentRecordId) {
+            if (record.id === updatedRecord.id) {
                 return { 
-                    ...record, 
+                    ...updatedRecord, 
                     status: 'paid' as PaymentRecordStatus, 
-                    paidDate: new Date(),
-                    paidAmount: record.amount,
                     recordedBy: adminUser.id,
                 };
             }
@@ -119,6 +117,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                 'subscription.paymentRecords': updatedRecords
             });
             toast({ title: 'Pagamento registrado com sucesso!' });
+            setPayingRecord(null);
         } catch (error) {
             console.error(error);
             toast({ title: 'Erro ao registrar pagamento', variant: 'destructive' });
@@ -132,12 +131,10 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
         const existingRecordIndex = organization.subscription.paymentRecords.findIndex(r => r.id === recordToSave.id);
 
         if (existingRecordIndex > -1) {
-            // Update existing record
             updatedRecords = [...organization.subscription.paymentRecords];
             updatedRecords[existingRecordIndex] = recordToSave;
             toast({ title: 'Parcela atualizada!' });
         } else {
-            // Add new record
             updatedRecords = [...organization.subscription.paymentRecords, recordToSave];
             toast({ title: 'Nova parcela criada!' });
         }
@@ -250,7 +247,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal/></Button></DropdownMenuTrigger>
                                                             <DropdownMenuContent>
-                                                                {p.status === 'pending' && <DropdownMenuItem onSelect={() => handleRegisterPayment(p.id)}>Registrar Pagamento</DropdownMenuItem>}
+                                                                {p.status === 'pending' && <DropdownMenuItem onSelect={() => setPayingRecord(p)}>Registrar Pagamento</DropdownMenuItem>}
                                                                 <DropdownMenuItem onSelect={() => setEditingRecord(p)}>Editar</DropdownMenuItem>
                                                                 <AlertDialogTrigger asChild>
                                                                     <DropdownMenuItem className="text-destructive">Excluir</DropdownMenuItem>
@@ -289,6 +286,14 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                         </DialogContent>
                     </Dialog>
                 )}
+
+                {/* Register Payment Dialog */}
+                <RegisterPaymentDialog 
+                    record={payingRecord}
+                    isOpen={!!payingRecord}
+                    onOpenChange={(open) => !open && setPayingRecord(null)}
+                    onSave={handleSavePayment}
+                />
             </DialogContent>
         </Dialog>
     )
@@ -326,6 +331,81 @@ function EditRecordForm({record, onSave, onCancel}: {record: PaymentRecord, onSa
         </form>
     );
 }
+
+function RegisterPaymentDialog({
+    record, isOpen, onOpenChange, onSave
+}: {
+    record: PaymentRecord | null,
+    isOpen: boolean,
+    onOpenChange: (open: boolean) => void,
+    onSave: (record: PaymentRecord) => void,
+}) {
+    const [formData, setFormData] = useState<Partial<PaymentRecord>>({});
+
+    useEffect(() => {
+        if (record) {
+            setFormData({
+                ...record,
+                paidDate: new Date(),
+                paidAmount: record.amount,
+                paymentMethod: '',
+                notes: '',
+            });
+        }
+    }, [record]);
+
+    if (!isOpen || !record) return null;
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData as PaymentRecord);
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Registrar Pagamento de Parcela</DialogTitle>
+                     <DialogDescription>
+                        Vencimento em {format(toDate(record.date)!, 'dd/MM/yyyy')} no valor de R$ {record.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}.
+                    </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+                     <div className="grid grid-cols-2 gap-4">
+                         <div className="space-y-2">
+                            <Label>Data do Pagamento</Label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-start font-normal"><CalendarIcon className="mr-2 h-4 w-4"/>{formData.paidDate ? format(toDate(formData.paidDate)!, 'dd/MM/yyyy') : 'Selecione'}</Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0">
+                                    <Calendar mode="single" selected={toDate(formData.paidDate)} onSelect={(d) => setFormData(p => ({...p, paidDate: d}))} />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Valor Pago (R$)</Label>
+                            <Input type="number" value={formData.paidAmount || ''} onChange={e => setFormData(p => ({...p, paidAmount: parseFloat(e.target.value) || 0}))}/>
+                        </div>
+                     </div>
+                     <div className="space-y-2">
+                        <Label>Forma de Pagamento</Label>
+                        <Input value={formData.paymentMethod || ''} onChange={e => setFormData(p => ({...p, paymentMethod: e.target.value}))} placeholder="Ex: PIX, Boleto, Cartão..."/>
+                     </div>
+                     <div className="space-y-2">
+                        <Label>Observações</Label>
+                        <Textarea value={formData.notes || ''} onChange={e => setFormData(p => ({...p, notes: e.target.value}))} />
+                     </div>
+                    <DialogFooter>
+                        <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
+                        <Button type="submit">Confirmar Pagamento</Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 
 
 function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void }) {

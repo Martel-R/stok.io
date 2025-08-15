@@ -1,4 +1,5 @@
 
+
 'use client';
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
@@ -1416,7 +1417,7 @@ export default function ReportsPage() {
         );
     }
 
-    if (!user || user.role !== 'admin') {
+    if (!user?.enabledModules?.reports?.view) {
         return (
             <div className="flex h-full items-center justify-center">
                 <Card className="w-full max-w-md text-center">
@@ -1424,7 +1425,7 @@ export default function ReportsPage() {
                         <CardTitle className="flex items-center justify-center gap-2"><Lock /> Acesso Negado</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <p>Este recurso está disponível apenas para a função de Administrador.</p>
+                        <p>Você não tem permissão para acessar a área de Relatórios.</p>
                     </CardContent>
                 </Card>
             </div>
@@ -1574,3 +1575,4 @@ function DateRangePicker({ date, onSelect, className }: { date: DateRange | unde
     </div>
   )
 }
+

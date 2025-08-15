@@ -39,7 +39,7 @@ export function PermissionProfileForm({
         { key: 'settings', label: 'Configurações', icon: Settings },
     ] as const;
 
-    const activeModuleConfig = allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]?.view);
+    const activeModuleConfig = allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]);
 
     useEffect(() => {
         const defaultPermissions: Partial<EnabledModules> = {};

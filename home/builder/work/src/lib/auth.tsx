@@ -5,10 +5,11 @@
 import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc } from "firebase/firestore";
-import type { User, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile } from '@/lib/types';
+import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc, serverTimestamp, Timestamp } from "firebase/firestore";
+import type { User, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile, Subscription } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
 import { MOCK_PRODUCTS } from '@/lib/mock-data';
+import { addMonths } from 'date-fns';
 
 const availableAvatars = [
     'https://placehold.co/100x100.png?text=🦊',
@@ -21,6 +22,7 @@ const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availa
 
 interface UserWithOrg extends User {
     organization?: Organization;
+    isImpersonating?: boolean;
 }
 
 interface AuthContextType {
@@ -42,6 +44,8 @@ interface AuthContextType {
   logout: () => void;
   loading: boolean;
   cancelLogin: () => void;
+  startImpersonation: (orgId: string) => void;
+  stopImpersonation: () => void;
 }
 
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
@@ -54,18 +58,24 @@ const defaultPermissions: EnabledModules = {
     pos: { view: true, edit: false, delete: false },
     assistant: { view: true, edit: false, delete: false },
     reports: { view: true, edit: false, delete: false },
-    settings: { view: true, edit: true, delete: true },
+    settings: { view: true, edit: false, delete: false },
     kits: { view: true, edit: true, delete: true },
     customers: { view: true, edit: true, delete: false },
     appointments: { view: true, edit: true, delete: true },
     services: { view: true, edit: true, delete: true },
 };
 
-const professionalPermissions: Partial<EnabledModules> = {
-    dashboard: { view: true, edit: false, delete: false },
-    appointments: { view: true, edit: true, delete: true },
+const professionalPermissions: EnabledModules = {
+    ...defaultPermissions,
+    products: { view: false, edit: false, delete: false },
+    combos: { view: false, edit: false, delete: false },
+    inventory: { view: false, edit: false, delete: false },
+    pos: { view: false, edit: false, delete: false },
+    assistant: { view: false, edit: false, delete: false },
+    reports: { view: false, edit: false, delete: false },
+    settings: { view: false, edit: false, delete: false },
+    kits: { view: false, edit: false, delete: false },
     customers: { view: true, edit: false, delete: false },
-    services: { view: true, edit: false, delete: false },
 };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -78,82 +88,122 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   React.useEffect(() => {
-    let userUnsubscribe: Unsubscribe | null = null;
     let branchesUnsubscribe: Unsubscribe | null = null;
     let orgUnsubscribe: Unsubscribe | null = null;
     let profilesUnsubscribe: Unsubscribe | null = null;
 
-    const cleanup = () => {
-        userUnsubscribe?.();
-        branchesUnsubscribe?.();
-        orgUnsubscribe?.();
-        profilesUnsubscribe?.();
-    };
-
     const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseAuthUser | null) => {
-      cleanup();
       setLoading(true);
+      if (branchesUnsubscribe) branchesUnsubscribe();
+      if (orgUnsubscribe) orgUnsubscribe();
+      if (profilesUnsubscribe) profilesUnsubscribe();
 
       if (firebaseUser) {
-        userUnsubscribe = onSnapshot(doc(db, "users", firebaseUser.uid), (userDoc) => {
-            if (!userDoc.exists()) {
-                setLoading(false);
-                return;
+        const userDocRef = doc(db, "users", firebaseUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        
+        let currentUser: User;
+        if (userDocSnap.exists()) {
+            currentUser = userDocSnap.data() as User;
+        } else {
+             const usersSnapshot = await getDocs(collection(db, "users"));
+             const isFirstUser = usersSnapshot.empty;
+             const organizationId = isFirstUser ? doc(collection(db, 'organizations')).id : '';
+             
+             const newUser: User = {
+                id: firebaseUser.uid,
+                email: firebaseUser.email || '',
+                name: firebaseUser.displayName || 'Usuário Google',
+                role: 'admin', 
+                avatar: firebaseUser.photoURL || getRandomAvatar(),
+                organizationId: organizationId,
             }
-            const currentUser = userDoc.data() as User;
-            
-            if (currentUser.organizationId) {
-                const orgDocRef = doc(db, "organizations", currentUser.organizationId);
-                orgUnsubscribe = onSnapshot(orgDocRef, (orgDoc) => {
-                     const orgData = orgDoc.data() as Organization | undefined;
+            await setDoc(userDocRef, newUser);
+            if(isFirstUser) {
+                 await setDoc(doc(db, "organizations", organizationId), { ownerId: newUser.id, name: `${\'\'\'${newUser.name}'s Organization\'\'\'}`, paymentStatus: 'active' });
+            }
+            currentUser = newUser;
+        }
 
-                     const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', currentUser.organizationId));
-                     profilesUnsubscribe = onSnapshot(profilesQuery, (profilesSnap) => {
+        const isSuperAdmin = currentUser.email === process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL;
+        const impersonatedOrgId = localStorage.getItem('impersonatedOrgId');
+        const isImpersonating = isSuperAdmin && !!impersonatedOrgId;
+
+        const effectiveOrgId = isImpersonating ? impersonatedOrgId : currentUser.organizationId;
+        
+        setUser({ ...currentUser, isImpersonating });
+
+        if (effectiveOrgId) {
+            const orgDocRef = doc(db, "organizations", effectiveOrgId);
+            orgUnsubscribe = onSnapshot(orgDocRef, (orgDoc) => {
+                if (orgDoc.exists()) {
+                    const orgData = orgDoc.data() as Organization;
+
+                    const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId));
+                    profilesUnsubscribe = onSnapshot(profilesQuery, (profilesSnap) => {
                         const profiles = profilesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
                         const userProfile = profiles.find(p => p.id === currentUser.role);
+                        const orgModules = orgData.enabledModules || {};
+                        
+                        let finalPermissions = defaultPermissions;
 
-                        const finalUser: UserWithOrg = {
-                            ...currentUser,
+                        if (isImpersonating) {
+                            finalPermissions = { ...defaultPermissions, ...orgModules };
+                        } else if (userProfile?.permissions) {
+                            // Filter user permissions by what's enabled in the organization
+                            const filteredUserPerms: Partial<EnabledModules> = {};
+                             for (const key in userProfile.permissions) {
+                                const moduleKey = key as keyof EnabledModules;
+                                if (orgModules[moduleKey]?.view) { // Check if module is enabled for the org
+                                    filteredUserPerms[moduleKey] = userProfile.permissions[moduleKey];
+                                }
+                            }
+                            finalPermissions = filteredUserPerms as EnabledModules;
+                        }
+
+                        setUser(prevUser => prevUser ? { 
+                            ...prevUser, 
+                            paymentStatus: orgData.paymentStatus, 
                             organization: orgData,
-                            enabledModules: userProfile?.permissions || orgData?.enabledModules || defaultPermissions
-                        };
-                        setUser(finalUser);
-                     });
-                });
+                            enabledModules: finalPermissions
+                        } : null);
+                    });
+                }
+            });
 
-                const q = query(collection(db, "branches"), where("organizationId", "==", currentUser.organizationId));
-                branchesUnsubscribe = onSnapshot(q, (snapshot) => {
-                    const userBranches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
-                    const userFilteredBranches = userBranches.filter(b => b.userIds.includes(currentUser.id));
-                    setBranches(userFilteredBranches);
+            const q = query(collection(db, "branches"), where("organizationId", "==", effectiveOrgId));
+            branchesUnsubscribe = onSnapshot(q, (snapshot) => {
+                const orgBranches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+                const userFilteredBranches = isImpersonating ? orgBranches : orgBranches.filter(b => b.userIds.includes(currentUser.id));
+                setBranches(userFilteredBranches);
 
-                    const storedBranchId = localStorage.getItem('currentBranchId');
-                    const storedBranch = userFilteredBranches.find(b => b.id === storedBranchId);
-                    
-                    if (storedBranch) {
-                        setCurrentBranchState(storedBranch);
-                    } else if (userFilteredBranches.length > 0) {
-                        setCurrentBranchState(userFilteredBranches[0]);
-                    } else {
-                        setCurrentBranchState(null);
-                    }
-                });
-            } else {
-                setUser(currentUser); // User without organization
-            }
-             setLoading(false);
-        });
+                const storedBranchId = localStorage.getItem('currentBranchId');
+                const storedBranch = userFilteredBranches.find(b => b.id === storedBranchId);
+                if (storedBranch) {
+                    setCurrentBranchState(storedBranch);
+                } else if (userFilteredBranches.length > 0) {
+                    setCurrentBranchState(userFilteredBranches[0]);
+                } else {
+                    setCurrentBranchState(null);
+                }
+            });
+        } else {
+            setBranches([]);
+            setCurrentBranchState(null);
+        }
       } else {
         setUser(null);
         setBranches([]);
         setCurrentBranchState(null);
-        setLoading(false);
       }
+      setLoading(false);
     });
 
     return () => {
       authUnsubscribe();
-      cleanup();
+      if (branchesUnsubscribe) branchesUnsubscribe();
+      if (orgUnsubscribe) orgUnsubscribe();
+      if (profilesUnsubscribe) profilesUnsubscribe();
     };
   }, []);
   
@@ -190,11 +240,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       batch.set(doc(db, "users", firebaseUser.uid), newUser);
       
+      const newSubscription: Subscription = {
+          planName: 'Plano Pro',
+          price: 99.90,
+          startDate: Timestamp.now(),
+          endDate: Timestamp.fromDate(addMonths(new Date(), 12)),
+          paymentRecords: [],
+      };
+      
       batch.set(doc(db, "organizations", organizationId), { 
         ownerId: newUser.id, 
-        name: `${name}'s Company`,
+        name: name,
         paymentStatus: 'active',
-        enabledModules: defaultPermissions
+        enabledModules: defaultPermissions,
+        subscription: newSubscription
       });
       
       const adminProfile: Omit<PermissionProfile, 'id'> = {
@@ -207,7 +266,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const professionalProfile: Omit<PermissionProfile, 'id'> = {
           name: 'Profissional',
           organizationId: organizationId,
-          permissions: professionalPermissions as EnabledModules
+          permissions: professionalPermissions
       };
       batch.set(professionalProfileRef, professionalProfile);
 
@@ -234,7 +293,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { getApp, initializeApp, deleteApp } = await import('firebase/app');
         const { getAuth: getAuth_local, createUserWithEmailAndPassword: createUserWithEmailAndPassword_local, sendPasswordResetEmail: sendPasswordResetEmail_local, signOut: signOut_local } = await import('firebase/auth');
 
-        const tempAppName = `temp-auth-app-${Date.now()}`;
+        const tempAppName = `temp-auth-app-${\'\'\'${Date.now()}\'\'\'}`;
         const tempAppConfig = { ...getApp().options, appName: tempAppName };
         const tempApp = initializeApp(tempAppConfig, tempAppName);
         const tempAuthInstance = getAuth_local(tempApp);
@@ -315,12 +374,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await signOut(auth);
         setUser(null);
         localStorage.removeItem('currentBranchId');
+        localStorage.removeItem('impersonatedOrgId');
         router.push('/login');
     } catch (error) {
         console.error("Firebase Logout Error:", error);
     } finally {
         setLoading(false);
     }
+  };
+
+  const startImpersonation = (orgId: string) => {
+    localStorage.setItem('impersonatedOrgId', orgId);
+    router.push('/dashboard');
+    window.location.reload(); // Force a full reload to re-trigger the auth provider
+  };
+  
+  const stopImpersonation = () => {
+    localStorage.removeItem('impersonatedOrgId');
+    localStorage.removeItem('currentBranchId');
+    router.push('/super-admin');
+    window.location.reload();
   };
 
   const setCurrentBranch = (branch: Branch) => {
@@ -443,7 +516,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if(isAuthPage) {
             if (user.role === 'customer') {
                 router.push('/portal');
-            } else if (user?.enabledModules?.pos.view && !user.enabledModules?.dashboard.view) {
+            } else if (user.enabledModules?.pos?.view && !user.enabledModules?.dashboard?.view) {
                  router.push('/dashboard/pos');
             } else {
                 router.push('/dashboard');
@@ -452,14 +525,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             router.push('/portal');
         } else if (user.role !== 'customer' && isPortalPage) {
             router.push('/dashboard');
-        } else if (user.enabledModules?.pos.view && !user.enabledModules?.dashboard.view && pathname === '/dashboard') {
+        } else if (user.enabledModules?.pos?.view && !user.enabledModules?.dashboard?.view && pathname === '/dashboard') {
              router.push('/dashboard/pos');
         }
     }
   }, [isAuthenticated, loading, pathname, router, user]);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, deleteTestData, updateOrganizationModules, updateOrganizationBranding }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, deleteTestData, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation }}>
       {children}
     </AuthContext.Provider>
   );

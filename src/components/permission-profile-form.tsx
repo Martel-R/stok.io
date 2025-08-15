@@ -59,7 +59,7 @@ export function PermissionProfileForm({
         });
     }, [profile, activeModuleConfig]);
 
-    const handlePermissionChange = (
+    const handlePermissionChange = React.useCallback((
         module: keyof EnabledModules, 
         permission: keyof ModulePermissions, 
         checked: boolean
@@ -79,7 +79,7 @@ export function PermissionProfileForm({
 
             return { ...prev, permissions: {...newPermissions, [module]: updatedModulePerms} as EnabledModules };
         });
-    };
+    }, []);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();

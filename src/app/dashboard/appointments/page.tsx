@@ -52,33 +52,20 @@ function AppointmentForm({
         start: setHours(setMinutes(initialDate, 0), 9),
         status: 'scheduled' as AppointmentStatus,
         notes: '',
+        branchId: currentBranch?.id,
+        organizationId: user?.organizationId,
     });
-
+    
     const [formData, setFormData] = useState<Partial<Appointment>>(appointment || getDefaultState());
     
-    const [selectedService, setSelectedService] = useState<Service | null>(
-        appointment && appointment.serviceId ? services.find(s => s.id === appointment.serviceId) || null : null
-    );
-    
-    useEffect(() => {
-        if (appointment) {
-            setFormData(appointment);
-            if (appointment.serviceId) {
-                setSelectedService(services.find(s => s.id === appointment.serviceId) || null);
-            }
-        } else {
-            setFormData(getDefaultState());
-            setSelectedService(null);
+    const [selectedService, setSelectedService] = useState<Service | null>(() => {
+        if (appointment && appointment.serviceId) {
+            return services.find(s => s.id === appointment.serviceId) || null;
         }
-    }, [appointment, initialDate, services]);
+        return null;
+    });
 
-    useEffect(() => {
-        if (formData.serviceId) {
-            setSelectedService(services.find(s => s.id === formData.serviceId) || null);
-        } else {
-            setSelectedService(null);
-        }
-    }, [formData.serviceId, services]);
+    const { user } = useAuth();
 
     const availableProfessionals = useMemo(() => {
         if (!selectedService) return [];
@@ -629,6 +616,7 @@ export default function AppointmentsPage() {
                             <DialogContent className="sm:max-w-xl">
                                 <DialogHeader><DialogTitle>{editingAppointment ? 'Editar Agendamento' : 'Novo Agendamento'}</DialogTitle></DialogHeader>
                                 <AppointmentForm
+                                    key={editingAppointment?.id || 'new'}
                                     appointment={editingAppointment}
                                     customers={customers}
                                     services={services}

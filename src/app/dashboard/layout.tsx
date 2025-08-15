@@ -13,11 +13,12 @@ import { Home, Package, BarChart, ShoppingCart, Bot, FileText, LogOut, Loader2, 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import Image from 'next/image';
+import type { Organization } from '@/lib/types';
 
 function DashboardNav() {
     const pathname = usePathname();
@@ -72,17 +73,9 @@ function DashboardNav() {
 }
 
 function BranchSwitcher() {
-    const { branches, currentBranch, setCurrentBranch } = useAuth();
+    const { user, branches, currentBranch, setCurrentBranch, organizations, startImpersonation } = useAuth();
     const [open, setOpen] = useState(false);
-
-    if (branches.length <= 1) {
-        return (
-            <div className="flex items-center gap-2 text-sm font-medium">
-                <Building className="h-4 w-4" />
-                <span>{currentBranch?.name || "Filial Principal"}</span>
-            </div>
-        );
-    }
+    const isSuperAdmin = user?.email === process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL;
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
@@ -91,19 +84,42 @@ function BranchSwitcher() {
                     variant="ghost"
                     role="combobox"
                     aria-expanded={open}
-                    className="w-[200px] justify-between"
+                    className="w-[250px] justify-between"
                 >
                      <Building className="mr-2 h-4 w-4 shrink-0" />
-                    <span className="truncate">{currentBranch?.name || "Selecione a filial"}</span>
+                     <div className="flex flex-col items-start">
+                        <span className="text-xs text-muted-foreground -mb-1">{user?.isImpersonating ? "Organização" : "Filial"}</span>
+                        <span className="truncate font-semibold">{user?.isImpersonating ? user.organization?.name : currentBranch?.name || "Selecione a filial"}</span>
+                     </div>
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[200px] p-0">
+            <PopoverContent className="w-[250px] p-0">
                 <Command>
-                    <CommandInput placeholder="Buscar filial..." />
+                    <CommandInput placeholder="Buscar..." />
                     <CommandList>
-                        <CommandEmpty>Nenhuma filial encontrada.</CommandEmpty>
-                        <CommandGroup>
+                        <CommandEmpty>Nenhum resultado.</CommandEmpty>
+                        {isSuperAdmin && (
+                            <>
+                                <CommandGroup heading="Organizações">
+                                    {organizations.map((org) => (
+                                        <CommandItem
+                                            key={org.id}
+                                            value={org.name}
+                                            onSelect={() => {
+                                                startImpersonation(org.id);
+                                                setOpen(false);
+                                            }}
+                                        >
+                                             <Check className={cn("mr-2 h-4 w-4", user?.organizationId === org.id && user?.isImpersonating ? "opacity-100" : "opacity-0")}/>
+                                            {org.name}
+                                        </CommandItem>
+                                    ))}
+                                </CommandGroup>
+                                <CommandSeparator />
+                            </>
+                        )}
+                        <CommandGroup heading="Filiais">
                             {branches.map((branch) => (
                                 <CommandItem
                                     key={branch.id}
@@ -113,12 +129,7 @@ function BranchSwitcher() {
                                         setOpen(false);
                                     }}
                                 >
-                                    <Check
-                                        className={cn(
-                                            "mr-2 h-4 w-4",
-                                            currentBranch?.id === branch.id ? "opacity-100" : "opacity-0"
-                                        )}
-                                    />
+                                    <Check className={cn("mr-2 h-4 w-4", currentBranch?.id === branch.id ? "opacity-100" : "opacity-0")}/>
                                     {branch.name}
                                 </CommandItem>
                             ))}
@@ -129,61 +140,6 @@ function BranchSwitcher() {
         </Popover>
     );
 }
-
-function OrganizationSwitcher() {
-    const { organizations, startImpersonation, user } = useAuth();
-    const [open, setOpen] = useState(false);
-
-    if (user?.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
-        return null;
-    }
-
-    return (
-        <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-                <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={open}
-                    className="w-[250px] justify-between"
-                >
-                     <Building className="mr-2 h-4 w-4 shrink-0" />
-                    <span className="truncate">{user.isImpersonating ? `Personificando: ${user.organization?.name}` : 'Trocar de Organização'}</span>
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[250px] p-0">
-                <Command>
-                    <CommandInput placeholder="Buscar organização..." />
-                    <CommandList>
-                        <CommandEmpty>Nenhuma organização encontrada.</CommandEmpty>
-                        <CommandGroup>
-                            {organizations.map((org) => (
-                                <CommandItem
-                                    key={org.id}
-                                    value={org.name}
-                                    onSelect={() => {
-                                        startImpersonation(org.id);
-                                        setOpen(false);
-                                    }}
-                                >
-                                    <Check
-                                        className={cn(
-                                            "mr-2 h-4 w-4",
-                                            user?.organizationId === org.id && user?.isImpersonating ? "opacity-100" : "opacity-0"
-                                        )}
-                                    />
-                                    {org.name}
-                                </CommandItem>
-                            ))}
-                        </CommandGroup>
-                    </CommandList>
-                </Command>
-            </PopoverContent>
-        </Popover>
-    );
-}
-
 
 function UserNav() {
     const { user, logout } = useAuth();
@@ -279,12 +235,10 @@ function ImpersonationExitButton() {
     }
 
     return (
-        <div className="fixed bottom-4 right-4 z-50">
-            <Button onClick={stopImpersonation} variant="destructive">
-                <LogOut className="mr-2" />
-                Sair da Personificação
-            </Button>
-        </div>
+        <Button onClick={stopImpersonation} variant="destructive" className="w-full">
+            <LogOut className="mr-2" />
+            Sair da Personificação
+        </Button>
     )
 }
 
@@ -330,7 +284,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                     <DashboardNav />
                 </SidebarContent>
                 <SidebarFooter>
-                    {/* Conteúdo do rodapé, se houver */}
+                    <ImpersonationExitButton />
                 </SidebarFooter>
             </Sidebar>
             <div className="flex flex-1 flex-col md:ml-64">
@@ -346,7 +300,6 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                             <span className="sr-only">Abrir Menu</span>
                         </Button>
                         <BranchSwitcher />
-                        <OrganizationSwitcher />
                     </div>
                     <div className="flex w-full items-center justify-end gap-4">
                         <UserNav />
@@ -359,7 +312,6 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                      </div>
                 </main>
             </div>
-             <ImpersonationExitButton />
         </div>
     )
 }

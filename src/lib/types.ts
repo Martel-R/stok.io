@@ -295,17 +295,22 @@ export interface BrandingSettings {
     primaryColor?: string; // HSL format string e.g. "240 10% 3.9%"
 }
 
+export type PaymentRecordStatus = 'pending' | 'paid' | 'overdue';
+
 export interface PaymentRecord {
     id: string;
-    date: any; // Can be a past or future date, so store as Timestamp
+    date: any; // Timestamp for the due date
+    paidDate?: any; // Timestamp for when it was paid
     amount: number;
-    recordedBy: string; // User ID of admin who recorded it
+    status: PaymentRecordStatus;
+    recordedBy?: string; // User ID of admin who recorded it
 }
 
 export interface Subscription {
     planName: string;
     price: number;
-    nextDueDate: any; // Timestamp
+    startDate: any; // Timestamp
+    endDate: any; // Timestamp
     paymentRecords: PaymentRecord[];
 }
 

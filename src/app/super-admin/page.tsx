@@ -108,6 +108,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                     ...updatedRecord, 
                     status: 'paid' as PaymentRecordStatus, 
                     recordedBy: adminUser.id,
+                    paidDate: new Date(),
                 };
             }
             return record;
@@ -675,7 +676,7 @@ function SuperAdminPage() {
     const { toast } = useToast();
 
     useEffect(() => {
-        if (!authLoading && (!user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL)) {
+        if (!authLoading && user && user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL && !user.isImpersonating) {
             router.push('/dashboard');
         }
     }, [user, authLoading, router]);
@@ -813,3 +814,4 @@ function SuperAdminPage() {
 }
 
 export default SuperAdminPage;
+

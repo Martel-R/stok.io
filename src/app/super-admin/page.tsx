@@ -83,8 +83,8 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
             ...subDetails,
             planName: subDetails.planName,
             price: subDetails.price,
-            startDate: Timestamp.fromDate(startDate),
-            endDate: Timestamp.fromDate(endDate),
+            startDate: subDetails.startDate,
+            endDate: subDetails.endDate,
             paymentRecords,
         };
         try {
@@ -125,15 +125,28 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
         }
     };
 
-    const handleUpdateRecord = async (updatedRecord: PaymentRecord) => {
+    const handleSaveRecord = async (recordToSave: PaymentRecord) => {
         if (!organization.subscription) return;
-        const updatedRecords = organization.subscription.paymentRecords.map(r => r.id === updatedRecord.id ? updatedRecord : r);
+
+        let updatedRecords;
+        const existingRecordIndex = organization.subscription.paymentRecords.findIndex(r => r.id === recordToSave.id);
+
+        if (existingRecordIndex > -1) {
+            // Update existing record
+            updatedRecords = [...organization.subscription.paymentRecords];
+            updatedRecords[existingRecordIndex] = recordToSave;
+            toast({ title: 'Parcela atualizada!' });
+        } else {
+            // Add new record
+            updatedRecords = [...organization.subscription.paymentRecords, recordToSave];
+            toast({ title: 'Nova parcela criada!' });
+        }
+
          try {
             await updateDoc(doc(db, 'organizations', organization.id), { 'subscription.paymentRecords': updatedRecords });
-            toast({ title: 'Parcela atualizada!' });
             setEditingRecord(null);
         } catch (error) {
-            toast({ title: 'Erro ao atualizar parcela', variant: 'destructive' });
+            toast({ title: 'Erro ao salvar parcela', variant: 'destructive' });
         }
     };
     
@@ -146,6 +159,15 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
         } catch (error) {
             toast({ title: 'Erro ao excluir parcela', variant: 'destructive' });
         }
+    };
+
+    const openNewRecordForm = () => {
+        setEditingRecord({
+            id: doc(collection(db, 'dummy')).id,
+            date: Timestamp.now(),
+            amount: subDetails.price || 0,
+            status: 'pending'
+        });
     };
     
     if (!isOpen) return null;
@@ -191,7 +213,13 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
 
                     {/* Payment Records Table */}
                      <div className="space-y-2">
-                        <h3 className="font-semibold">Histórico de Parcelas</h3>
+                        <div className="flex justify-between items-center">
+                            <h3 className="font-semibold">Histórico de Parcelas</h3>
+                            <Button variant="outline" size="sm" onClick={openNewRecordForm}>
+                                <PlusCircle className="mr-2 h-4 w-4" />
+                                Criar Parcela
+                            </Button>
+                        </div>
                         <div className="max-h-96 overflow-y-auto mt-2 pr-2">
                             <Table>
                                 <TableHeader>
@@ -257,7 +285,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                     <Dialog open={!!editingRecord} onOpenChange={(open) => !open && setEditingRecord(null)}>
                         <DialogContent>
                             <DialogHeader><DialogTitle>Editar Parcela</DialogTitle></DialogHeader>
-                            <EditRecordForm record={editingRecord} onSave={handleUpdateRecord} onCancel={() => setEditingRecord(null)} />
+                            <EditRecordForm record={editingRecord} onSave={handleSaveRecord} onCancel={() => setEditingRecord(null)} />
                         </DialogContent>
                     </Dialog>
                 )}
@@ -703,3 +731,5 @@ function SuperAdminPage() {
 }
 
 export default SuperAdminPage;
+
+    

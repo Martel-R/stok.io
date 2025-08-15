@@ -65,8 +65,7 @@ export function PermissionProfileForm({
         checked: boolean
     ) => {
         setFormData(prev => {
-            const newFormData = { ...prev };
-            const newPermissions = { ...newFormData.permissions };
+            const newPermissions = { ...prev.permissions };
             const currentModulePerms = newPermissions[module] || { view: false, edit: false, delete: false };
             const updatedModulePerms = { ...currentModulePerms, [permission]: checked };
             
@@ -79,9 +78,9 @@ export function PermissionProfileForm({
             }
 
             newPermissions[module] = updatedModulePerms;
-            return { ...newFormData, permissions: newPermissions as EnabledModules };
+            return { ...prev, permissions: newPermissions as EnabledModules };
         });
-    }, [formData]);
+    }, []);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();

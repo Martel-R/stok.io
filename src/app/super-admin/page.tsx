@@ -32,19 +32,35 @@ type OrgWithUser = Organization & { owner?: User };
 
 function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void, adminUser: User | null }) {
     const { toast } = useToast();
+    
+    // State for the payment registration form
     const [paymentAmount, setPaymentAmount] = useState<number>(organization.subscription?.price || 99.90);
     const [paymentDate, setPaymentDate] = useState<Date | undefined>(new Date());
     
-    const [newPlanName, setNewPlanName] = useState('Plano Pro');
-    const [newPlanPrice, setNewPlanPrice] = useState(99.90);
-    const [newPlanDate, setNewPlanDate] = useState(format(addMonths(new Date(), 1), 'yyyy-MM-dd'));
+    // State for editing the subscription details
+    const [editableSub, setEditableSub] = useState({
+        planName: organization.subscription?.planName || 'Plano Pro',
+        price: organization.subscription?.price || 99.90,
+        nextDueDate: organization.subscription?.nextDueDate?.toDate() || addMonths(new Date(), 1)
+    });
+
+    useEffect(() => {
+        if (isOpen && organization.subscription) {
+            setEditableSub({
+                planName: organization.subscription.planName,
+                price: organization.subscription.price,
+                nextDueDate: organization.subscription.nextDueDate.toDate(),
+            })
+            setPaymentAmount(organization.subscription.price);
+        }
+    }, [isOpen, organization.subscription]);
 
     const handleCreateSubscription = async () => {
         if (!adminUser) return;
         const newSubscription: Subscription = {
-            planName: newPlanName,
-            price: newPlanPrice,
-            nextDueDate: Timestamp.fromDate(new Date(newPlanDate)),
+            planName: editableSub.planName,
+            price: editableSub.price,
+            nextDueDate: Timestamp.fromDate(editableSub.nextDueDate),
             paymentRecords: [],
         };
         try {
@@ -57,6 +73,22 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
             toast({ title: 'Erro ao criar assinatura', variant: 'destructive' });
         }
     }
+    
+     const handleUpdateSubscriptionDetails = async () => {
+        if (!organization.subscription) return;
+        try {
+            const updatedSubData = {
+                'subscription.planName': editableSub.planName,
+                'subscription.price': editableSub.price,
+                'subscription.nextDueDate': Timestamp.fromDate(editableSub.nextDueDate),
+            };
+            await updateDoc(doc(db, 'organizations', organization.id), updatedSubData);
+            toast({ title: 'Detalhes da assinatura atualizados!' });
+        } catch (error) {
+             console.error(error);
+             toast({ title: 'Erro ao atualizar detalhes', variant: 'destructive' });
+        }
+    };
 
     const handleRegisterPayment = async () => {
         if (!organization.subscription || !adminUser || !paymentDate) return;
@@ -84,19 +116,44 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent>
+            <DialogContent className="sm:max-w-2xl">
                 <DialogHeader>
                     <DialogTitle>Gerenciar Assinatura: {organization.name}</DialogTitle>
                 </DialogHeader>
                 {sub ? (
-                    <div className="space-y-4 py-4">
-                        <div>
-                            <p><strong>Plano:</strong> {sub.planName}</p>
-                            <p><strong>Valor:</strong> R$ {sub.price.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                            <p><strong>Próximo Vencimento:</strong> {format(sub.nextDueDate.toDate(), 'dd/MM/yyyy')}</p>
+                    <div className="space-y-6 py-4 max-h-[70vh] overflow-y-auto">
+                         <div className="space-y-4 p-4 border rounded-lg">
+                            <h4 className="font-semibold">Detalhes do Plano</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-1">
+                                    <Label htmlFor="planName">Plano</Label>
+                                    <Input id="planName" value={editableSub.planName} onChange={e => setEditableSub(p => ({...p, planName: e.target.value}))}/>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="planPrice">Preço (R$)</Label>
+                                    <Input id="planPrice" type="number" value={editableSub.price} onChange={e => setEditableSub(p => ({...p, price: parseFloat(e.target.value) || 0}))}/>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label>Próximo Vencimento</Label>
+                                     <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                {editableSub.nextDueDate ? format(editableSub.nextDueDate, 'dd/MM/yyyy') : <span>Escolha</span>}
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0">
+                                            <Calendar mode="single" selected={editableSub.nextDueDate} onSelect={(d) => d && setEditableSub(p => ({...p, nextDueDate: d}))} initialFocus />
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
+                            </div>
+                             <Button onClick={handleUpdateSubscriptionDetails} size="sm">Salvar Alterações do Plano</Button>
                         </div>
+
                         <Separator />
-                        <div className="space-y-2">
+                        
+                        <div className="space-y-4 p-4 border rounded-lg">
                              <h4 className="font-semibold">Lançar Pagamento</h4>
                              <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
@@ -114,7 +171,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                                         <PopoverTrigger asChild>
                                             <Button variant="outline" className="w-full justify-start text-left font-normal">
                                                 <CalendarIcon className="mr-2 h-4 w-4" />
-                                                {paymentDate ? format(paymentDate, 'dd/MM/yyyy') : <span>Escolha uma data</span>}
+                                                {paymentDate ? format(paymentDate, 'dd/MM/yyyy') : <span>Escolha</span>}
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-auto p-0">
@@ -125,10 +182,12 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                              </div>
                              <Button onClick={handleRegisterPayment} className="w-full">Registrar Pagamento</Button>
                         </div>
+                         
                          <Separator />
-                         <div>
+                         
+                         <div className="space-y-2">
                             <h4 className="font-semibold">Histórico de Pagamentos</h4>
-                            <div className="max-h-48 overflow-y-auto mt-2 space-y-2">
+                            <div className="max-h-48 overflow-y-auto mt-2 space-y-2 pr-2">
                                 {sub.paymentRecords && sub.paymentRecords.length > 0 ? (
                                     sub.paymentRecords.sort((a,b) => b.date.toDate() - a.date.toDate()).map((p, i) => (
                                         <div key={p.id || i} className="flex justify-between text-sm p-2 bg-muted rounded-md">
@@ -144,18 +203,28 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                     </div>
                 ) : (
                     <div className="space-y-4 py-4">
-                        <p className="text-muted-foreground">Nenhuma assinatura encontrada para esta organização. Crie uma abaixo.</p>
+                        <p className="text-muted-foreground">Nenhuma assinatura encontrada. Crie uma abaixo.</p>
                          <div className="space-y-2">
                             <Label htmlFor="planName">Nome do Plano</Label>
-                            <Input id="planName" value={newPlanName} onChange={e => setNewPlanName(e.target.value)} />
+                            <Input id="planName" value={editableSub.planName} onChange={e => setEditableSub(p => ({...p, planName: e.target.value}))} />
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="planPrice">Preço (R$)</Label>
-                            <Input id="planPrice" type="number" value={newPlanPrice} onChange={e => setNewPlanPrice(parseFloat(e.target.value) || 0)} />
+                            <Input id="planPrice" type="number" value={editableSub.price} onChange={e => setEditableSub(p => ({...p, price: parseFloat(e.target.value) || 0}))} />
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="nextDueDate">Próximo Vencimento</Label>
-                            <Input id="nextDueDate" type="date" value={newPlanDate} onChange={e => setNewPlanDate(e.target.value)} />
+                             <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                        {editableSub.nextDueDate ? format(editableSub.nextDueDate, 'dd/MM/yyyy') : <span>Escolha</span>}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0">
+                                    <Calendar mode="single" selected={editableSub.nextDueDate} onSelect={(d) => d && setEditableSub(p => ({...p, nextDueDate: d}))} initialFocus />
+                                </PopoverContent>
+                            </Popover>
                         </div>
                         <Button onClick={handleCreateSubscription} className="w-full">Criar Assinatura</Button>
                     </div>

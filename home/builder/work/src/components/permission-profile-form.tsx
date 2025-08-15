@@ -1,6 +1,7 @@
 
 'use client';
 import * as React from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { PermissionProfile, EnabledModules, ModulePermissions, Organization } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,9 +57,9 @@ export function PermissionProfileForm({
             name: profile?.name || '',
             permissions: initialPermissions as EnabledModules,
         });
-    }, [profile, activeModuleConfig]);
+    }, [profile?.id, activeModuleConfig]);
 
-    const handlePermissionChange = React.useCallback((
+    const handlePermissionChange = useCallback((
         module: keyof EnabledModules, 
         permission: keyof ModulePermissions, 
         checked: boolean

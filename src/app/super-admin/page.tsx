@@ -1,5 +1,4 @@
 
-
 // src/app/super-admin/page.tsx
 'use client';
 import * as React from 'react';
@@ -37,8 +36,6 @@ const toDate = (date: any): Date | undefined => {
     if (!date) return undefined;
     if (date instanceof Date) return date;
     if (date instanceof Timestamp) return date.toDate();
-    if (typeof date.toDate === 'function') return date.toDate();
-    if (typeof date.seconds === 'number') return new Date(date.seconds * 1000);
     return undefined;
 };
 
@@ -46,6 +43,7 @@ const toDate = (date: any): Date | undefined => {
 function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void, adminUser: User | null }) {
     const { toast } = useToast();
     const [subDetails, setSubDetails] = useState<Partial<Subscription>>(organization.subscription || {});
+    const [editingRecord, setEditingRecord] = useState<PaymentRecord | null>(null);
     
     useEffect(() => {
         setSubDetails(organization.subscription || {});
@@ -126,6 +124,29 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
             toast({ title: 'Erro ao registrar pagamento', variant: 'destructive' });
         }
     };
+
+    const handleUpdateRecord = async (updatedRecord: PaymentRecord) => {
+        if (!organization.subscription) return;
+        const updatedRecords = organization.subscription.paymentRecords.map(r => r.id === updatedRecord.id ? updatedRecord : r);
+         try {
+            await updateDoc(doc(db, 'organizations', organization.id), { 'subscription.paymentRecords': updatedRecords });
+            toast({ title: 'Parcela atualizada!' });
+            setEditingRecord(null);
+        } catch (error) {
+            toast({ title: 'Erro ao atualizar parcela', variant: 'destructive' });
+        }
+    };
+    
+    const handleDeleteRecord = async (recordId: string) => {
+        if (!organization.subscription) return;
+        const updatedRecords = organization.subscription.paymentRecords.filter(r => r.id !== recordId);
+        try {
+            await updateDoc(doc(db, 'organizations', organization.id), { 'subscription.paymentRecords': updatedRecords });
+            toast({ title: 'Parcela excluída!', variant: 'destructive' });
+        } catch (error) {
+            toast({ title: 'Erro ao excluir parcela', variant: 'destructive' });
+        }
+    };
     
     if (!isOpen) return null;
 
@@ -197,14 +218,28 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal/></Button></DropdownMenuTrigger>
-                                                        <DropdownMenuContent>
-                                                            {p.status === 'pending' && <DropdownMenuItem onSelect={() => handleRegisterPayment(p.id)}>Registrar Pagamento</DropdownMenuItem>}
-                                                            <DropdownMenuItem disabled>Editar</DropdownMenuItem>
-                                                            <DropdownMenuItem disabled className="text-destructive">Excluir</DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
+                                                    <AlertDialog>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal/></Button></DropdownMenuTrigger>
+                                                            <DropdownMenuContent>
+                                                                {p.status === 'pending' && <DropdownMenuItem onSelect={() => handleRegisterPayment(p.id)}>Registrar Pagamento</DropdownMenuItem>}
+                                                                <DropdownMenuItem onSelect={() => setEditingRecord(p)}>Editar</DropdownMenuItem>
+                                                                <AlertDialogTrigger asChild>
+                                                                    <DropdownMenuItem className="text-destructive">Excluir</DropdownMenuItem>
+                                                                </AlertDialogTrigger>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                        <AlertDialogContent>
+                                                            <AlertDialogHeader>
+                                                                <AlertDialogTitle>Excluir Parcela?</AlertDialogTitle>
+                                                                <AlertDialogDescription>Deseja realmente excluir a parcela com vencimento em {p.date ? format(toDate(p.date)!, 'dd/MM/yyyy') : 'N/A'}?</AlertDialogDescription>
+                                                            </AlertDialogHeader>
+                                                            <AlertDialogFooter>
+                                                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                                <AlertDialogAction onClick={() => handleDeleteRecord(p.id)} className={buttonVariants({ variant: "destructive" })}>Sim, Excluir</AlertDialogAction>
+                                                            </AlertDialogFooter>
+                                                        </AlertDialogContent>
+                                                    </AlertDialog>
                                                 </TableCell>
                                             </TableRow>
                                         ))
@@ -216,9 +251,52 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                         </div>
                      </div>
                 </div>
+
+                {/* Edit Record Dialog */}
+                {editingRecord && (
+                    <Dialog open={!!editingRecord} onOpenChange={(open) => !open && setEditingRecord(null)}>
+                        <DialogContent>
+                            <DialogHeader><DialogTitle>Editar Parcela</DialogTitle></DialogHeader>
+                            <EditRecordForm record={editingRecord} onSave={handleUpdateRecord} onCancel={() => setEditingRecord(null)} />
+                        </DialogContent>
+                    </Dialog>
+                )}
             </DialogContent>
         </Dialog>
     )
+}
+
+function EditRecordForm({record, onSave, onCancel}: {record: PaymentRecord, onSave: (r: PaymentRecord) => void, onCancel: () => void}) {
+    const [formData, setFormData] = useState(record);
+
+    useEffect(() => {
+        setFormData(record);
+    }, [record]);
+    
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData);
+    }
+    
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+             <div className="space-y-2">
+                <Label>Data de Vencimento</Label>
+                <Popover>
+                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{formData.date ? format(toDate(formData.date)!, 'dd/MM/yyyy') : 'Escolha uma data'}</Button></PopoverTrigger>
+                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={toDate(formData.date)} onSelect={d => setFormData(p => ({...p, date: d ? Timestamp.fromDate(d) : p.date}))} /></PopoverContent>
+                </Popover>
+            </div>
+             <div className="space-y-2">
+                <Label>Valor (R$)</Label>
+                <Input type="number" value={formData.amount} onChange={e => setFormData(p => ({...p, amount: parseFloat(e.target.value) || 0}))} />
+            </div>
+             <DialogFooter>
+                 <Button type="button" variant="ghost" onClick={onCancel}>Cancelar</Button>
+                 <Button type="submit">Salvar</Button>
+            </DialogFooter>
+        </form>
+    );
 }
 
 
@@ -625,4 +703,3 @@ function SuperAdminPage() {
 }
 
 export default SuperAdminPage;
-

@@ -48,7 +48,7 @@ function DashboardNav() {
     }
     
     const canViewModule = (module: string) => {
-        if (!user?.enabledModules) return true; // Fallback to show all if not defined
+        if (!user?.enabledModules) return false;
         const moduleKey = module as keyof typeof user.enabledModules;
         return user.enabledModules[moduleKey]?.view ?? false;
     }
@@ -99,7 +99,7 @@ function BranchSwitcher() {
                     <CommandInput placeholder="Buscar..." />
                     <CommandList>
                         <CommandEmpty>Nenhum resultado.</CommandEmpty>
-                        {isSuperAdmin && (
+                        {isSuperAdmin && !user?.isImpersonating && (
                             <>
                                 <CommandGroup heading="Organizações">
                                     {organizations.map((org) => (
@@ -333,3 +333,5 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </SidebarProvider>
     );
 }
+
+    

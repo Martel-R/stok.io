@@ -120,7 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
             await setDoc(userDocRef, newUser);
             if(isFirstUser) {
-                 await setDoc(doc(db, "organizations", organizationId), { ownerId: newUser.id, name: `${\'\'\'${newUser.name}'s Organization\'\'\'}`, paymentStatus: 'active' });
+                 await setDoc(doc(db, "organizations", organizationId), { ownerId: newUser.id, name: `Sua Organização`, paymentStatus: 'active' });
             }
             currentUser = newUser;
         }
@@ -145,27 +145,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         const userProfile = profiles.find(p => p.id === currentUser.role);
                         const orgModules = orgData.enabledModules || {};
                         
-                        let finalPermissions = defaultPermissions;
+                        let finalPermissions: Partial<EnabledModules> = {};
 
                         if (isImpersonating) {
                             finalPermissions = { ...defaultPermissions, ...orgModules };
                         } else if (userProfile?.permissions) {
                             // Filter user permissions by what's enabled in the organization
-                            const filteredUserPerms: Partial<EnabledModules> = {};
-                             for (const key in userProfile.permissions) {
+                            for (const key in userProfile.permissions) {
                                 const moduleKey = key as keyof EnabledModules;
-                                if (orgModules[moduleKey]?.view) { // Check if module is enabled for the org
-                                    filteredUserPerms[moduleKey] = userProfile.permissions[moduleKey];
+                                if (orgModules[moduleKey]) {
+                                    finalPermissions[moduleKey] = userProfile.permissions[moduleKey];
                                 }
                             }
-                            finalPermissions = filteredUserPerms as EnabledModules;
                         }
 
                         setUser(prevUser => prevUser ? { 
                             ...prevUser, 
                             paymentStatus: orgData.paymentStatus, 
                             organization: orgData,
-                            enabledModules: finalPermissions
+                            enabledModules: finalPermissions as EnabledModules
                         } : null);
                     });
                 }
@@ -293,7 +291,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { getApp, initializeApp, deleteApp } = await import('firebase/app');
         const { getAuth: getAuth_local, createUserWithEmailAndPassword: createUserWithEmailAndPassword_local, sendPasswordResetEmail: sendPasswordResetEmail_local, signOut: signOut_local } = await import('firebase/auth');
 
-        const tempAppName = `temp-auth-app-${\'\'\'${Date.now()}\'\'\'}`;
+        const tempAppName = `temp-auth-app-${'\'\'\''}${Date.now()}${'\'\'\''}`;
         const tempAppConfig = { ...getApp().options, appName: tempAppName };
         const tempApp = initializeApp(tempAppConfig, tempAppName);
         const tempAuthInstance = getAuth_local(tempApp);

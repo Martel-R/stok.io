@@ -1,51 +1,60 @@
-// src/ai/flows/answer-inventory-questions.ts
+// src/ai/flows/answer-business-questions.ts
 'use server';
 
 /**
- * @fileOverview This file defines a Genkit flow for answering natural language questions about inventory data.
+ * @fileOverview This file defines a Genkit flow for answering natural language questions about business data.
  *
- * - answerInventoryQuestion - A function that accepts a question string and context string, returning an answer.
- * - AnswerInventoryQuestionInput - The input type for the answerInventoryQuestion function.
- * - AnswerInventoryQuestionOutput - The return type for the answerInventoryQuestion function.
+ * - answerBusinessQuestion - A function that accepts a question string and context strings, returning an answer.
+ * - AnswerBusinessQuestionInput - The input type for the answerBusinessQuestion function.
+ * - AnswerBusinessQuestionOutput - The return type for the answerBusinessQuestion function.
  */
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
-const AnswerInventoryQuestionInputSchema = z.object({
-  question: z.string().describe('A natural language question about the inventory.'),
-  context: z.string().describe('A string containing the current inventory data.'),
+const AnswerBusinessQuestionInputSchema = z.object({
+  question: z.string().describe('A natural language question about the business data.'),
+  productsContext: z.string().describe('A string containing product data.'),
+  servicesContext: z.string().describe('A string containing service data.'),
+  customersContext: z.string().describe('A string containing customer data.'),
+  appointmentsContext: z.string().describe('A string containing appointment data (agenda).'),
+  inventoryContext: z.string().describe('A string containing the current inventory data.'),
 });
-export type AnswerInventoryQuestionInput = z.infer<typeof AnswerInventoryQuestionInputSchema>;
+export type AnswerBusinessQuestionInput = z.infer<typeof AnswerBusinessQuestionInputSchema>;
 
-const AnswerInventoryQuestionOutputSchema = z.object({
-  answer: z.string().describe('The answer to the question about the inventory.'),
+const AnswerBusinessQuestionOutputSchema = z.object({
+  answer: z.string().describe('The answer to the question about the business data.'),
 });
-export type AnswerInventoryQuestionOutput = z.infer<typeof AnswerInventoryQuestionOutputSchema>;
+export type AnswerBusinessQuestionOutput = z.infer<typeof AnswerBusinessQuestionOutputSchema>;
 
-export async function answerInventoryQuestion(input: AnswerInventoryQuestionInput): Promise<AnswerInventoryQuestionOutput> {
-  return answerInventoryQuestionFlow(input);
+export async function answerBusinessQuestion(input: AnswerBusinessQuestionInput): Promise<AnswerBusinessQuestionOutput> {
+  return answerBusinessQuestionFlow(input);
 }
 
 const prompt = ai.definePrompt({
-  name: 'answerInventoryQuestionPrompt',
-  input: {schema: AnswerInventoryQuestionInputSchema},
-  output: {schema: AnswerInventoryQuestionOutputSchema},
-  prompt: `Você é um assistente de IA prestativo que responde a perguntas sobre dados de inventário.
+  name: 'answerBusinessQuestionPrompt',
+  input: {schema: AnswerBusinessQuestionInputSchema},
+  output: {schema: AnswerBusinessQuestionOutputSchema},
+  prompt: `Você é um assistente de IA prestativo que responde a perguntas sobre os dados de um negócio.
 
-  Use os seguintes dados de inventário como contexto para responder à pergunta do usuário.
-  Inventário: {{{context}}}
+  Use os seguintes dados como contexto para responder à pergunta do usuário.
+  
+  Produtos: {{{productsContext}}}
+  Serviços: {{{servicesContext}}}
+  Clientes: {{{customersContext}}}
+  Agenda (Agendamentos): {{{appointmentsContext}}}
+  Inventário: {{{inventoryContext}}}
 
   Pergunta: {{{question}}}
   
-  Responda à pergunta com base estritamente nos dados de inventário fornecidos.`,
+  Responda à pergunta com base estritamente nos dados de contexto fornecidos.`,
 });
 
-const answerInventoryQuestionFlow = ai.defineFlow(
+const answerBusinessQuestionFlow = ai.defineFlow(
   {
-    name: 'answerInventoryQuestionFlow',
-    inputSchema: AnswerInventoryQuestionInputSchema,
-    outputSchema: AnswerInventoryQuestionOutputSchema,
+    name: 'answerBusinessQuestionFlow',
+    inputSchema: AnswerBusinessQuestionInputSchema,
+    outputSchema: AnswerBusinessQuestionOutputSchema,
   },
   async input => {
     const {output} = await prompt(input);

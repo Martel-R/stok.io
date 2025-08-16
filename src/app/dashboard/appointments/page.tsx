@@ -354,7 +354,7 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                             <div className="w-16 flex-shrink-0 text-right pr-2">
                                {hours.map(hour => (
                                     <div key={hour} className="relative h-[60px] border-t border-muted first:border-t-0">
-                                        <span className="text-xs text-muted-foreground absolute -top-[9px] right-2 bg-background px-1">{format(setHours(new Date(), hour), 'HH:mm')}</span>
+                                        <span className="text-xs text-muted-foreground absolute -top-[9px] right-2 bg-background px-1">{format(setMinutes(setHours(new Date(), hour), 0), 'HH:mm')}</span>
                                     </div>
                                 ))}
                             </div>

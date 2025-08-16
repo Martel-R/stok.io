@@ -270,9 +270,8 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
             {...listeners}
             {...attributes}
             className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden cursor-grab", isDragging && "opacity-50")}
-            onClick={() => onEdit(appointment)}
         >
-            <div className="flex justify-between items-start gap-2 h-full">
+            <div className="flex justify-between items-start gap-2 h-full" onClick={() => onEdit(appointment)}>
                 <div className="space-y-1 flex-grow overflow-hidden">
                     <CardTitle className="text-sm truncate">{appointment.serviceName}</CardTitle>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground"><Users className="h-3 w-3" /><span className="truncate">{appointment.customerName}</span></div>
@@ -753,7 +752,7 @@ export default function AppointmentsPage() {
             total,
         };
         batch.set(attendanceRef, newAttendance);
-        batch.update(appointmentRef, { attendanceId: attendanceRef.id });
+        batch.update(appointmentRef, { attendanceId: attendanceRef.id, status: 'completed' });
         
         try {
             await batch.commit();

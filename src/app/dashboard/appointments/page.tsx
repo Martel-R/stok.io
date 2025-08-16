@@ -274,17 +274,22 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
             className={cn("absolute w-full p-3 overflow-hidden", isDragging && "opacity-50")}
         >
              <div {...listeners} {...attributes} className="cursor-grab absolute inset-0"/>
-             <div className="flex flex-col justify-between h-full" onClick={() => onEdit(appointment)}>
-                 <div className="space-y-1 flex-grow overflow-hidden">
+            <div className="flex justify-between items-start gap-2 h-full" onClick={(e) => { e.stopPropagation(); onEdit(appointment); }}>
+                <div className="space-y-1 flex-grow overflow-hidden">
                     <CardTitle className="text-sm truncate">{appointment.serviceName}</CardTitle>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground"><Users className="h-3 w-3" /><span className="truncate">{appointment.customerName}</span></div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground"><Briefcase className="h-3 w-3" /><span className="truncate">{appointment.professionalName}</span></div>
                     {!anamnesisDone && <div className="flex items-center gap-1 text-yellow-600 text-xs"><AlertTriangle className="h-3 w-3"/><span>Anamnese pendente</span></div>}
                 </div>
-                 <div className="flex flex-col items-start gap-2 shrink-0 pt-2" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex justify-between w-full items-center">
-                        {getStatusBadge(appointment.status)}
-                         <DropdownMenu>
+                <div className="flex flex-col items-end gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    {getStatusBadge(appointment.status)}
+                    <div className="flex items-center gap-1">
+                        {appointment.status === 'pending-confirmation' && can.edit ? (
+                            <Button size="sm" className="h-7" onClick={() => onEdit(appointment)}><Check className="mr-1 h-3 w-3" />Confirmar</Button>
+                        ) : can.edit ? (
+                            <Button size="sm" className="h-7" variant={appointment.attendanceId ? "outline" : "default"} onClick={() => onStartAttendance(appointment)} disabled={appointment.status !== 'scheduled'}><PlayCircle className="mr-1 h-3 w-3" />{appointment.attendanceId ? 'Ver' : 'Iniciar'}</Button>
+                        ) : null}
+                        <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                                 {can.edit && <DropdownMenuItem onClick={() => onEdit(appointment)}>Editar</DropdownMenuItem>}
@@ -293,10 +298,7 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
-                      {can.edit && (
-                         <Button size="sm" className="h-7 w-full" variant={appointment.attendanceId ? "outline" : "default"} onClick={() => onStartAttendance(appointment)} disabled={appointment.status !== 'scheduled'}><PlayCircle className="mr-1 h-3 w-3" />{appointment.attendanceId ? 'Ver' : 'Iniciar'}</Button>
-                      )}
-                 </div>
+                </div>
             </div>
         </Card>
     );

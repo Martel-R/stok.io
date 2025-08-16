@@ -461,9 +461,8 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                             <TableHead>Data</TableHead>
                             <TableHead>Itens</TableHead>
                             <TableHead>Vendedor</TableHead>
-                            <TableHead>Pagamento</TableHead>
                             <TableHead className="text-right">Total</TableHead>
-                            <TableHead className="text-center">Status</TableHead>
+                            <TableHead className="text-center">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -486,16 +485,9 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                                         </div>
                                     </TableCell>
                                     <TableCell>{sale.cashier}</TableCell>
-                                     <TableCell>
-                                        <div className="flex flex-col gap-1">
-                                            {sale.payments?.map((payment, idx) => (
-                                                <Badge key={idx} variant="outline">{payment.conditionName}</Badge>
-                                            ))}
-                                        </div>
-                                    </TableCell>
                                     <TableCell className="text-right">R${sale.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
                                     <TableCell className="text-center">
-                                       {user?.role === 'admin' && sale.status !== 'cancelled' ? (
+                                       {user?.role === 'admin' && sale.status !== 'cancelled' && (
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
                                                     <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
@@ -509,17 +501,14 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                                                     </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
-                                        ) : (
-                                            <Badge variant={sale.status === 'cancelled' ? 'destructive' : 'secondary'}>
-                                                {sale.status === 'cancelled' ? 'Cancelada' : 'Concluída'}
-                                            </Badge>
                                         )}
+                                        {sale.status === 'cancelled' && <Badge variant="destructive">Cancelada</Badge>}
                                     </TableCell>
                                 </TableRow>
                             ))
                         ) : (
                             <TableRow>
-                                <TableCell colSpan={6} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
+                                <TableCell colSpan={5} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
                             </TableRow>
                         )}
                     </TableBody>
@@ -532,7 +521,6 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
 function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: { kit: Kit; products: ProductWithStock[]; isOpen: boolean; onOpenChange: (isOpen: boolean) => void; onConfirm: (chosenProducts: Product[]) => void; }) {
     const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
-    const [isScannerOpen, setIsScannerOpen] = useState(false);
     const { toast } = useToast();
 
     useEffect(() => {
@@ -578,17 +566,6 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
             toast({ title: `Limite de ${kit.numberOfItems} produtos atingido.`, variant: "destructive" });
         }
     };
-    
-     const handleScan = (barcode: string) => {
-        setIsScannerOpen(false);
-        const product = eligibleProducts.find(p => p.barcode === barcode);
-        if (product) {
-            addProduct(product);
-            toast({ title: "Produto adicionado!", description: `${product.name} foi adicionado à sua seleção.` });
-        } else {
-            toast({ title: "Produto não encontrado", description: "Nenhum produto elegível com este código de barras foi encontrado.", variant: 'destructive' });
-        }
-    };
 
     const removeProduct = (productId: string) => {
         setSelectedProducts(prev => {
@@ -631,7 +608,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                 <div className="grid md:grid-cols-2 gap-6 min-h-0 flex-grow">
                     <div className="flex flex-col gap-4 min-h-0">
                         <h3 className="font-semibold">Produtos Disponíveis</h3>
-                         <div className="relative flex gap-2">
+                        <div className="relative">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
                                 type="search"
@@ -640,9 +617,6 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
-                             <Button variant="outline" size="icon" onClick={() => setIsScannerOpen(true)}>
-                                <Barcode />
-                            </Button>
                         </div>
                         <ScrollArea className="h-full rounded-md border">
                             <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -700,7 +674,6 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
                     <Button onClick={handleConfirm}>Confirmar Seleção</Button>
                 </DialogFooter>
-                 <BarcodeScannerModal isOpen={isScannerOpen} onOpenChange={setIsScannerOpen} onScan={handleScan} />
             </DialogContent>
         </Dialog>
     );
@@ -775,8 +748,7 @@ export default function POSPage() {
     });
 
     const unsubscribeKits = onSnapshot(kitsQuery, (querySnapshot) => {
-      const kitsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kit));
-      setKits(kitsData.sort((a,b) => a.name.localeCompare(b.name)));
+      setKits(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kit)));
     });
     
     const unsubscribeConditions = onSnapshot(conditionsQuery, (snapshot) => {
@@ -1012,7 +984,6 @@ export default function POSPage() {
                 baseItem.total = item.total;
             }
             if (item.itemType === 'combo') {
-                baseItem.products = (item as Combo).products.map(p => ({ productId: p.productId, productName: p.productName, quantity: p.quantity, productPrice: p.productPrice }));
                 baseItem.originalPrice = item.originalPrice;
                 baseItem.finalPrice = item.finalPrice;
             }
@@ -1197,10 +1168,10 @@ export default function POSPage() {
           <CardContent className="flex-grow flex flex-col">
             <Tabs defaultValue="products" className="flex-grow flex flex-col" onValueChange={() => setSearchQuery('')}>
                  <TabsList className="grid w-full grid-flow-col auto-cols-fr">
-                    {user?.enabledModules?.appointments && <TabsTrigger value="pending"><UserCheck className="mr-2 h-4 w-4"/> Atendimentos</TabsTrigger>}
+                    {user?.enabledModules?.appointments?.view && <TabsTrigger value="pending"><UserCheck className="mr-2 h-4 w-4"/> Atendimentos</TabsTrigger>}
                     <TabsTrigger value="products"><Package className="mr-2 h-4 w-4"/> Produtos</TabsTrigger>
-                    {user?.enabledModules?.combos && <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Combos</TabsTrigger>}
-                    {user?.enabledModules?.kits && <TabsTrigger value="kits"><Component className="mr-2 h-4 w-4"/> Kits</TabsTrigger>}
+                    {user?.enabledModules?.combos?.view && <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Combos</TabsTrigger>}
+                    {user?.enabledModules?.kits?.view && <TabsTrigger value="kits"><Component className="mr-2 h-4 w-4"/> Kits</TabsTrigger>}
                     <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/> Histórico</TabsTrigger>
                 </TabsList>
                 <div className="relative pt-4 flex gap-2">
@@ -1333,7 +1304,7 @@ export default function POSPage() {
                 {cart.length === 0 ? (
                     <div className="text-muted-foreground text-center space-y-4">
                         <p>O carrinho está vazio</p>
-                        {!currentAttendanceId && user?.enabledModules?.customers && <CustomerSelector onSelect={setSelectedCustomer} />}
+                        {!currentAttendanceId && user?.enabledModules?.customers?.view && <CustomerSelector onSelect={setSelectedCustomer} />}
                     </div>
                 ) : (
                     <div className="space-y-4">

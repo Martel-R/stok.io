@@ -495,7 +495,7 @@ export default function AppointmentsPage() {
     const handleStartAttendance = async (app: Appointment) => {
         if (!user || !currentBranch) return;
         if (app.attendanceId) {
-            router.push(`/dashboard/pos`);
+            router.push(`/dashboard/attendance/${app.attendanceId}`);
             return;
         }
 
@@ -507,8 +507,7 @@ export default function AppointmentsPage() {
         const items: AttendanceItem[] = [];
         if (service) {
             items.push({ id: service.id, name: service.name, type: 'service', quantity: 1, price: service.price, total: service.price });
-            // Add linked products
-            if(service.linkedProducts) {
+            if(service.linkedProducts && service.linkedProducts.length > 0) {
                 const productDocs = await getDocs(query(collection(db, 'products'), where('branchId', '==', currentBranch.id)));
                 const branchProducts = productDocs.docs.map(d => ({id: d.id, ...d.data()}) as Product);
 
@@ -545,10 +544,11 @@ export default function AppointmentsPage() {
             total,
         };
         batch.set(attendanceRef, newAttendance);
-        batch.update(appointmentRef, { attendanceId: attendanceRef.id, status: 'completed' });
+        batch.update(appointmentRef, { attendanceId: attendanceRef.id });
+        
         try {
             await batch.commit();
-            router.push(`/dashboard/pos`);
+            router.push(`/dashboard/attendance/${attendanceRef.id}`);
         } catch (error) {
             console.error("Failed to start attendance:", error);
             toast({ title: 'Erro ao iniciar atendimento', variant: 'destructive' });
@@ -660,4 +660,3 @@ export default function AppointmentsPage() {
         </div>
     )
 }
-

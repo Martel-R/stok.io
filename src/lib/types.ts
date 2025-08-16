@@ -64,6 +64,7 @@ export interface User {
   enabledModules?: EnabledModules;
   customerId?: string; // Link to customer profile if role is 'customer'
   availability?: Availability;
+  isImpersonating?: boolean;
 }
 
 export type AnamnesisQuestionType = 'text' | 'boolean' | 'boolean_with_text' | 'integer' | 'decimal';

@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
@@ -270,22 +270,23 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
     return (
         <Card
             ref={setNodeRef}
-            style={draggableStyle}
             {...listeners}
             {...attributes}
+            style={draggableStyle}
             onClick={() => onEdit(appointment)}
-            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden cursor-grab", isDragging && "opacity-50")}
+            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-0 overflow-hidden cursor-grab", isDragging && "opacity-50")}
         >
-            <div className="flex justify-between items-start gap-2 h-full">
-                <div className="space-y-1 flex-grow overflow-hidden">
+            <CardContent className="p-3 h-full flex flex-col justify-between">
+                <div>
                     <CardTitle className="text-sm truncate">{appointment.serviceName}</CardTitle>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground"><Users className="h-3 w-3" /><span className="truncate">{appointment.customerName}</span></div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground"><Briefcase className="h-3 w-3" /><span className="truncate">{appointment.professionalName}</span></div>
-                    {!anamnesisDone && <div className="flex items-center gap-1 text-yellow-600 text-xs"><AlertTriangle className="h-3 w-3"/><span>Anamnese pendente</span></div>}
+                     {!anamnesisDone && <div className="flex items-center gap-1 text-yellow-600 text-xs mt-1"><AlertTriangle className="h-3 w-3"/><span>Anamnese pendente</span></div>}
                 </div>
-                <div className="flex flex-col items-end gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    {getStatusBadge(appointment.status)}
-                    <div className="flex items-center gap-1">
+                <CardFooter className="p-0 mt-2 flex justify-between items-end">
+                    <div className="space-y-1 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2 "><Users className="h-3 w-3" /><span className="truncate">{appointment.customerName}</span></div>
+                        <div className="flex items-center gap-2"><Briefcase className="h-3 w-3" /><span className="truncate">{appointment.professionalName}</span></div>
+                    </div>
+                     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                         {appointment.status === 'pending-confirmation' && can.edit ? (
                             <Button size="sm" className="h-7" onClick={() => onEdit(appointment)}><Check className="mr-1 h-3 w-3" />Confirmar</Button>
                         ) : can.edit ? (
@@ -300,8 +301,8 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
-                </div>
-            </div>
+                </CardFooter>
+            </CardContent>
         </Card>
     );
 }
@@ -316,7 +317,7 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
     onUpdateAppointmentTime: (id: string, newStart: Date) => void;
     customers: Customer[];
 }) {
-    const hourHeight = 60; // 60px per hour
+    const hourHeight = 80; // 80px per hour
     const startHour = 0;
     const endHour = 23;
     const hours = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i);
@@ -371,7 +372,7 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                         <div className="relative flex">
                             <div className="w-16 flex-shrink-0 text-right pr-2">
                                {hours.map(hour => (
-                                    <div key={hour} className="relative h-[60px] border-t border-muted first:border-t-0">
+                                    <div key={hour} className="relative h-[80px] border-t border-muted first:border-t-0">
                                         <span className="text-xs text-muted-foreground absolute -top-[9px] right-2 bg-background px-1">{format(setMinutes(setHours(new Date(), hour), 0), 'HH:mm')}</span>
                                     </div>
                                 ))}
@@ -380,13 +381,13 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                             <div className="relative flex-grow">
                                 <div className="grid absolute inset-0">
                                     {hours.map(hour => (
-                                        <div key={hour} className="h-[60px] border-t border-muted first:border-t-0"></div>
+                                        <div key={hour} className="h-[80px] border-t border-muted first:border-t-0"></div>
                                     ))}
                                 </div>
                                 <div className="absolute inset-0">
                                     {appointmentsForDay.map(app => {
                                         const top = getPosition(app.start);
-                                        const height = Math.max(getPosition(app.end) - top, 40);
+                                        const height = Math.max(getPosition(app.end) - top, 80); // min height of 80px
                                         return (
                                             <DraggableAppointment
                                                 key={app.id}
@@ -396,7 +397,7 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                                                 onStartAttendance={onStartAttendance}
                                                 onReschedule={onReschedule}
                                                 onDelete={onDelete}
-                                                style={{ top: `${top}px`, minHeight: '40px', height: `${height}px` }}
+                                                style={{ top: `${top}px`, height: `${height}px` }}
                                                 isDragging={activeAppointment?.id === app.id}
                                             />
                                         )

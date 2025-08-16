@@ -5,9 +5,9 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { db, storage } from '@/lib/firebase';
-import { doc, onSnapshot, updateDoc, collection, query, where } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, collection, query, where, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import type { Attendance, AttendanceItem, Service, Product, AttendanceStatus, AttendancePaymentStatus } from '@/lib/types';
+import type { Attendance, AttendanceItem, Service, Product, AttendanceStatus, AttendancePaymentStatus, Customer, AnamnesisAnswer } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, PlusCircle, Trash2, ArrowLeft, Camera, User, Save, CheckCircle, Clock, Calendar, Upload } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, ArrowLeft, Camera, User, Save, CheckCircle, Clock, Calendar, Upload, Mail, Phone, Home } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -24,6 +24,7 @@ import { format } from 'date-fns';
 import { Briefcase } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
+import { Separator } from '@/components/ui/separator';
 
 function ItemSelector({ 
     onSelect, 
@@ -88,12 +89,28 @@ function ItemSelector({
     );
 }
 
+const formatAnamnesisAnswer = (answer: AnamnesisAnswer) => {
+    if (answer.answer === null || answer.answer === undefined) {
+        return <span className="text-muted-foreground italic">Não respondido</span>;
+    }
+    if (typeof answer.answer === 'boolean') {
+        return answer.answer ? 'Sim' : 'Não';
+    }
+    if (typeof answer.answer === 'object' && answer.answer !== null && 'choice' in answer.answer) {
+        const choice = answer.answer.choice === true ? 'Sim' : 'Não';
+        const details = answer.answer.details ? ` - ${answer.answer.details}` : '';
+        return `${choice}${details}`;
+    }
+    return String(answer.answer);
+};
+
 export default function AttendanceClientPage({ id }: { id: string }) {
     const router = useRouter();
     const { user, currentBranch } = useAuth();
     const { toast } = useToast();
 
     const [attendance, setAttendance] = useState<Attendance | null>(null);
+    const [customer, setCustomer] = useState<Customer | null>(null);
     const [products, setProducts] = useState<Product[]>([]);
     const [services, setServices] = useState<Service[]>([]);
     const [loading, setLoading] = useState(true);
@@ -107,10 +124,20 @@ export default function AttendanceClientPage({ id }: { id: string }) {
 
     useEffect(() => {
         if (!id) return;
-        const unsub = onSnapshot(doc(db, 'attendances', id as string), (doc) => {
-            if (doc.exists()) {
-                const data = doc.data() as Attendance;
-                setAttendance({ ...data, id: doc.id });
+        const unsub = onSnapshot(doc(db, 'attendances', id as string), async (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data() as Attendance;
+                setAttendance({ ...data, id: docSnap.id });
+                
+                // Fetch customer data
+                if (data.customerId) {
+                    const customerRef = doc(db, 'customers', data.customerId);
+                    const customerSnap = await getDoc(customerRef);
+                    if (customerSnap.exists()) {
+                        setCustomer(customerSnap.data() as Customer);
+                    }
+                }
+
             } else {
                 toast({ title: 'Atendimento não encontrado', variant: 'destructive' });
                 router.push('/dashboard/appointments');
@@ -384,33 +411,58 @@ export default function AttendanceClientPage({ id }: { id: string }) {
                 <div className="lg:col-span-1 space-y-6">
                     <Card>
                         <CardHeader>
-                             <CardTitle>Detalhes</CardTitle>
+                             <CardTitle>Detalhes do Cliente</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-4">
+                        <CardContent className="space-y-3 text-sm">
                              <div className="flex items-center gap-2">
                                 <User className="h-4 w-4 text-muted-foreground" />
                                 <span>{attendance.customerName}</span>
                             </div>
                              <div className="flex items-center gap-2">
                                 <Briefcase className="h-4 w-4 text-muted-foreground" />
-                                <span>{attendance.professionalName}</span>
+                                <span>Profissional: {attendance.professionalName}</span>
                             </div>
                              <div className="flex items-center gap-2">
                                 <Calendar className="h-4 w-4 text-muted-foreground" />
-                                <span>{attendance.date ? format(attendance.date.toDate(), 'dd/MM/yyyy') : '...'}</span>
+                                <span>Data: {attendance.date ? format(attendance.date.toDate(), 'dd/MM/yyyy') : '...'}</span>
                             </div>
-                            <div className="flex items-center gap-2">
+                             {customer?.email && <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" /><span>{customer.email}</span></div>}
+                             {customer?.phone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" /><span>{customer.phone}</span></div>}
+                             {customer?.address && <div className="flex items-center gap-2"><Home className="h-4 w-4 text-muted-foreground" /><span>{customer.address}</span></div>}
+                             <Separator />
+                             <div className="flex items-center gap-2">
                                 <Clock className="h-4 w-4 text-muted-foreground" />
-                                <span>Status:</span>
+                                <span>Status Atendimento:</span>
                                 <Badge variant={attendance.status === 'completed' ? 'default' : 'secondary'}>{attendance.status}</Badge>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Clock className="h-4 w-4 text-muted-foreground" />
-                                <span>Pagamento:</span>
+                                <span>Status Pagamento:</span>
                                 <Badge variant={attendance.paymentStatus === 'paid' ? 'default' : 'destructive'}>{attendance.paymentStatus}</Badge>
                             </div>
                         </CardContent>
                     </Card>
+
+                    <Card>
+                         <CardHeader><CardTitle>Anamnese</CardTitle></CardHeader>
+                         <CardContent>
+                             <ScrollArea className="h-48">
+                                 <div className="space-y-3">
+                                     {customer?.anamnesisAnswers && customer.anamnesisAnswers.length > 0 ? (
+                                         customer.anamnesisAnswers.map(answer => (
+                                             <div key={answer.questionId}>
+                                                 <p className="font-semibold text-sm">{answer.questionLabel}</p>
+                                                 <p className="text-sm text-muted-foreground">{formatAnamnesisAnswer(answer)}</p>
+                                             </div>
+                                         ))
+                                     ) : (
+                                        <p className="text-sm text-muted-foreground italic">Nenhum formulário de anamnese preenchido.</p>
+                                     )}
+                                 </div>
+                             </ScrollArea>
+                         </CardContent>
+                    </Card>
+
                      <Card>
                         <CardHeader>
                              <CardTitle>Total</CardTitle>

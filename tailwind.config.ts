@@ -81,7 +81,20 @@ export default {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
       },
+       typography: ({ theme }: { theme: any }) => ({
+        DEFAULT: {
+          css: {
+            h1: { color: theme('colors.foreground') },
+            h2: { color: theme('colors.foreground') },
+            h3: { color: theme('colors.foreground') },
+            h4: { color: theme('colors.foreground') },
+            strong: { color: theme('colors.foreground') },
+            a: { color: theme('colors.primary.DEFAULT') },
+            code: { color: theme('colors.secondary.foreground'), backgroundColor: theme('colors.secondary.DEFAULT'), padding: '2px 4px', borderRadius: '4px'},
+          },
+        },
+      }),
     },
   },
-  plugins: [require('tailwindcss-animate')],
+  plugins: [require('tailwindcss-animate'), require('@tailwindcss/typography')],
 } satisfies Config;

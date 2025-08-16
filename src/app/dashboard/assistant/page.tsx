@@ -1,8 +1,9 @@
 
+
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/auth';
-import { answerBusinessQuestion } from '@/ai/flows/answer-business-questions';
+import { answerBusinessQuestion, AnswerBusinessQuestionOutput } from '@/ai/flows/answer-business-questions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -13,13 +14,51 @@ import type { Product, Service, Customer, Appointment, StockEntry, Sale, Payment
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { format } from 'date-fns';
+import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { ReactMarkdown } from 'react-markdown/lib/react-markdown';
 
 interface Message {
   sender: 'user' | 'bot';
   text: string;
+  chart?: AnswerBusinessQuestionOutput['chart'];
 }
 
 const convertDate = (field: any) => field instanceof Timestamp ? field.toDate() : new Date();
+
+function BotMessage({ message }: { message: Message }) {
+    if (!message.text) return null;
+    return (
+        <div className="flex items-start gap-3">
+            <Avatar className="h-8 w-8">
+                <AvatarFallback>AI</AvatarFallback>
+            </Avatar>
+            <div className="max-w-xl rounded-lg p-3 bg-muted space-y-4">
+                <div className="prose prose-sm max-w-none">
+                    <ReactMarkdown>{message.text}</ReactMarkdown>
+                </div>
+                {message.chart && message.chart.data && message.chart.data.length > 0 && (
+                     <div className="h-64 w-full">
+                        <h4 className="text-sm font-semibold text-center mb-2">{message.chart.title}</h4>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={message.chart.data}>
+                                <XAxis dataKey={message.chart.nameKey} stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                                <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}`} />
+                                <Tooltip
+                                    cursor={{fill: 'hsl(var(--muted))'}}
+                                    contentStyle={{
+                                        backgroundColor: 'hsl(var(--background))',
+                                        borderColor: 'hsl(var(--border))',
+                                    }}
+                                />
+                                <Bar dataKey={message.chart.dataKey} fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
 
 export default function AssistantPage() {
   const { user, currentBranch } = useAuth();
@@ -146,7 +185,7 @@ export default function AssistantPage() {
         salesContext,
         paymentConditionsContext,
       });
-      const botMessage: Message = { sender: 'bot', text: response.answer };
+      const botMessage: Message = { sender: 'bot', text: response.answer, chart: response.chart };
       setMessages((prev) => [...prev, botMessage]);
     } catch (error) {
       console.error("AI Error:", error);
@@ -192,30 +231,20 @@ export default function AssistantPage() {
                 </div>
               )}
               {messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={`flex items-start gap-3 ${message.sender === 'user' ? 'justify-end' : ''}`}
-                >
-                  {message.sender === 'bot' && (
-                    <Avatar className="h-8 w-8">
-                        <AvatarFallback>AI</AvatarFallback>
-                    </Avatar>
-                  )}
-                  <div
-                    className={`max-w-md rounded-lg p-3 text-sm ${
-                      message.sender === 'user'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted'
-                    }`}
-                  >
-                    {message.text}
-                  </div>
-                   {message.sender === 'user' && (
-                    <Avatar className="h-8 w-8">
-                       <AvatarImage src={user?.avatar} />
-                       <AvatarFallback>{user?.name.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                  )}
+                <div key={index}>
+                    {message.sender === 'user' ? (
+                         <div className="flex items-start gap-3 justify-end">
+                            <div className="max-w-md rounded-lg p-3 text-sm bg-primary text-primary-foreground">
+                                {message.text}
+                            </div>
+                            <Avatar className="h-8 w-8">
+                                <AvatarImage src={user?.avatar} />
+                                <AvatarFallback>{user?.name.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                        </div>
+                    ) : (
+                       <BotMessage message={message} />
+                    )}
                 </div>
               ))}
               {loading && (
@@ -246,5 +275,3 @@ export default function AssistantPage() {
     </div>
   );
 }
-
-

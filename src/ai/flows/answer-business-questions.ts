@@ -24,9 +24,18 @@ const AnswerBusinessQuestionInputSchema = z.object({
 });
 export type AnswerBusinessQuestionInput = z.infer<typeof AnswerBusinessQuestionInputSchema>;
 
+const ChartDataSchema = z.object({
+  title: z.string().describe('The title of the chart.'),
+  data: z.any().describe('The data for the chart, as an array of objects.'),
+  dataKey: z.string().describe('The key for the data values (Y-axis).'),
+  nameKey: z.string().describe('The key for the names/labels (X-axis).'),
+}).optional();
+
 const AnswerBusinessQuestionOutputSchema = z.object({
-  answer: z.string().describe('The answer to the question about the business data.'),
+  answer: z.string().describe('The answer to the question about the business data, formatted in Markdown for clear presentation (e.g., using lists, bolding, etc.).'),
+  chart: ChartDataSchema.describe('If the question can be better answered with a chart, provide the data for the chart here. Otherwise, leave this field empty.'),
 });
+
 export type AnswerBusinessQuestionOutput = z.infer<typeof AnswerBusinessQuestionOutputSchema>;
 
 export async function answerBusinessQuestion(input: AnswerBusinessQuestionInput): Promise<AnswerBusinessQuestionOutput> {
@@ -38,6 +47,10 @@ const prompt = ai.definePrompt({
   input: {schema: AnswerBusinessQuestionInputSchema},
   output: {schema: AnswerBusinessQuestionOutputSchema},
   prompt: `Você é um assistente de IA especialista em análise de negócios. Sua função é responder a perguntas e fornecer insights acionáveis com base nos dados fornecidos sobre uma empresa.
+
+  Formate suas respostas em Markdown para clareza (use listas, negrito, etc.).
+
+  Se a pergunta do usuário puder ser melhor representada visualmente por um gráfico de barras, forneça os dados para esse gráfico no campo 'chart'. Caso contrário, deixe o campo 'chart' vazio. Use o gráfico para comparar valores, como vendas por produto ou receita por dia.
 
   Use os seguintes dados como contexto para sua análise. Responda à pergunta do usuário de forma clara e, sempre que possível, ofereça uma análise ou um insight relevante.
 

@@ -353,17 +353,17 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                             {/* Time Ruler */}
                             <div className="w-16 flex-shrink-0 text-right pr-2">
                                {hours.map(hour => (
-                                    <div key={hour} className="relative h-[60px]">
-                                        <span className="text-xs text-muted-foreground -top-2 absolute right-2">{format(setHours(new Date(), hour), 'HH:mm')}</span>
+                                    <div key={hour} className="relative h-[60px] border-t border-muted first:border-t-0">
+                                        <span className="text-xs text-muted-foreground absolute -top-[9px] right-2 bg-background px-1">{format(setHours(new Date(), hour), 'HH:mm')}</span>
                                     </div>
                                 ))}
                             </div>
                             
                             {/* Schedule Grid */}
-                            <div className="relative flex-grow border-l">
+                            <div className="relative flex-grow">
                                 <div className="grid absolute inset-0">
                                     {hours.map(hour => (
-                                        <div key={hour} className="h-[60px] border-t border-muted"></div>
+                                        <div key={hour} className="h-[60px] border-t border-muted first:border-t-0"></div>
                                     ))}
                                 </div>
                                 <div className="absolute inset-0">

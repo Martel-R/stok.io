@@ -27,7 +27,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { DndContext, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent, DragOverlay } from '@dnd-kit/core';
+import { DndContext, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 
 
 function AppointmentForm({ 
@@ -271,21 +271,20 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
         <Card
             ref={setNodeRef}
             style={draggableStyle}
-            {...listeners}
-            {...attributes}
-            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden cursor-grab", isDragging && "opacity-50")}
+            className={cn("absolute w-full p-3 overflow-hidden", isDragging && "opacity-50")}
         >
-            <div className="flex flex-col justify-between h-full" onClick={() => onEdit(appointment)}>
-                <div className="space-y-1 flex-grow overflow-hidden">
+             <div {...listeners} {...attributes} className="cursor-grab absolute inset-0"/>
+             <div className="flex flex-col justify-between h-full" onClick={() => onEdit(appointment)}>
+                 <div className="space-y-1 flex-grow overflow-hidden">
                     <CardTitle className="text-sm truncate">{appointment.serviceName}</CardTitle>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground"><Users className="h-3 w-3" /><span className="truncate">{appointment.customerName}</span></div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground"><Briefcase className="h-3 w-3" /><span className="truncate">{appointment.professionalName}</span></div>
                     {!anamnesisDone && <div className="flex items-center gap-1 text-yellow-600 text-xs"><AlertTriangle className="h-3 w-3"/><span>Anamnese pendente</span></div>}
                 </div>
-                <div className="flex flex-col items-start gap-2 shrink-0 pt-2" onClick={(e) => e.stopPropagation()}>
+                 <div className="flex flex-col items-start gap-2 shrink-0 pt-2" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-between w-full items-center">
                         {getStatusBadge(appointment.status)}
-                        <DropdownMenu>
+                         <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                                 {can.edit && <DropdownMenuItem onClick={() => onEdit(appointment)}>Editar</DropdownMenuItem>}
@@ -294,24 +293,25 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
-                     {can.edit && (
-                        <Button size="sm" className="h-7 w-full" variant={appointment.attendanceId ? "outline" : "default"} onClick={() => onStartAttendance(appointment)} disabled={appointment.status !== 'scheduled'}><PlayCircle className="mr-1 h-3 w-3" />{appointment.attendanceId ? 'Ver' : 'Iniciar'}</Button>
-                     )}
-                </div>
+                      {can.edit && (
+                         <Button size="sm" className="h-7 w-full" variant={appointment.attendanceId ? "outline" : "default"} onClick={() => onStartAttendance(appointment)} disabled={appointment.status !== 'scheduled'}><PlayCircle className="mr-1 h-3 w-3" />{appointment.attendanceId ? 'Ver' : 'Iniciar'}</Button>
+                      )}
+                 </div>
             </div>
         </Card>
     );
 }
 
-function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, onDelete, onUpdateAppointmentTime, customers }: { 
+function DayView({ appointments, date, professionals, customers, onEdit, onStartAttendance, onReschedule, onDelete, onUpdateAppointment }: { 
     appointments: Appointment[];
     date: Date;
+    professionals: User[];
+    customers: Customer[];
     onEdit: (app: Appointment) => void;
     onStartAttendance: (app: Appointment) => void;
     onReschedule: (app: Appointment) => void;
     onDelete: (id: string) => void;
-    onUpdateAppointmentTime: (id: string, newStart: Date) => void;
-    customers: Customer[];
+    onUpdateAppointment: (id: string, newStart: Date, newProfessionalId?: string) => void;
 }) {
     const hourHeight = 60; // 60px per hour
     const startHour = 0;
@@ -319,9 +319,19 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
     const hours = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i);
     const [activeAppointment, setActiveAppointment] = useState<Appointment | null>(null);
 
-    const getPosition = (d: Date) => ((getHours(d) - startHour) * 60 + getMinutes(d)) / 60 * hourHeight;
+    const sensors = useSensors(
+        useSensor(MouseSensor, { activationConstraint: { distance: 10 } }),
+        useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
+    );
     
     const appointmentsForDay = useMemo(() => appointments.filter(app => isSameDay(app.start, date)), [appointments, date]);
+
+    const professionalsWithAppointments = useMemo(() => {
+        const professionalIdsWithAppointments = new Set(appointmentsForDay.map(a => a.professionalId));
+        return professionals.filter(p => professionalIdsWithAppointments.has(p.id));
+    }, [appointmentsForDay, professionals]);
+
+    const getPosition = (d: Date) => ((getHours(d) - startHour) * 60 + getMinutes(d)) / 60 * hourHeight;
     
     const handleDragStart = (event: DragStartEvent) => {
         const { active } = event;
@@ -330,74 +340,75 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
     }
 
     const handleDragEnd = (event: DragEndEvent) => {
-        const { active, delta } = event;
+        const { active, over, delta } = event;
         setActiveAppointment(null);
-        const appointment = active.data.current as Appointment | undefined;
-        if (!appointment) return;
-
+        if (!over || !active.data.current) return;
+        
+        const appointment = active.data.current as Appointment;
+        const newProfessionalId = over.id as string;
+        
         const currentTop = getPosition(appointment.start);
         const newTop = Math.max(0, currentTop + delta.y);
-
         const minutesFromTop = (newTop / hourHeight) * 60;
-        
         const snappedMinutes = Math.round(minutesFromTop / 15) * 15;
-        
         const newHour = Math.floor(snappedMinutes / 60) + startHour;
         const newMinute = snappedMinutes % 60;
-
         const newStartDate = setHours(setMinutes(appointment.start, newMinute), newHour);
-        
-        onUpdateAppointmentTime(appointment.id, newStartDate);
+
+        onUpdateAppointment(appointment.id, newStartDate, newProfessionalId);
     };
 
-    const handleDragCancel = () => {
-        setActiveAppointment(null);
-    };
+    const handleDragCancel = () => setActiveAppointment(null);
     
     return (
         <Card>
             <CardHeader><CardTitle>Agenda do Dia - {format(date, 'dd/MM/yyyy')}</CardTitle></CardHeader>
-            <CardContent>
-                <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
-                    <ScrollArea className="h-[70vh] w-full">
-                        <div className="relative flex">
-                            <div className="w-16 flex-shrink-0 text-right pr-2">
-                               {hours.map(hour => (
-                                    <div key={hour} className="relative h-[60px] border-t border-muted first:border-t-0">
+            <CardContent className="p-0">
+                 <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
+                    <div className="w-full overflow-x-auto">
+                        <div className="flex" style={{minWidth: `${120 + professionalsWithAppointments.length * 200}px`}}>
+                            <div className="w-20 flex-shrink-0 text-right pr-2 sticky left-0 bg-background z-10">
+                                {hours.map(hour => (
+                                    <div key={hour} className="relative h-[60px] border-r border-t border-muted first:border-t-0">
                                         <span className="text-xs text-muted-foreground absolute -top-[9px] right-2 bg-background px-1">{format(setMinutes(setHours(new Date(), hour), 0), 'HH:mm')}</span>
                                     </div>
                                 ))}
                             </div>
                             
-                            <div className="relative flex-grow">
-                                <div className="grid absolute inset-0">
-                                    {hours.map(hour => (
-                                        <div key={hour} className="h-[60px] border-t border-muted first:border-t-0"></div>
-                                    ))}
-                                </div>
-                                <div className="absolute inset-0">
-                                    {appointmentsForDay.map(app => {
-                                        const top = getPosition(app.start);
-                                        const height = Math.max(getPosition(app.end) - top, 40);
-                                        return (
-                                            <DraggableAppointment
-                                                key={app.id}
-                                                appointment={app}
-                                                customers={customers}
-                                                onEdit={onEdit}
-                                                onStartAttendance={onStartAttendance}
-                                                onReschedule={onReschedule}
-                                                onDelete={onDelete}
-                                                style={{ top: `${top}px`, minHeight: '40px', height: `${height}px` }}
-                                                isDragging={activeAppointment?.id === app.id}
-                                            />
-                                        )
-                                    })}
-                                </div>
+                            <div className="flex-grow grid" style={{gridTemplateColumns: `repeat(${professionalsWithAppointments.length}, minmax(180px, 1fr))`}}>
+                                {professionalsWithAppointments.map(prof => (
+                                    <DroppableProfessionalColumn key={prof.id} id={prof.id}>
+                                        <div className="sticky top-0 bg-background z-10 text-center py-2 border-b border-l font-semibold">{prof.name}</div>
+                                        <div className="relative flex-grow h-full">
+                                            <div className="grid absolute inset-0">
+                                                {hours.map(hour => <div key={hour} className="h-[60px] border-t border-l border-muted first:border-t-0"></div>)}
+                                            </div>
+                                            <div className="absolute inset-0 px-1">
+                                                {appointmentsForDay.filter(a => a.professionalId === prof.id).map(app => {
+                                                    const top = getPosition(app.start);
+                                                    const height = Math.max(getPosition(app.end) - top, 50); // min height
+                                                    return (
+                                                        <DraggableAppointment
+                                                            key={app.id}
+                                                            appointment={app}
+                                                            customers={customers}
+                                                            onEdit={onEdit}
+                                                            onStartAttendance={onStartAttendance}
+                                                            onReschedule={onReschedule}
+                                                            onDelete={onDelete}
+                                                            style={{ top: `${top}px`, minHeight: '50px', height: `${height}px` }}
+                                                            isDragging={activeAppointment?.id === app.id}
+                                                        />
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    </DroppableProfessionalColumn>
+                                ))}
                             </div>
                         </div>
-                    </ScrollArea>
-                    <DragOverlay>
+                    </div>
+                     <DragOverlay>
                         {activeAppointment ? (
                              <Card className="p-3 overflow-hidden cursor-grabbing w-full h-full">
                                 <div className="flex justify-between items-start gap-2 h-full">
@@ -413,6 +424,15 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
             </CardContent>
         </Card>
     )
+}
+
+function DroppableProfessionalColumn({ id, children }: { id: string; children: React.ReactNode }) {
+    const { setNodeRef } = useDroppable({ id });
+    return (
+        <div ref={setNodeRef} className="flex flex-col h-full border-r last:border-r-0">
+            {children}
+        </div>
+    );
 }
 
 function WeekView({ appointments, date, onEdit, onStartAttendance, onReschedule, onDelete, onUpdateAppointmentTime, customers }: { 
@@ -533,9 +553,7 @@ function DraggableWeekAppointment({ appointment, onEdit, onStartAttendance, onRe
                 {getStatusBadge(appointment.status)}
             </div>
             <div className="flex items-center gap-1 mt-2" onClick={(e) => e.stopPropagation()}>
-                {appointment.status === 'pending-confirmation' && can.edit ? (
-                    <Button size="sm" className="h-6 px-2 text-xs" onClick={() => onEdit(appointment)}>Confirmar</Button>
-                ) : can.edit ? (
+                 {can.edit ? (
                     <Button size="sm" className="h-6 px-2 text-xs" variant={appointment.attendanceId ? "outline" : "default"} onClick={() => onStartAttendance(appointment)} disabled={appointment.status !== 'scheduled'}>
                         {appointment.attendanceId ? 'Ver' : 'Iniciar'}
                     </Button>
@@ -698,6 +716,31 @@ export default function AppointmentsPage() {
             toast({ title: 'Erro ao reagendar', variant: 'destructive' });
         }
     }
+
+    const handleUpdateAppointment = async (id: string, newStart: Date, newProfessionalId?: string) => {
+        const appointment = appointments.find(a => a.id === id);
+        if (!appointment) return;
+
+        const duration = (appointment.end.getTime() - appointment.start.getTime()) / (1000 * 60);
+        const newEnd = addMinutes(newStart, duration);
+
+        const updateData: Partial<Appointment> = { start: newStart, end: newEnd };
+
+        if (newProfessionalId && newProfessionalId !== appointment.professionalId) {
+            const professional = professionals.find(p => p.id === newProfessionalId);
+            if (professional) {
+                updateData.professionalId = newProfessionalId;
+                updateData.professionalName = professional.name;
+            }
+        }
+
+        try {
+            await updateDoc(doc(db, "appointments", id), updateData);
+            toast({ title: 'Agendamento reagendado!' });
+        } catch (error) {
+            toast({ title: 'Erro ao reagendar', variant: 'destructive' });
+        }
+    }
     
     const handleDelete = async (id: string) => {
         try {
@@ -850,12 +893,13 @@ export default function AppointmentsPage() {
                     {viewMode === 'day' && <DayView 
                         appointments={appointments}
                         date={currentDate}
+                        professionals={professionals}
+                        customers={customers}
                         onEdit={openEditDialog}
                         onStartAttendance={handleStartAttendance}
                         onReschedule={handleReschedule}
                         onDelete={handleDelete}
-                        onUpdateAppointmentTime={handleUpdateAppointmentTime}
-                        customers={customers}
+                        onUpdateAppointment={handleUpdateAppointment}
                     />}
                     {viewMode === 'week' && <WeekView
                          appointments={appointments}
@@ -878,4 +922,3 @@ export default function AppointmentsPage() {
         </div>
     )
 }
-

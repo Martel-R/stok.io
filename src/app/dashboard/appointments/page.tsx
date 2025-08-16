@@ -46,7 +46,7 @@ function AppointmentForm({
     onDone: () => void;
     initialDate: Date;
 }) {
-    const { currentBranch, user } = useAuth();
+    const { user, currentBranch } = useAuth();
     
     const getDefaultState = () => ({
         start: setHours(setMinutes(initialDate, 0), 9),
@@ -268,7 +268,7 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                                 </div>
                             ))}
                         </div>
-                        <div className="absolute top-0 left-12 right-0 bottom-0">
+                        <div className="absolute top-0 left-16 right-0 bottom-0">
                             {appointmentsForDay.map(app => {
                                 const top = getPosition(app.start);
                                 const height = Math.max(getPosition(app.end) - top, 40);

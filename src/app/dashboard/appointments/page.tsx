@@ -260,57 +260,64 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
             <CardHeader><CardTitle>Agenda do Dia - {format(date, 'dd/MM/yyyy')}</CardTitle></CardHeader>
             <CardContent>
                  <ScrollArea className="h-[70vh] w-full">
-                    <div className="relative">
-                        <div className="grid">
-                            {hours.map(hour => (
-                                <div key={hour} className="relative h-[60px] border-t border-muted">
-                                    <span className="absolute -top-3 left-2 text-xs text-muted-foreground">{format(setHours(new Date(), hour), 'HH:mm')}</span>
+                    <div className="relative flex">
+                        <div className="w-16 flex-shrink-0">
+                           {hours.map(hour => (
+                                <div key={hour} className="relative h-[60px] text-right pr-2">
+                                    <span className="text-xs text-muted-foreground">{format(setHours(new Date(), hour), 'HH:mm')}</span>
                                 </div>
                             ))}
                         </div>
-                        <div className="absolute top-0 left-16 right-0 bottom-0">
-                            {appointmentsForDay.map(app => {
-                                const top = getPosition(app.start);
-                                const height = Math.max(getPosition(app.end) - top, 40);
-                                const customer = customers.find(c => c.id === app.customerId);
-                                const anamnesisDone = isAnamnesisComplete(customer);
+                        <div className="relative flex-grow border-l">
+                            <div className="grid absolute inset-0">
+                                {hours.map(hour => (
+                                    <div key={hour} className="h-[60px] border-t border-muted"></div>
+                                ))}
+                            </div>
+                            <div className="absolute inset-0">
+                                {appointmentsForDay.map(app => {
+                                    const top = getPosition(app.start);
+                                    const height = Math.max(getPosition(app.end) - top, 40);
+                                    const customer = customers.find(c => c.id === app.customerId);
+                                    const anamnesisDone = isAnamnesisComplete(customer);
 
-                                return (
-                                    <Card 
-                                        key={app.id} 
-                                        className="absolute w-[calc(100%-1rem)] p-3 overflow-hidden cursor-pointer" 
-                                        style={{ top: `${top}px`, height: `${height}px`, minHeight: '40px' }}
-                                        onClick={() => onEdit(app)}
-                                    >
-                                        <div className="flex justify-between items-start gap-2 h-full">
-                                            <div className="space-y-1 flex-grow overflow-hidden">
-                                                <CardTitle className="text-sm truncate">{app.serviceName}</CardTitle>
-                                                <div className="flex items-center gap-2 text-xs text-muted-foreground"><Users className="h-3 w-3" /><span className="truncate">{app.customerName}</span></div>
-                                                <div className="flex items-center gap-2 text-xs text-muted-foreground"><Briefcase className="h-3 w-3" /><span className="truncate">{app.professionalName}</span></div>
-                                                {!anamnesisDone && <div className="flex items-center gap-1 text-yellow-600 text-xs"><AlertTriangle className="h-3 w-3"/><span>Anamnese pendente</span></div>}
-                                            </div>
-                                            <div className="flex flex-col items-end gap-1 shrink-0">
-                                                {getStatusBadge(app.status)}
-                                                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                                                    {app.status === 'pending-confirmation' && can.edit ? (
-                                                        <Button size="sm" className="h-7" onClick={() => onEdit(app)}><Check className="mr-1 h-3 w-3" />Confirmar</Button>
-                                                    ) : can.edit ? (
-                                                        <Button size="sm" className="h-7" variant={app.attendanceId ? "outline" : "default"} onClick={() => onStartAttendance(app)} disabled={app.status !== 'scheduled'}><PlayCircle className="mr-1 h-3 w-3" />{app.attendanceId ? 'Ver' : 'Iniciar'}</Button>
-                                                    ) : null}
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            {can.edit && <DropdownMenuItem onClick={() => onEdit(app)}>Editar</DropdownMenuItem>}
-                                                            {can.edit && <DropdownMenuItem onClick={() => onReschedule(app)}><RefreshCw className="mr-2 h-4 w-4" />Reagendar</DropdownMenuItem>}
-                                                            {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(app.id)}>Excluir</DropdownMenuItem>}
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
+                                    return (
+                                        <Card 
+                                            key={app.id} 
+                                            className="absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden cursor-pointer" 
+                                            style={{ top: `${top}px`, height: `${height}px`, minHeight: '40px' }}
+                                            onClick={() => onEdit(app)}
+                                        >
+                                            <div className="flex justify-between items-start gap-2 h-full">
+                                                <div className="space-y-1 flex-grow overflow-hidden">
+                                                    <CardTitle className="text-sm truncate">{app.serviceName}</CardTitle>
+                                                    <div className="flex items-center gap-2 text-xs text-muted-foreground"><Users className="h-3 w-3" /><span className="truncate">{app.customerName}</span></div>
+                                                    <div className="flex items-center gap-2 text-xs text-muted-foreground"><Briefcase className="h-3 w-3" /><span className="truncate">{app.professionalName}</span></div>
+                                                    {!anamnesisDone && <div className="flex items-center gap-1 text-yellow-600 text-xs"><AlertTriangle className="h-3 w-3"/><span>Anamnese pendente</span></div>}
+                                                </div>
+                                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                                    {getStatusBadge(app.status)}
+                                                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                                        {app.status === 'pending-confirmation' && can.edit ? (
+                                                            <Button size="sm" className="h-7" onClick={() => onEdit(app)}><Check className="mr-1 h-3 w-3" />Confirmar</Button>
+                                                        ) : can.edit ? (
+                                                            <Button size="sm" className="h-7" variant={app.attendanceId ? "outline" : "default"} onClick={() => onStartAttendance(app)} disabled={app.status !== 'scheduled'}><PlayCircle className="mr-1 h-3 w-3" />{app.attendanceId ? 'Ver' : 'Iniciar'}</Button>
+                                                        ) : null}
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end">
+                                                                {can.edit && <DropdownMenuItem onClick={() => onEdit(app)}>Editar</DropdownMenuItem>}
+                                                                {can.edit && <DropdownMenuItem onClick={() => onReschedule(app)}><RefreshCw className="mr-2 h-4 w-4" />Reagendar</DropdownMenuItem>}
+                                                                {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(app.id)}>Excluir</DropdownMenuItem>}
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    </Card>
-                                )
-                            })}
+                                        </Card>
+                                    )
+                                })}
+                            </div>
                         </div>
                     </div>
                 </ScrollArea>

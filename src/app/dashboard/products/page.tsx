@@ -338,12 +338,12 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
       
         <div className="space-y-2">
             <Label htmlFor="supplierId">Fornecedor</Label>
-            <Select value={formData.supplierId} onValueChange={(val) => setFormData(prev => ({...prev, supplierId: val}))}>
+            <Select value={formData.supplierId || 'none'} onValueChange={(val) => setFormData(prev => ({...prev, supplierId: val === 'none' ? '' : val}))}>
                 <SelectTrigger>
                     <SelectValue placeholder="Selecione um fornecedor..."/>
                 </SelectTrigger>
                 <SelectContent>
-                    <SelectItem value="">Nenhum</SelectItem>
+                    <SelectItem value="none">Nenhum</SelectItem>
                     {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                 </SelectContent>
             </Select>
@@ -1063,7 +1063,7 @@ export default function ProductsPage() {
                             <SelectValue placeholder="Selecione um fornecedor..."/>
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="">Nenhum</SelectItem>
+                            <SelectItem value="none">Nenhum</SelectItem>
                             {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                         </SelectContent>
                     </Select>
@@ -1127,6 +1127,7 @@ export default function ProductsPage() {
     </div>
   );
 }
+
 
 
 

@@ -16,7 +16,7 @@ import type { User, Branch, PaymentCondition, PaymentConditionType, Product, Ena
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash, Lock } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash, Lock, Truck } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -1272,6 +1272,7 @@ function RolesSettings() {
                         </DialogHeader>
                         <PermissionProfileForm
                             profile={editingProfile}
+                            organization={user!.organization!}
                             onSave={handleSave}
                             onDelete={handleDelete}
                             onDone={() => setIsFormOpen(false)}
@@ -1284,14 +1285,14 @@ function RolesSettings() {
 }
 
 function PermissionProfileForm({
-    profile, onSave, onDelete, onDone
+    profile, organization, onSave, onDelete, onDone
 }: {
     profile?: PermissionProfile,
+    organization: Organization,
     onSave: (data: Partial<PermissionProfile>) => void,
     onDelete: (id: string) => void,
     onDone: () => void,
 }) {
-    const { user } = useAuth();
     const [formData, setFormData] = useState<Partial<PermissionProfile>>({});
     
     const allModuleConfig = React.useMemo(() => [
@@ -1310,8 +1311,8 @@ function PermissionProfileForm({
     ] as const, []);
 
     const activeModuleConfig = React.useMemo(() => 
-        allModuleConfig.filter(mod => user?.organization?.enabledModules[mod.key as keyof EnabledModules]),
-    [allModuleConfig, user?.organization?.enabledModules]);
+        allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]),
+    [allModuleConfig, organization.enabledModules]);
 
     useEffect(() => {
         const defaultPermissions: Partial<EnabledModules> = {};
@@ -1597,6 +1598,7 @@ function SettingsPageContent() {
                 <TabsList>
                     <TabsTrigger value="users">Usuários</TabsTrigger>
                     <TabsTrigger value="branches">Filiais</TabsTrigger>
+                    <TabsTrigger value="suppliers">Fornecedores</TabsTrigger>
                     <TabsTrigger value="payments">Pagamentos</TabsTrigger>
                     <TabsTrigger value="branding">Branding</TabsTrigger>
                     <TabsTrigger value="roles">Perfis &amp; Permissões</TabsTrigger>
@@ -1609,6 +1611,9 @@ function SettingsPageContent() {
                 </TabsContent>
                 <TabsContent value="branches">
                    <BranchesSettings />
+                </TabsContent>
+                <TabsContent value="suppliers">
+                    <SuppliersSettings />
                 </TabsContent>
                 <TabsContent value="payments">
                     <PaymentConditions />
@@ -1631,6 +1636,154 @@ function SettingsPageContent() {
     )
 }
 
+function SupplierForm({ supplier, onSave, onDone }: { supplier?: Supplier; onSave: (data: Partial<Supplier>) => void; onDone: () => void }) {
+    const [formData, setFormData] = useState(
+        supplier || { name: '', contactName: '', phone: '', email: '', address: '' }
+    );
+    
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({...prev, [name]: value}));
+    };
+    
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData);
+    }
+
+    return (
+         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+            <div className="space-y-2">
+                <Label htmlFor="name">Nome do Fornecedor</Label>
+                <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label htmlFor="contactName">Nome do Contato</Label>
+                    <Input id="contactName" name="contactName" value={formData.contactName} onChange={handleChange} />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="phone">Telefone</Label>
+                    <Input id="phone" name="phone" value={formData.phone} onChange={handleChange} />
+                </div>
+            </div>
+             <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} />
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="address">Endereço</Label>
+                <Input id="address" name="address" value={formData.address} onChange={handleChange} />
+            </div>
+             <DialogFooter>
+                <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
+                <Button type="submit">Salvar Fornecedor</Button>
+            </DialogFooter>
+        </form>
+    )
+}
+
+function SuppliersSettings() {
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [editingSupplier, setEditingSupplier] = useState<Supplier | undefined>(undefined);
+    const { user } = useAuth();
+    const { toast } = useToast();
+    
+    useEffect(() => {
+        if (!user?.organizationId) return;
+        const q = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, [user]);
+
+    const handleSave = async (data: Partial<Supplier>) => {
+        if (!user?.organizationId) return;
+        try {
+            if (editingSupplier?.id) {
+                await updateDoc(doc(db, "suppliers", editingSupplier.id), data);
+                toast({ title: 'Fornecedor atualizado!' });
+            } else {
+                await addDoc(collection(db, "suppliers"), { ...data, organizationId: user.organizationId });
+                toast({ title: 'Fornecedor adicionado!' });
+            }
+            setIsFormOpen(false);
+        } catch (error) {
+            toast({ title: 'Erro ao salvar fornecedor', variant: 'destructive' });
+        }
+    };
+    
+    const handleDelete = async (id: string) => {
+        try {
+            await deleteDoc(doc(db, "suppliers", id));
+            toast({ title: 'Fornecedor excluído!', variant: 'destructive' });
+        } catch (error) {
+            toast({ title: 'Erro ao excluir fornecedor', variant: 'destructive' });
+        }
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                    <div>
+                        <CardTitle>Fornecedores</CardTitle>
+                        <CardDescription>Gerencie os fornecedores dos seus produtos.</CardDescription>
+                    </div>
+                    <Button onClick={() => { setEditingSupplier(undefined); setIsFormOpen(true); }}><PlusCircle className="mr-2" /> Adicionar Fornecedor</Button>
+                </div>
+            </CardHeader>
+            <CardContent>
+                 <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Nome</TableHead>
+                            <TableHead>Contato</TableHead>
+                            <TableHead>Telefone</TableHead>
+                            <TableHead>Email</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {loading ? <TableRow><TableCell colSpan={5}><Skeleton className="h-5"/></TableCell></TableRow> :
+                        suppliers.map(s => (
+                            <TableRow key={s.id}>
+                                <TableCell>{s.name}</TableCell>
+                                <TableCell>{s.contactName}</TableCell>
+                                <TableCell>{s.phone}</TableCell>
+                                <TableCell>{s.email}</TableCell>
+                                <TableCell className="text-right">
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4"/></Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent>
+                                            <DropdownMenuItem onClick={() => { setEditingSupplier(s); setIsFormOpen(true); }}>Editar</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => handleDelete(s.id)} className="text-destructive focus:text-destructive">Excluir</DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </CardContent>
+             <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{editingSupplier ? 'Editar Fornecedor' : 'Novo Fornecedor'}</DialogTitle>
+                    </DialogHeader>
+                    <SupplierForm supplier={editingSupplier} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
+                </DialogContent>
+            </Dialog>
+        </Card>
+    )
+}
+
 export default function SettingsPage() {
     return (
         <React.Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
@@ -1640,4 +1793,5 @@ export default function SettingsPage() {
 }
 
     
+
 

@@ -46,7 +46,7 @@ function AppointmentForm({
     onDone: () => void;
     initialDate: Date;
 }) {
-    const { currentBranch } = useAuth();
+    const { currentBranch, user } = useAuth();
     
     const getDefaultState = () => ({
         start: setHours(setMinutes(initialDate, 0), 9),
@@ -64,8 +64,6 @@ function AppointmentForm({
         }
         return null;
     });
-
-    const { user } = useAuth();
 
     const availableProfessionals = useMemo(() => {
         if (!selectedService) return [];
@@ -662,3 +660,4 @@ export default function AppointmentsPage() {
         </div>
     )
 }
+

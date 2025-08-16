@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { db, storage } from '@/lib/firebase';
-import { doc, onSnapshot, updateDoc, collection, query, where, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, collection, query, where, getDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import type { Attendance, AttendanceItem, Service, Product, AttendanceStatus, AttendancePaymentStatus, Customer, AnamnesisAnswer } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
@@ -202,11 +202,11 @@ export default function AttendanceClientPage({ id }: { id: string }) {
             const existingItemIndex = prev.items.findIndex(i => i.id === item.id);
             let newItems;
             if (existingItemIndex > -1) {
-                const existingItem = prev.items[existingItemIndex];
+                newItems = [...prev.items];
+                const existingItem = newItems[existingItemIndex];
                 if (existingItem.type === 'product') {
-                    newItems = [...prev.items];
-                    newItems[existingItemIndex].quantity += 1;
-                    newItems[existingItemIndex].total = newItems[existingItemIndex].price * newItems[existingItemIndex].quantity;
+                    existingItem.quantity += 1;
+                    existingItem.total = existingItem.price * existingItem.quantity;
                 } else {
                     toast({title: 'Serviço já adicionado', variant: 'destructive'});
                     return prev;
@@ -284,14 +284,30 @@ export default function AttendanceClientPage({ id }: { id: string }) {
     const handleSave = async (status: AttendanceStatus) => {
         if (!attendance) return;
         setIsSaving(true);
+        const batch = writeBatch(db);
         try {
             const { id, ...dataToSave } = attendance;
-            await updateDoc(doc(db, 'attendances', id), { ...dataToSave, status });
+            const attendanceRef = doc(db, 'attendances', id);
+            batch.update(attendanceRef, { ...dataToSave, status });
+
+            // Also update the original appointment status
+            if (attendance.appointmentId) {
+                const appointmentRef = doc(db, 'appointments', attendance.appointmentId);
+                 if (status === 'completed') {
+                    batch.update(appointmentRef, { status: 'completed' });
+                } else if (status === 'in-progress') {
+                    batch.update(appointmentRef, { status: 'in-progress-payment-pending' });
+                }
+            }
+
+            await batch.commit();
+
             toast({ title: `Atendimento ${status === 'completed' ? 'finalizado' : 'salvo'} com sucesso!` });
              if (status === 'completed') {
                 router.push('/dashboard/pos');
             }
         } catch (error) {
+            console.error("Error saving attendance:", error);
             toast({ title: 'Erro ao salvar', variant: 'destructive' });
         } finally {
             setIsSaving(false);
@@ -313,7 +329,7 @@ export default function AttendanceClientPage({ id }: { id: string }) {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">
                     <Tabs defaultValue="customer">
-                        <TabsList>
+                        <TabsList className="grid w-full grid-cols-2">
                             <TabsTrigger value="customer">Informações do Cliente</TabsTrigger>
                             <TabsTrigger value="service">Detalhes do Atendimento</TabsTrigger>
                         </TabsList>
@@ -332,7 +348,7 @@ export default function AttendanceClientPage({ id }: { id: string }) {
                              <Card>
                                  <CardHeader><CardTitle>Anamnese</CardTitle></CardHeader>
                                  <CardContent>
-                                     <ScrollArea className="h-48">
+                                     <ScrollArea className="h-64">
                                          <div className="space-y-3 pr-4">
                                              {customer?.anamnesisAnswers && customer.anamnesisAnswers.length > 0 ? (
                                                  customer.anamnesisAnswers.map(answer => (
@@ -451,17 +467,18 @@ export default function AttendanceClientPage({ id }: { id: string }) {
                                 <p className="text-3xl font-bold">R$ {attendance.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                             </div>
                         </CardContent>
-                         <CardFooter className="flex flex-col gap-2">
-                             <Button onClick={() => handleSave('completed')} size="lg" className="w-full" disabled={isSaving || attendance.status === 'completed'}>
-                                {isSaving ? <Loader2 className="mr-2 animate-spin"/> : <CheckCircle className="mr-2" />}
-                                 Finalizar Atendimento
-                            </Button>
-                             <Button onClick={() => handleSave(attendance.status)} variant="outline" size="lg" className="w-full" disabled={isSaving}>
-                                 {isSaving ? <Loader2 className="mr-2 animate-spin"/> : <Save className="mr-2"/>}
-                                 Salvar Rascunho
-                            </Button>
-                        </CardFooter>
                     </Card>
+
+                    <div className="space-y-2">
+                         <Button onClick={() => handleSave('completed')} size="lg" className="w-full" disabled={isSaving || attendance.status === 'completed'}>
+                            {isSaving ? <Loader2 className="mr-2 animate-spin"/> : <CheckCircle className="mr-2" />}
+                             Finalizar Atendimento
+                        </Button>
+                         <Button onClick={() => handleSave('in-progress')} variant="outline" size="lg" className="w-full" disabled={isSaving}>
+                             {isSaving ? <Loader2 className="mr-2 animate-spin"/> : <Save className="mr-2"/>}
+                             Salvar Rascunho
+                        </Button>
+                    </div>
                 </div>
             </div>
         </div>

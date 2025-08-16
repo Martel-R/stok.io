@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, query, where, writeBatch, orderBy } from 'firebase/firestore';
-import type { User, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType, BrandingSettings, PermissionProfile, ModulePermissions } from '@/lib/types';
+import type { User, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType, BrandingSettings, PermissionProfile, ModulePermissions, Organization, Supplier } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
@@ -1498,8 +1498,6 @@ function PermissionProfileForm({
     )
 }
 
-
-
 function TestDataSettings() {
     const { deleteTestData, user } = useAuth();
     const { toast } = useToast();
@@ -1568,7 +1566,6 @@ function TestDataSettings() {
         </Card>
     );
 }
-
 
 function SettingsPageContent() {
     const searchParams = useSearchParams();
@@ -1643,3 +1640,4 @@ export default function SettingsPage() {
 }
 
     
+

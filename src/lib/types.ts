@@ -165,6 +165,15 @@ export interface Attendance {
     total: number;
 }
 
+export interface Supplier {
+    id: string;
+    name: string;
+    contactName?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    organizationId: string;
+}
 
 export interface Product {
   id: string;
@@ -181,6 +190,8 @@ export interface Product {
   purchasePrice: number;
   marginValue: number;
   marginType: 'percentage' | 'fixed';
+  supplierId?: string;
+  supplierName?: string;
 }
 
 export type PaymentConditionType = 'credit' | 'debit' | 'cash' | 'pix';

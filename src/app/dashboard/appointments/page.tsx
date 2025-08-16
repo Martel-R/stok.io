@@ -271,19 +271,19 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
         <Card
             ref={setNodeRef}
             style={draggableStyle}
-            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-2 flex gap-1 items-start", isDragging && "opacity-50")}
+            {...listeners}
+            {...attributes}
+            onClick={() => onEdit(appointment)}
+            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden cursor-grab", isDragging && "opacity-50")}
         >
-             <div {...listeners} {...attributes} className="cursor-grab p-1">
-                <GripVertical className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <div className="flex-grow flex flex-col justify-between h-full">
-                 <div className="space-y-1 flex-grow overflow-hidden">
+            <div className="flex justify-between items-start gap-2 h-full">
+                <div className="space-y-1 flex-grow overflow-hidden">
                     <CardTitle className="text-sm truncate">{appointment.serviceName}</CardTitle>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground"><Users className="h-3 w-3" /><span className="truncate">{appointment.customerName}</span></div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground"><Briefcase className="h-3 w-3" /><span className="truncate">{appointment.professionalName}</span></div>
                     {!anamnesisDone && <div className="flex items-center gap-1 text-yellow-600 text-xs"><AlertTriangle className="h-3 w-3"/><span>Anamnese pendente</span></div>}
                 </div>
-                 <div className="flex flex-col items-start gap-1 shrink-0 pt-1">
+                <div className="flex flex-col items-end gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                     {getStatusBadge(appointment.status)}
                     <div className="flex items-center gap-1">
                         {appointment.status === 'pending-confirmation' && can.edit ? (

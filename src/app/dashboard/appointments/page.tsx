@@ -247,8 +247,8 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
     }), [user]);
 
     const hourHeight = 60; // 60px per hour
-    const startHour = 7;
-    const endHour = 21;
+    const startHour = 0;
+    const endHour = 23;
     const hours = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i);
 
     const getPosition = (d: Date) => ((getHours(d) - startHour) * 60 + getMinutes(d)) / 60 * hourHeight;

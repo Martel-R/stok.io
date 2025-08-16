@@ -258,8 +258,8 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
     const draggableStyle = transform ? {
         ...style,
         transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-        zIndex: 10,
-    } : style;
+        zIndex: isDragging ? 50 : 10,
+    } : { ...style, zIndex: 10 };
     
     const customer = customers.find(c => c.id === appointment.customerId);
     const anamnesisDone = isAnamnesisComplete(customer);

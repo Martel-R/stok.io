@@ -145,6 +145,7 @@ function UsersTable() {
     const getProfileName = (roleId: string) => {
         const profile = profiles.find(p => p.id === roleId);
         if (profile) return <Badge variant="secondary">{profile.name}</Badge>;
+        if (roleId === 'admin') return <Badge variant="default">Admin</Badge>;
         return <Badge variant="outline">{roleId}</Badge>;
     }
     

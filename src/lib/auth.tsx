@@ -143,8 +143,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 
                 let finalPermissions: Partial<EnabledModules> = {};
 
-                if (isImpersonating) {
-                    // Super admin impersonating: gets all modules enabled by the org
+                if (isImpersonating || baseUser.role === 'admin') {
+                    // Super admin impersonating OR a regular admin: gets all modules enabled by the org
                     Object.keys(orgModules).forEach(key => {
                       const moduleKey = key as keyof EnabledModules;
                       if (orgModules[moduleKey]) {
@@ -165,8 +165,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                                 finalPermissions[moduleKey] = userProfile.permissions[moduleKey] || { view: false, edit: false, delete: false };
                             }
                         });
-                    } else if (baseUser.role === 'admin') { // Fallback for first admin without profile
-                        finalPermissions = { ...defaultPermissions, ...orgModules };
                     }
                 }
                 
@@ -177,7 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId));
                 const unsubBranches = onSnapshot(branchesQuery, (branchSnap) => {
                     const orgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
-                    const userBranches = isImpersonating ? orgBranches : orgBranches.filter(b => b.userIds.includes(baseUser.id));
+                    const userBranches = isImpersonating || baseUser.role === 'admin' ? orgBranches : orgBranches.filter(b => b.userIds.includes(baseUser.id));
                     
                     setBranches(userBranches);
                     
@@ -242,7 +240,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: firebaseUser.uid,
         name,
         email,
-        role: adminProfileRef.id,
+        role: 'admin',
         avatar: avatar,
         organizationId: organizationId
       };
@@ -555,5 +553,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
-    

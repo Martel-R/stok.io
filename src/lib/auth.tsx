@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React from 'react';
@@ -63,6 +64,7 @@ const defaultPermissions: EnabledModules = {
     customers: { view: true, edit: true, delete: true },
     appointments: { view: true, edit: true, delete: true },
     services: { view: true, edit: true, delete: true },
+    expenses: { view: true, edit: true, delete: true },
 };
 
 const professionalPermissions: EnabledModules = {

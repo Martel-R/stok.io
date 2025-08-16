@@ -22,6 +22,7 @@ export interface EnabledModules {
     customers: ModulePermissions;
     appointments: ModulePermissions;
     services: ModulePermissions;
+    expenses: ModulePermissions;
 }
 
 export interface PermissionProfile {
@@ -338,4 +339,19 @@ export interface Organization {
     enabledModules: EnabledModules;
     branding?: BrandingSettings;
     subscription?: Subscription;
+}
+
+export interface Expense {
+    id: string;
+    organizationId: string;
+    branchId: string;
+    description: string;
+    amount: number;
+    category: string;
+    date: any; // Timestamp
+    notes?: string;
+    supplierId?: string;
+    supplierName?: string;
+    userId: string;
+    userName: string;
 }

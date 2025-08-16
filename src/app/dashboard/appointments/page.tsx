@@ -246,7 +246,11 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
     const { attributes, listeners, setNodeRef, transform } = useDraggable({
         id: appointment.id,
         data: appointment,
-        disabled: user?.enabledModules?.appointments?.edit === false
+        disabled: user?.enabledModules?.appointments?.edit === false,
+        activationConstraint: {
+          delay: 250,
+          tolerance: 5,
+        },
     });
     
     const draggableStyle = transform ? {
@@ -271,21 +275,16 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
             {...attributes}
             className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden cursor-grab", isDragging && "opacity-50")}
         >
-            <div className="flex justify-between items-start gap-2 h-full" onClick={() => onEdit(appointment)}>
+            <div className="flex flex-col justify-between h-full" onClick={() => onEdit(appointment)}>
                 <div className="space-y-1 flex-grow overflow-hidden">
                     <CardTitle className="text-sm truncate">{appointment.serviceName}</CardTitle>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground"><Users className="h-3 w-3" /><span className="truncate">{appointment.customerName}</span></div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground"><Briefcase className="h-3 w-3" /><span className="truncate">{appointment.professionalName}</span></div>
                     {!anamnesisDone && <div className="flex items-center gap-1 text-yellow-600 text-xs"><AlertTriangle className="h-3 w-3"/><span>Anamnese pendente</span></div>}
                 </div>
-                <div className="flex flex-col items-end justify-between h-full shrink-0" onClick={(e) => e.stopPropagation()}>
-                    {getStatusBadge(appointment.status)}
-                    <div className="flex items-center gap-1 mt-1">
-                        {appointment.status === 'pending-confirmation' && can.edit ? (
-                            <Button size="sm" className="h-7" onClick={() => onEdit(appointment)}><Check className="mr-1 h-3 w-3" />Confirmar</Button>
-                        ) : can.edit ? (
-                            <Button size="sm" className="h-7" variant={appointment.attendanceId ? "outline" : "default"} onClick={() => onStartAttendance(appointment)} disabled={appointment.status !== 'scheduled'}><PlayCircle className="mr-1 h-3 w-3" />{appointment.attendanceId ? 'Ver' : 'Iniciar'}</Button>
-                        ) : null}
+                <div className="flex flex-col items-start gap-2 shrink-0 pt-2" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex justify-between w-full items-center">
+                        {getStatusBadge(appointment.status)}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
@@ -295,6 +294,9 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
+                     {can.edit && (
+                        <Button size="sm" className="h-7 w-full" variant={appointment.attendanceId ? "outline" : "default"} onClick={() => onStartAttendance(appointment)} disabled={appointment.status !== 'scheduled'}><PlayCircle className="mr-1 h-3 w-3" />{appointment.attendanceId ? 'Ver' : 'Iniciar'}</Button>
+                     )}
                 </div>
             </div>
         </Card>
@@ -508,7 +510,11 @@ function DraggableWeekAppointment({ appointment, onEdit, onStartAttendance, onRe
     const { attributes, listeners, setNodeRef, transform } = useDraggable({
         id: appointment.id,
         data: appointment,
-        disabled,
+        disabled: disabled,
+        activationConstraint: {
+          delay: 250,
+          tolerance: 5,
+        },
     });
 
     const style = transform && isDragging ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 10 } : undefined;
@@ -520,10 +526,12 @@ function DraggableWeekAppointment({ appointment, onEdit, onStartAttendance, onRe
 
     return (
         <Card ref={setNodeRef} style={style} {...listeners} {...attributes} className={cn("p-2 cursor-grab", isDragging && 'opacity-50')}>
-            <p className="font-bold text-xs truncate">{appointment.serviceName}</p>
-            <p className="text-xs text-muted-foreground truncate">{appointment.customerName}</p>
-            <p className="text-xs text-muted-foreground">{format(appointment.start, 'HH:mm')}</p>
-            {getStatusBadge(appointment.status)}
+             <div onClick={() => onEdit(appointment)}>
+                <p className="font-bold text-xs truncate">{appointment.serviceName}</p>
+                <p className="text-xs text-muted-foreground truncate">{appointment.customerName}</p>
+                <p className="text-xs text-muted-foreground">{format(appointment.start, 'HH:mm')}</p>
+                {getStatusBadge(appointment.status)}
+            </div>
             <div className="flex items-center gap-1 mt-2" onClick={(e) => e.stopPropagation()}>
                 {appointment.status === 'pending-confirmation' && can.edit ? (
                     <Button size="sm" className="h-6 px-2 text-xs" onClick={() => onEdit(appointment)}>Confirmar</Button>

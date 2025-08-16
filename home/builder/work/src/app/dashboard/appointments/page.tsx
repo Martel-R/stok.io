@@ -27,7 +27,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { DndContext, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent, DragOverlay } from '@dnd-kit/core';
+import { DndContext, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 
 
 function AppointmentForm({ 
@@ -321,6 +321,11 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
     const hours = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i);
     const [activeAppointment, setActiveAppointment] = useState<Appointment | null>(null);
 
+    const sensors = useSensors(
+        useSensor(MouseSensor, { activationConstraint: { distance: 10 } }),
+        useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
+    );
+
     const getPosition = (d: Date) => ((getHours(d) - startHour) * 60 + getMinutes(d)) / 60 * hourHeight;
     
     const appointmentsForDay = useMemo(() => appointments.filter(app => isSameDay(app.start, date)), [appointments, date]);
@@ -360,7 +365,7 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
         <Card>
             <CardHeader><CardTitle>Agenda do Dia - {format(date, 'dd/MM/yyyy')}</CardTitle></CardHeader>
             <CardContent>
-                <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
+                <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
                     <ScrollArea className="h-[70vh] w-full">
                         <div className="relative flex">
                             <div className="w-16 flex-shrink-0 text-right pr-2">
@@ -512,7 +517,7 @@ function DraggableWeekAppointment({ appointment, onEdit, onStartAttendance, onRe
     const { attributes, listeners, setNodeRef, transform } = useDraggable({
         id: appointment.id,
         data: appointment,
-        disabled,
+        disabled: disabled,
         activationConstraint: {
           delay: 250,
           tolerance: 5,
@@ -535,9 +540,7 @@ function DraggableWeekAppointment({ appointment, onEdit, onStartAttendance, onRe
                 {getStatusBadge(appointment.status)}
             </div>
             <div className="flex items-center gap-1 mt-2" onClick={(e) => e.stopPropagation()}>
-                {appointment.status === 'pending-confirmation' && can.edit ? (
-                    <Button size="sm" className="h-6 px-2 text-xs" onClick={() => onEdit(appointment)}>Confirmar</Button>
-                ) : can.edit ? (
+                 {can.edit ? (
                     <Button size="sm" className="h-6 px-2 text-xs" variant={appointment.attendanceId ? "outline" : "default"} onClick={() => onStartAttendance(appointment)} disabled={appointment.status !== 'scheduled'}>
                         {appointment.attendanceId ? 'Ver' : 'Iniciar'}
                     </Button>

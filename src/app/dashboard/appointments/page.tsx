@@ -27,7 +27,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { DndContext, useDraggable, useDroppable, type DragEndEvent, type Active, type Over } from '@dnd-kit/core';
+import { DndContext, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent, DragOverlay } from '@dnd-kit/core';
 
 
 function AppointmentForm({ 
@@ -232,7 +232,7 @@ const isAnamnesisComplete = (customer: Customer | undefined): boolean => {
     });
 }
 
-function DraggableAppointment({ appointment, customers, onEdit, onStartAttendance, onReschedule, onDelete, style }: {
+function DraggableAppointment({ appointment, customers, onEdit, onStartAttendance, onReschedule, onDelete, style, isDragging }: {
     appointment: Appointment;
     customers: Customer[];
     onEdit: (app: Appointment) => void;
@@ -240,6 +240,7 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
     onReschedule: (app: Appointment) => void;
     onDelete: (id: string) => void;
     style: React.CSSProperties;
+    isDragging: boolean;
 }) {
     const { user } = useAuth();
     const { attributes, listeners, setNodeRef, transform } = useDraggable({
@@ -268,7 +269,7 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
             style={draggableStyle}
             {...listeners}
             {...attributes}
-            className="absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden cursor-grab"
+            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden cursor-grab", isDragging && "opacity-50")}
             onClick={() => onEdit(appointment)}
         >
             <div className="flex justify-between items-start gap-2 h-full">
@@ -315,10 +316,17 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
     const startHour = 0;
     const endHour = 23;
     const hours = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i);
+    const [activeAppointment, setActiveAppointment] = useState<Appointment | null>(null);
 
     const getPosition = (d: Date) => ((getHours(d) - startHour) * 60 + getMinutes(d)) / 60 * hourHeight;
     
     const appointmentsForDay = useMemo(() => appointments.filter(app => isSameDay(app.start, date)), [appointments, date]);
+    
+    const handleDragStart = (event: DragStartEvent) => {
+        const { active } = event;
+        const appointment = appointments.find(a => a.id === active.id);
+        if (appointment) setActiveAppointment(appointment);
+    }
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, delta } = event;
@@ -341,13 +349,18 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
         const newStartDate = setHours(setMinutes(appointment.start, newMinute), newHour);
         
         onUpdateAppointmentTime(appointment.id, newStartDate);
+        setActiveAppointment(null);
+    };
+
+    const handleDragCancel = () => {
+        setActiveAppointment(null);
     };
     
     return (
         <Card>
             <CardHeader><CardTitle>Agenda do Dia - {format(date, 'dd/MM/yyyy')}</CardTitle></CardHeader>
             <CardContent>
-                <DndContext onDragEnd={handleDragEnd}>
+                <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
                     <ScrollArea className="h-[70vh] w-full">
                         <div className="relative flex">
                             {/* Time Ruler */}
@@ -380,6 +393,7 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                                                 onReschedule={onReschedule}
                                                 onDelete={onDelete}
                                                 style={{ top: `${top}px`, minHeight: '40px', height: `${height}px` }}
+                                                isDragging={activeAppointment?.id === app.id}
                                             />
                                         )
                                     })}
@@ -387,6 +401,19 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                             </div>
                         </div>
                     </ScrollArea>
+                    <DragOverlay>
+                        {activeAppointment ? (
+                             <Card className="p-3 overflow-hidden cursor-grabbing w-full h-full">
+                                {/* Simplified content for overlay */}
+                                <div className="flex justify-between items-start gap-2 h-full">
+                                    <div className="space-y-1 flex-grow overflow-hidden">
+                                        <CardTitle className="text-sm truncate">{activeAppointment.serviceName}</CardTitle>
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground"><Users className="h-3 w-3" /><span className="truncate">{activeAppointment.customerName}</span></div>
+                                    </div>
+                                </div>
+                            </Card>
+                        ) : null}
+                    </DragOverlay>
                 </DndContext>
             </CardContent>
         </Card>
@@ -406,16 +433,25 @@ function WeekView({ appointments, date, onEdit, onStartAttendance, onReschedule,
     const start = startOfWeek(date, { locale: ptBR });
     const end = endOfWeek(date, { locale: ptBR });
     const days = eachDayOfInterval({ start, end });
+    const [activeAppointment, setActiveAppointment] = useState<Appointment | null>(null);
+
+    const handleDragStart = (event: DragStartEvent) => {
+        const { active } = event;
+        const appointment = appointments.find(a => a.id === active.id);
+        if (appointment) setActiveAppointment(appointment);
+    };
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
+        setActiveAppointment(null);
+
         if (!over || !active.data.current) return;
 
         const appointment = active.data.current as Appointment;
         const newDate = over.data.current?.date as Date;
 
         if (newDate && !isSameDay(appointment.start, newDate)) {
-            const newStart = setDate(appointment.start, newDate.getDate());
+            const newStart = setHours(setMinutes(newDate, getMinutes(appointment.start)), getHours(appointment.start));
             onUpdateAppointmentTime(appointment.id, newStart);
         }
     };
@@ -424,7 +460,7 @@ function WeekView({ appointments, date, onEdit, onStartAttendance, onReschedule,
     const canEdit = user?.enabledModules?.appointments?.edit ?? false;
     
     return (
-        <DndContext onDragEnd={handleDragEnd}>
+        <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveAppointment(null)}>
             <div className="grid grid-cols-7 border-t border-l">
                 {days.map(day => (
                     <DroppableDay key={day.toString()} date={day}>
@@ -440,6 +476,7 @@ function WeekView({ appointments, date, onEdit, onStartAttendance, onReschedule,
                                     onReschedule={onReschedule}
                                     onDelete={onDelete}
                                     disabled={!canEdit}
+                                    isDragging={activeAppointment?.id === app.id}
                                 />
                             ))}
                         </div>
@@ -447,6 +484,9 @@ function WeekView({ appointments, date, onEdit, onStartAttendance, onReschedule,
                     </DroppableDay>
                 ))}
             </div>
+            <DragOverlay>
+                {activeAppointment ? <DraggableWeekAppointment appointment={activeAppointment} onEdit={()=>{}} onStartAttendance={()=>{}} onReschedule={()=>{}} onDelete={()=>{}} disabled={true} isDragging={true}/> : null}
+            </DragOverlay>
         </DndContext>
     );
 }
@@ -463,13 +503,14 @@ function DroppableDay({ date, children }: { date: Date, children: React.ReactNod
     );
 }
 
-function DraggableWeekAppointment({ appointment, onEdit, onStartAttendance, onReschedule, onDelete, disabled }: {
+function DraggableWeekAppointment({ appointment, onEdit, onStartAttendance, onReschedule, onDelete, disabled, isDragging }: {
     appointment: Appointment;
     onEdit: (app: Appointment) => void;
     onStartAttendance: (app: Appointment) => void;
     onReschedule: (app: Appointment) => void;
     onDelete: (id: string) => void;
     disabled: boolean;
+    isDragging: boolean;
 }) {
     const { attributes, listeners, setNodeRef, transform } = useDraggable({
         id: appointment.id,
@@ -477,7 +518,7 @@ function DraggableWeekAppointment({ appointment, onEdit, onStartAttendance, onRe
         disabled,
     });
 
-    const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 10 } : undefined;
+    const style = transform && isDragging ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 10 } : undefined;
     const { user } = useAuth();
     const can = useMemo(() => ({
         edit: user?.enabledModules?.appointments?.edit ?? false,
@@ -485,7 +526,7 @@ function DraggableWeekAppointment({ appointment, onEdit, onStartAttendance, onRe
     }), [user]);
 
     return (
-        <Card ref={setNodeRef} style={style} {...listeners} {...attributes} className="p-2 cursor-grab">
+        <Card ref={setNodeRef} style={style} {...listeners} {...attributes} className={cn("p-2 cursor-grab", isDragging && 'opacity-50')}>
             <p className="font-bold text-xs truncate">{appointment.serviceName}</p>
             <p className="text-xs text-muted-foreground truncate">{appointment.customerName}</p>
             <p className="text-xs text-muted-foreground">{format(appointment.start, 'HH:mm')}</p>
@@ -570,7 +611,7 @@ export default function AppointmentsPage() {
     
     const convertAppointmentDate = (docData: any): Appointment => {
         const convert = (field: any) => field instanceof Timestamp ? field.toDate() : new Date();
-        return { ...docData, start: convert(docData.start), end: convert(docData.end) } as Appointment;
+        return { ...docData, id: docData.id, start: convert(docData.start), end: convert(docData.end) } as Appointment;
     };
 
     useEffect(() => {

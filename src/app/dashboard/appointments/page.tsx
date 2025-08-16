@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
-import { format, addMinutes, setHours, setMinutes, startOfDay, endOfDay, isSameDay, getHours, getMinutes, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, parse } from 'date-fns';
+import { format, addMinutes, setHours, setMinutes, startOfDay, endOfDay, isSameDay, getHours, getMinutes, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, parse, setDate } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -27,7 +27,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { DndContext, useDraggable, useDroppable, type DragEndEvent } from '@dnd-kit/core';
+import { DndContext, useDraggable, useDroppable, type DragEndEvent, type Active, type Over } from '@dnd-kit/core';
 
 
 function AppointmentForm({ 
@@ -393,41 +393,126 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
     )
 }
 
-function WeekView({ appointments, date, onEdit, onStartAttendance, onReschedule, onDelete, customers }: { 
+function WeekView({ appointments, date, onEdit, onStartAttendance, onReschedule, onDelete, onUpdateAppointmentTime, customers }: { 
     appointments: Appointment[];
     date: Date;
     onEdit: (app: Appointment) => void;
     onStartAttendance: (app: Appointment) => void;
     onReschedule: (app: Appointment) => void;
     onDelete: (id: string) => void;
+    onUpdateAppointmentTime: (id: string, newStart: Date) => void;
     customers: Customer[];
 }) {
-     const start = startOfWeek(date, { locale: ptBR });
-     const end = endOfWeek(date, { locale: ptBR });
-     const days = eachDayOfInterval({ start, end });
+    const start = startOfWeek(date, { locale: ptBR });
+    const end = endOfWeek(date, { locale: ptBR });
+    const days = eachDayOfInterval({ start, end });
 
-     return (
-        <div className="grid grid-cols-7 border-t border-l">
-            {days.map(day => (
-                <div key={day.toString()} className="border-r border-b">
-                    <h3 className="text-center font-semibold py-2 border-b">{format(day, 'EEE dd', { locale: ptBR })}</h3>
-                    <ScrollArea className="h-[70vh]">
-                    <div className="p-2 space-y-2">
-                        {appointments.filter(a => isSameDay(a.start, day)).map(app => (
-                            <Card key={app.id} className="p-2 cursor-pointer" onClick={() => onEdit(app)}>
-                                <p className="font-bold text-xs truncate">{app.serviceName}</p>
-                                <p className="text-xs text-muted-foreground truncate">{app.customerName}</p>
-                                <p className="text-xs text-muted-foreground">{format(app.start, 'HH:mm')}</p>
-                                {getStatusBadge(app.status)}
-                            </Card>
-                        ))}
-                    </div>
-                    </ScrollArea>
-                </div>
-            ))}
-        </div>
-     );
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over || !active.data.current) return;
+
+        const appointment = active.data.current as Appointment;
+        const newDate = over.data.current?.date as Date;
+
+        if (newDate && !isSameDay(appointment.start, newDate)) {
+            const newStart = setDate(appointment.start, newDate.getDate());
+            onUpdateAppointmentTime(appointment.id, newStart);
+        }
+    };
+    
+    const { user } = useAuth();
+    const canEdit = user?.enabledModules?.appointments?.edit ?? false;
+    
+    return (
+        <DndContext onDragEnd={handleDragEnd}>
+            <div className="grid grid-cols-7 border-t border-l">
+                {days.map(day => (
+                    <DroppableDay key={day.toString()} date={day}>
+                        <h3 className="text-center font-semibold py-2 border-b">{format(day, 'EEE dd', { locale: ptBR })}</h3>
+                        <ScrollArea className="h-[70vh]">
+                        <div className="p-2 space-y-2">
+                            {appointments.filter(a => isSameDay(a.start, day)).map(app => (
+                                <DraggableWeekAppointment 
+                                    key={app.id} 
+                                    appointment={app}
+                                    onEdit={onEdit}
+                                    onStartAttendance={onStartAttendance}
+                                    onReschedule={onReschedule}
+                                    onDelete={onDelete}
+                                    disabled={!canEdit}
+                                />
+                            ))}
+                        </div>
+                        </ScrollArea>
+                    </DroppableDay>
+                ))}
+            </div>
+        </DndContext>
+    );
 }
+
+function DroppableDay({ date, children }: { date: Date, children: React.ReactNode }) {
+    const { setNodeRef } = useDroppable({
+        id: `week-day-${format(date, 'yyyy-MM-dd')}`,
+        data: { date }
+    });
+    return (
+        <div ref={setNodeRef} className="border-r border-b">
+            {children}
+        </div>
+    );
+}
+
+function DraggableWeekAppointment({ appointment, onEdit, onStartAttendance, onReschedule, onDelete, disabled }: {
+    appointment: Appointment;
+    onEdit: (app: Appointment) => void;
+    onStartAttendance: (app: Appointment) => void;
+    onReschedule: (app: Appointment) => void;
+    onDelete: (id: string) => void;
+    disabled: boolean;
+}) {
+    const { attributes, listeners, setNodeRef, transform } = useDraggable({
+        id: appointment.id,
+        data: appointment,
+        disabled,
+    });
+
+    const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 10 } : undefined;
+    const { user } = useAuth();
+    const can = useMemo(() => ({
+        edit: user?.enabledModules?.appointments?.edit ?? false,
+        delete: user?.enabledModules?.appointments?.delete ?? false,
+    }), [user]);
+
+    return (
+        <Card ref={setNodeRef} style={style} {...listeners} {...attributes} className="p-2 cursor-grab">
+            <p className="font-bold text-xs truncate">{appointment.serviceName}</p>
+            <p className="text-xs text-muted-foreground truncate">{appointment.customerName}</p>
+            <p className="text-xs text-muted-foreground">{format(appointment.start, 'HH:mm')}</p>
+            {getStatusBadge(appointment.status)}
+            <div className="flex items-center gap-1 mt-2" onClick={(e) => e.stopPropagation()}>
+                {appointment.status === 'pending-confirmation' && can.edit ? (
+                    <Button size="sm" className="h-6 px-2 text-xs" onClick={() => onEdit(appointment)}>Confirmar</Button>
+                ) : can.edit ? (
+                    <Button size="sm" className="h-6 px-2 text-xs" variant={appointment.attendanceId ? "outline" : "default"} onClick={() => onStartAttendance(appointment)} disabled={appointment.status !== 'scheduled'}>
+                        {appointment.attendanceId ? 'Ver' : 'Iniciar'}
+                    </Button>
+                ) : null}
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-6 w-6"><MoreHorizontal className="h-4 w-4"/></Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        {can.edit && <DropdownMenuItem onClick={() => onEdit(appointment)}>Editar</DropdownMenuItem>}
+                        {can.edit && <DropdownMenuItem onClick={() => onReschedule(appointment)}>Reagendar</DropdownMenuItem>}
+                        {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(appointment.id)}>Excluir</DropdownMenuItem>}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+        </Card>
+    );
+}
+
 
 function MonthView({ appointments, date, setDate, setViewMode }: { 
     appointments: Appointment[];
@@ -737,6 +822,7 @@ export default function AppointmentsPage() {
                          onStartAttendance={handleStartAttendance}
                          onReschedule={handleReschedule}
                          onDelete={handleDelete}
+                         onUpdateAppointmentTime={handleUpdateAppointmentTime}
                          customers={customers}
                     />}
                     {viewMode === 'month' && <MonthView 

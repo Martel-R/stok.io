@@ -321,23 +321,27 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
     const appointmentsForDay = useMemo(() => appointments.filter(app => isSameDay(app.start, date)), [appointments, date]);
 
     const handleDragEnd = (event: DragEndEvent) => {
-        const { active, over, delta } = event;
-        if (!over || !active) return;
-        
-        const appointment = active.data.current as Appointment;
+        const { active, delta } = event;
+        const appointment = active.data.current as Appointment | undefined;
         if (!appointment) return;
-        
+
+        // Calculate new start time based on drag delta
         const currentTop = getPosition(appointment.start);
-        const newTop = currentTop + delta.y;
-        
+        const newTop = Math.max(0, currentTop + delta.y); // Prevent dragging to negative time
+
+        // Convert new pixel position back to minutes
         const minutesFromTop = (newTop / hourHeight) * 60;
-        const newHour = Math.floor(minutesFromTop / 60) + startHour;
-        const newMinute = Math.round((minutesFromTop % 60) / 15) * 15; // Snap to 15 min intervals
+        
+        // Snap to nearest 15-minute interval
+        const snappedMinutes = Math.round(minutesFromTop / 15) * 15;
+        
+        const newHour = Math.floor(snappedMinutes / 60) + startHour;
+        const newMinute = snappedMinutes % 60;
 
         const newStartDate = setHours(setMinutes(appointment.start, newMinute), newHour);
-
+        
         onUpdateAppointmentTime(appointment.id, newStartDate);
-    }
+    };
     
     return (
         <Card>
@@ -561,7 +565,7 @@ export default function AppointmentsPage() {
         const newEnd = addMinutes(newStart, duration);
 
         try {
-            await updateDoc(doc(db, "appointments", id), { start: newEnd > startOfDay(newStart) ? newStart : appointment.start, end: newEnd });
+            await updateDoc(doc(db, "appointments", id), { start: newStart, end: newEnd });
             toast({ title: 'Agendamento reagendado!' });
         } catch (error) {
             toast({ title: 'Erro ao reagendar', variant: 'destructive' });

@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { db, storage } from '@/lib/firebase';
-import { doc, onSnapshot, updateDoc, collection, query, where, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, collection, query, where, getDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import type { Attendance, AttendanceItem, Service, Product, AttendanceStatus, AttendancePaymentStatus, Customer, AnamnesisAnswer } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
@@ -284,14 +284,26 @@ export default function AttendanceClientPage({ id }: { id: string }) {
     const handleSave = async (status: AttendanceStatus) => {
         if (!attendance) return;
         setIsSaving(true);
+        const batch = writeBatch(db);
         try {
             const { id, ...dataToSave } = attendance;
-            await updateDoc(doc(db, 'attendances', id), { ...dataToSave, status });
+            const attendanceRef = doc(db, 'attendances', id);
+            batch.update(attendanceRef, { ...dataToSave, status });
+
+            // Also update the original appointment status if the attendance is completed
+            if (status === 'completed' && attendance.appointmentId) {
+                const appointmentRef = doc(db, 'appointments', attendance.appointmentId);
+                batch.update(appointmentRef, { status: 'completed' });
+            }
+
+            await batch.commit();
+
             toast({ title: `Atendimento ${status === 'completed' ? 'finalizado' : 'salvo'} com sucesso!` });
              if (status === 'completed') {
                 router.push('/dashboard/pos');
             }
         } catch (error) {
+            console.error("Error saving attendance:", error);
             toast({ title: 'Erro ao salvar', variant: 'destructive' });
         } finally {
             setIsSaving(false);

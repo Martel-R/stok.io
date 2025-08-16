@@ -193,6 +193,7 @@ function AppointmentForm({
                         <SelectItem value="cancelled">Cancelado</SelectItem>
                         <SelectItem value="rescheduled">Reagendado</SelectItem>
                         <SelectItem value="no-show">Não Compareceu</SelectItem>
+                        <SelectItem value="in-progress-payment-pending">Em Atendimento</SelectItem>
                      </SelectContent>
                  </Select>
             </div>
@@ -219,6 +220,7 @@ const getStatusBadge = (status: AppointmentStatus) => {
         case 'rescheduled': return <Badge className="bg-purple-100 text-purple-800">Reagendado</Badge>;
         case 'no-show': return <Badge variant="destructive">Não Compareceu</Badge>;
         case 'pending-confirmation': return <Badge className="bg-orange-100 text-orange-800">Pendente</Badge>;
+        case 'in-progress-payment-pending': return <Badge className="bg-yellow-100 text-yellow-800">Em Atendimento</Badge>;
         default: return <Badge>{status}</Badge>;
     }
 };
@@ -271,18 +273,21 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
         <Card
             ref={setNodeRef}
             style={draggableStyle}
-            {...listeners}
-            {...attributes}
-            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden cursor-grab", isDragging && "opacity-50")}
+            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden", isDragging && "opacity-50")}
         >
-            <div className="flex justify-between items-start gap-2 h-full" onClick={() => onEdit(appointment)}>
-                <div className="space-y-1 flex-grow overflow-hidden">
+             <div className="flex justify-between items-start gap-2 h-full">
+                <div 
+                    {...listeners}
+                    {...attributes}
+                    className="flex-grow space-y-1 overflow-hidden cursor-grab"
+                    onClick={() => onEdit(appointment)}
+                >
                     <CardTitle className="text-sm truncate">{appointment.serviceName}</CardTitle>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground"><Users className="h-3 w-3" /><span className="truncate">{appointment.customerName}</span></div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground"><Briefcase className="h-3 w-3" /><span className="truncate">{appointment.professionalName}</span></div>
                     {!anamnesisDone && <div className="flex items-center gap-1 text-yellow-600 text-xs"><AlertTriangle className="h-3 w-3"/><span>Anamnese pendente</span></div>}
                 </div>
-                <div className="flex flex-col items-end gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                <div className="flex flex-col items-end gap-1 shrink-0">
                     {getStatusBadge(appointment.status)}
                     <div className="flex items-center gap-1">
                         {appointment.status === 'pending-confirmation' && can.edit ? (
@@ -315,7 +320,7 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
     onUpdateAppointmentTime: (id: string, newStart: Date) => void;
     customers: Customer[];
 }) {
-    const hourHeight = 80; // 80px per hour
+    const hourHeight = 80;
     const startHour = 0;
     const endHour = 23;
     const hours = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i);
@@ -385,7 +390,7 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                                 <div className="absolute inset-0">
                                     {appointmentsForDay.map(app => {
                                         const top = getPosition(app.start);
-                                        const height = Math.max(getPosition(app.end) - top, 80); // min height of 80px
+                                        const height = Math.max(getPosition(app.end) - top, 80);
                                         return (
                                             <DraggableAppointment
                                                 key={app.id}
@@ -765,7 +770,7 @@ export default function AppointmentsPage() {
             total,
         };
         batch.set(attendanceRef, newAttendance);
-        batch.update(appointmentRef, { attendanceId: attendanceRef.id, status: 'completed' });
+        batch.update(appointmentRef, { attendanceId: attendanceRef.id, status: 'in-progress-payment-pending' });
         
         try {
             await batch.commit();
@@ -883,5 +888,3 @@ export default function AppointmentsPage() {
         </div>
     )
 }
-
-

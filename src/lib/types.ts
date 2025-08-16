@@ -116,7 +116,7 @@ export interface Service {
     linkedProducts: ServiceProduct[];
 }
 
-export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no-show' | 'rescheduled' | 'pending-confirmation';
+export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no-show' | 'rescheduled' | 'pending-confirmation' | 'in-progress-payment-pending';
 
 export interface Appointment {
     id: string;

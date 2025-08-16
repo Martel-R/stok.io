@@ -12,11 +12,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, query, where, writeBatch, orderBy } from 'firebase/firestore';
-import type { User, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType, BrandingSettings, PermissionProfile, ModulePermissions } from '@/lib/types';
+import type { User, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType, BrandingSettings, PermissionProfile, ModulePermissions, Organization } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash, Lock } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -145,6 +145,7 @@ function UsersTable() {
     const getProfileName = (roleId: string) => {
         const profile = profiles.find(p => p.id === roleId);
         if (profile) return <Badge variant="secondary">{profile.name}</Badge>;
+        if (roleId === 'admin') return <Badge variant="default">Admin</Badge>;
         return <Badge variant="outline">{roleId}</Badge>;
     }
     
@@ -1271,6 +1272,7 @@ function RolesSettings() {
                         </DialogHeader>
                         <PermissionProfileForm
                             profile={editingProfile}
+                            organization={user!.organization!}
                             onSave={handleSave}
                             onDelete={handleDelete}
                             onDone={() => setIsFormOpen(false)}
@@ -1283,17 +1285,17 @@ function RolesSettings() {
 }
 
 function PermissionProfileForm({
-    profile, onSave, onDelete, onDone
+    profile, organization, onSave, onDelete, onDone
 }: {
     profile?: PermissionProfile,
+    organization: Organization,
     onSave: (data: Partial<PermissionProfile>) => void,
     onDelete: (id: string) => void,
     onDone: () => void,
 }) {
-    const { user } = useAuth();
     const [formData, setFormData] = useState<Partial<PermissionProfile>>({});
     
-    const allModuleConfig = [
+    const allModuleConfig = React.useMemo(() => [
         { key: 'dashboard', label: 'Início', icon: Home },
         { key: 'customers', label: 'Clientes', icon: Users },
         { key: 'services', label: 'Serviços', icon: Briefcase },
@@ -1306,27 +1308,27 @@ function PermissionProfileForm({
         { key: 'assistant', label: 'Oráculo AI', icon: Bot },
         { key: 'reports', label: 'Relatórios', icon: FileText },
         { key: 'settings', label: 'Configurações', icon: Settings },
-    ] as const;
+    ] as const, []);
 
-    const activeModuleConfig = allModuleConfig.filter(mod => user?.organization?.enabledModules[mod.key]);
+    const activeModuleConfig = React.useMemo(() => 
+        allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]),
+    [allModuleConfig, organization.enabledModules]);
 
     useEffect(() => {
         const defaultPermissions: Partial<EnabledModules> = {};
         activeModuleConfig.forEach(mod => {
             defaultPermissions[mod.key] = { view: false, edit: false, delete: false };
         });
-        
-        if (profile) {
-             setFormData({
-                ...profile,
-                permissions: { ...defaultPermissions, ...profile.permissions } as EnabledModules,
-            });
-        } else {
-            setFormData({
-                name: '',
-                permissions: defaultPermissions as EnabledModules
-            });
-        }
+
+        const initialPermissions = profile?.permissions 
+            ? { ...defaultPermissions, ...profile.permissions } 
+            : defaultPermissions;
+
+        setFormData({
+            ...profile,
+            name: profile?.name || '',
+            permissions: initialPermissions as EnabledModules,
+        });
     }, [profile, activeModuleConfig]);
 
     const handlePermissionChange = (
@@ -1339,7 +1341,6 @@ function PermissionProfileForm({
             const currentModulePerms = newPermissions[module] || { view: false, edit: false, delete: false };
             const updatedModulePerms = { ...currentModulePerms, [permission]: checked };
             
-            // Logic: if edit or delete is checked, view must be checked. If view is unchecked, others must be too.
             if (permission === 'view' && !checked) {
                 updatedModulePerms.edit = false;
                 updatedModulePerms.delete = false;
@@ -1410,8 +1411,9 @@ function PermissionProfileForm({
                                         <Checkbox
                                             checked={getSelectAllState('view')}
                                             onCheckedChange={(checked) => handleSelectAll('view', checked === true)}
+                                            id="select-all-view"
                                         />
-                                        <span>Visualizar</span>
+                                        <Label htmlFor="select-all-view" className="cursor-pointer">Visualizar</Label>
                                     </div>
                                 </TableHead>
                                 <TableHead className="text-center">
@@ -1419,8 +1421,9 @@ function PermissionProfileForm({
                                         <Checkbox
                                             checked={getSelectAllState('edit')}
                                             onCheckedChange={(checked) => handleSelectAll('edit', checked === true)}
+                                            id="select-all-edit"
                                         />
-                                        <span>Editar</span>
+                                        <Label htmlFor="select-all-edit" className="cursor-pointer">Editar</Label>
                                     </div>
                                 </TableHead>
                                 <TableHead className="text-center">
@@ -1428,8 +1431,9 @@ function PermissionProfileForm({
                                         <Checkbox
                                             checked={getSelectAllState('delete')}
                                             onCheckedChange={(checked) => handleSelectAll('delete', checked === true)}
+                                            id="select-all-delete"
                                         />
-                                        <span>Excluir</span>
+                                        <Label htmlFor="select-all-delete" className="cursor-pointer">Excluir</Label>
                                     </div>
                                 </TableHead>
                             </TableRow>
@@ -1571,6 +1575,21 @@ function SettingsPageContent() {
     const searchParams = useSearchParams();
     const tab = searchParams.get('tab') || 'users';
     const { user } = useAuth();
+    
+    if (!user?.enabledModules?.settings?.view) {
+        return (
+             <div className="flex h-full items-center justify-center">
+                <Card className="w-full max-w-md text-center">
+                    <CardHeader>
+                        <CardTitle className="flex items-center justify-center gap-2"><Lock /> Acesso Negado</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <p>Você não tem permissão para acessar a página de configurações.</p>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
@@ -1585,7 +1604,7 @@ function SettingsPageContent() {
                     <TabsTrigger value="payments">Pagamentos</TabsTrigger>
                     <TabsTrigger value="branding">Branding</TabsTrigger>
                     <TabsTrigger value="roles">Perfis &amp; Permissões</TabsTrigger>
-                    {user?.organization?.enabledModules?.customers && (
+                    {user?.enabledModules?.customers?.view && (
                         <TabsTrigger value="anamnesis">Anamnese</TabsTrigger>
                     )}
                 </TabsList>
@@ -1604,7 +1623,7 @@ function SettingsPageContent() {
                  <TabsContent value="roles">
                     <RolesSettings />
                 </TabsContent>
-                 {user?.organization?.enabledModules?.customers && (
+                 {user?.enabledModules?.customers?.view && (
                     <TabsContent value="anamnesis">
                         <AnamnesisSettings />
                     </TabsContent>
@@ -1625,3 +1644,4 @@ export default function SettingsPage() {
 }
 
     
+

@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart, Book, Activity, Package } from 'lucide-react';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Sale, Branch, User, PaymentDetail, Product, StockEntry, PaymentCondition, Combo, Kit } from '@/lib/types';
+import type { Sale, Branch, User, PaymentDetail, Product, StockEntry, PaymentCondition, Combo, Kit, Organization } from '@/lib/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -27,7 +27,24 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from "recharts";
+import Image from 'next/image';
 
+
+function ReportPrintHeader({ organization, period }: { organization: Organization | undefined, period: string }) {
+    return (
+        <div className="print-header hidden print:block mb-4 border-b pb-4">
+            <div className="flex items-center gap-4">
+                {organization?.branding?.logoUrl && (
+                    <Image src={organization.branding.logoUrl} alt="Logo" width={40} height={40} className="object-contain" />
+                )}
+                <div>
+                    <h2 className="text-xl font-bold">{organization?.name || 'Relatório'}</h2>
+                    <p className="text-sm text-muted-foreground">{period}</p>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 // --- General Report Component ---
 function GeneralReport() {
@@ -190,9 +207,19 @@ function GeneralReport() {
     const exportToPDF = () => {
         const doc = new jsPDF();
         const dateStr = `Período: ${format(dateRange?.from || new Date(), 'dd/MM/yy')} a ${format(dateRange?.to || new Date(), 'dd/MM/yy')}`;
-        doc.text("Relatório Geral", 14, 16);
-        doc.text(dateStr, 14, 22);
-
+        
+        // Add header
+        if (user?.organization?.branding?.logoUrl) {
+            doc.addImage(user.organization.branding.logoUrl, 'PNG', 14, 10, 20, 20);
+            doc.text(user.organization.name || "Relatório Geral", 40, 16);
+            doc.setFontSize(10);
+            doc.text(dateStr, 40, 22);
+        } else {
+            doc.text("Relatório Geral", 14, 16);
+            doc.setFontSize(10);
+            doc.text(dateStr, 14, 22);
+        }
+        
         autoTable(doc, {
             head: [['Métrica', 'Valor']],
             body: [
@@ -202,7 +229,7 @@ function GeneralReport() {
                 ['Produtos Únicos', productsSold.length],
                 ['Unidades Vendidas', productTotals.quantity.toLocaleString('pt-BR')],
             ],
-            startY: 28,
+            startY: 35,
             headStyles: { fillColor: [63, 81, 181] }
         });
 
@@ -274,9 +301,11 @@ function GeneralReport() {
         XLSX.writeFile(wb, "relatorio_geral.xlsx");
     };
 
+    const periodString = `Período: ${format(dateRange?.from || new Date(), 'dd/MM/yy')} a ${format(dateRange?.to || new Date(), 'dd/MM/yy')}`;
 
     return (
         <div className="space-y-6 printable-area">
+             <ReportPrintHeader organization={user?.organization} period={periodString} />
             <Card>
                 <CardHeader>
                     <div className="flex flex-col md:flex-row justify-between gap-4 no-print">
@@ -536,6 +565,8 @@ function SalesReport() {
         XLSX.utils.book_append_sheet(wb, ws, 'Vendas');
         XLSX.writeFile(wb, 'relatorio_vendas.xlsx');
     };
+    
+    const periodString = `Período: ${format(dateRange?.from || new Date(), 'dd/MM/yy')} a ${format(dateRange?.to || new Date(), 'dd/MM/yy')}`;
 
     if (loading) {
         return <Skeleton className="h-96 w-full" />
@@ -568,10 +599,7 @@ function SalesReport() {
                    Exibindo {filteredSales.length} de {sales.length} vendas. Total Filtrado: R$ {totalFilteredRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </div>
                 <div className="printable-area">
-                    <div className="print-header hidden print:block mb-4">
-                        <h2 className="text-xl font-bold">Relatório de Vendas</h2>
-                        <p className="text-sm">Período: {dateRange?.from && format(dateRange.from, 'dd/MM/yy')} - {dateRange?.to && format(dateRange.to, 'dd/MM/yy')}</p>
-                    </div>
+                    <ReportPrintHeader organization={user?.organization} period={periodString} />
                     <Table>
                         <TableHeader>
                             <TableRow>
@@ -733,12 +761,15 @@ function TopSellingProductsReport() {
         XLSX.utils.book_append_sheet(wb, ws, 'Produtos Vendidos');
         XLSX.writeFile(wb, 'relatorio_produtos_vendidos.xlsx');
     };
+    
+    const periodString = `Período: ${format(dateRange?.from || new Date(), 'dd/MM/yy')} a ${format(dateRange?.to || new Date(), 'dd/MM/yy')}`;
 
     if (loading) return <Skeleton className="h-96 w-full" />;
 
     return (
-        <Card>
-            <CardHeader>
+        <Card className="printable-area">
+            <ReportPrintHeader organization={user?.organization} period={periodString} />
+            <CardHeader className="no-print">
                 <div className="flex flex-col md:flex-row justify-between gap-4">
                     <div className="flex flex-wrap gap-2">
                         <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
@@ -907,10 +938,13 @@ function LowStockReport() {
     };
 
     if (loading) return <Skeleton className="h-96 w-full" />;
+    
+    const periodString = `Relatório gerado em: ${format(new Date(), 'dd/MM/yyyy')}`;
 
     return (
-        <Card>
-            <CardHeader>
+        <Card className="printable-area">
+             <ReportPrintHeader organization={user?.organization} period={periodString} />
+            <CardHeader className="no-print">
                  <div className="flex flex-col md:flex-row justify-between gap-4">
                     <div className="flex flex-wrap gap-2">
                         <MultiSelectPopover title="Filiais" items={allBranches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
@@ -1127,12 +1161,15 @@ function FinancialSummaryReport() {
         XLSX.utils.book_append_sheet(wb, ws, 'Resumo Financeiro');
         XLSX.writeFile(wb, 'relatorio_financeiro.xlsx');
     };
+    
+    const periodString = `Período: ${format(dateRange?.from || new Date(), 'dd/MM/yy')} a ${format(dateRange?.to || new Date(), 'dd/MM/yy')}`;
 
     if (loading) return <Skeleton className="h-96 w-full" />;
 
     return (
-        <Card>
-            <CardHeader>
+        <Card className="printable-area">
+            <ReportPrintHeader organization={user?.organization} period={periodString} />
+            <CardHeader className="no-print">
                 <div className="flex flex-col md:flex-row justify-between gap-4">
                     <div className="flex flex-wrap gap-2">
                         <DateRangePicker date={dateRange} onSelect={setDateRange} />
@@ -1327,9 +1364,12 @@ function ABCCurveReport() {
 
     if (loading) return <Skeleton className="h-96 w-full" />;
 
+    const periodString = `Período: ${format(dateRange?.from || new Date(), 'dd/MM/yy')} a ${format(dateRange?.to || new Date(), 'dd/MM/yy')}`;
+
     return (
-        <Card>
-            <CardHeader>
+        <Card className="printable-area">
+            <ReportPrintHeader organization={user?.organization} period={periodString} />
+            <CardHeader className="no-print">
                 <CardTitle>Análise de Curva ABC de Produtos</CardTitle>
                 <CardDescription>
                     Este relatório classifica seus produtos em categorias A, B e C com base em sua contribuição para o faturamento total.
@@ -1575,4 +1615,3 @@ function DateRangePicker({ date, onSelect, className }: { date: DateRange | unde
     </div>
   )
 }
-

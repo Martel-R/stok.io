@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React from 'react';
@@ -8,11 +9,11 @@ import { Icons } from '@/components/icons';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Home, Package, BarChart, ShoppingCart, Bot, FileText, LogOut, Loader2, Users, Settings, ChevronsUpDown, Check, Building, Gift, AlertTriangle, CreditCard, Component, LifeBuoy, Calendar, Briefcase, Menu, LogIn } from 'lucide-react';
+import { Home, Package, BarChart, ShoppingCart, Bot, FileText, LogOut, Loader2, Users, Settings, ChevronsUpDown, Check, Building, Gift, AlertTriangle, CreditCard, Component, LifeBuoy, Calendar, Briefcase, Menu, LogIn, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -47,7 +48,7 @@ function DashboardNav() {
     }
     
     const canViewModule = (module: string) => {
-        if (!user?.enabledModules) return true; // Fallback to show all if not defined
+        if (!user?.enabledModules) return false;
         const moduleKey = module as keyof typeof user.enabledModules;
         return user.enabledModules[moduleKey]?.view ?? false;
     }
@@ -72,17 +73,9 @@ function DashboardNav() {
 }
 
 function BranchSwitcher() {
-    const { branches, currentBranch, setCurrentBranch } = useAuth();
+    const { user, branches, currentBranch, setCurrentBranch, organizations, startImpersonation } = useAuth();
     const [open, setOpen] = useState(false);
-
-    if (branches.length <= 1) {
-        return (
-            <div className="flex items-center gap-2 text-sm font-medium">
-                <Building className="h-4 w-4" />
-                <span>{currentBranch?.name || "Filial Principal"}</span>
-            </div>
-        );
-    }
+    const isSuperAdmin = user?.email === process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL;
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
@@ -91,19 +84,42 @@ function BranchSwitcher() {
                     variant="ghost"
                     role="combobox"
                     aria-expanded={open}
-                    className="w-[200px] justify-between"
+                    className="w-[250px] justify-between"
                 >
                      <Building className="mr-2 h-4 w-4 shrink-0" />
-                    <span className="truncate">{currentBranch?.name || "Selecione a filial"}</span>
+                     <div className="flex flex-col items-start text-left">
+                        <span className="text-xs text-muted-foreground -mb-1">{user?.isImpersonating ? "Organização" : "Filial"}</span>
+                        <span className="truncate font-semibold">{user?.isImpersonating ? user.organization?.name : currentBranch?.name || "Selecione a filial"}</span>
+                     </div>
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[200px] p-0">
+            <PopoverContent className="w-[250px] p-0">
                 <Command>
-                    <CommandInput placeholder="Buscar filial..." />
+                    <CommandInput placeholder="Buscar..." />
                     <CommandList>
-                        <CommandEmpty>Nenhuma filial encontrada.</CommandEmpty>
-                        <CommandGroup>
+                        <CommandEmpty>Nenhum resultado.</CommandEmpty>
+                        {isSuperAdmin && !user?.isImpersonating && organizations.length > 0 && (
+                            <>
+                                <CommandGroup heading="Organizações">
+                                    {organizations.map((org) => (
+                                        <CommandItem
+                                            key={org.id}
+                                            value={org.name}
+                                            onSelect={() => {
+                                                startImpersonation(org.id);
+                                                setOpen(false);
+                                            }}
+                                        >
+                                            <ShieldAlert className="mr-2 h-4 w-4" />
+                                            {org.name}
+                                        </CommandItem>
+                                    ))}
+                                </CommandGroup>
+                                <CommandSeparator />
+                            </>
+                        )}
+                        <CommandGroup heading="Filiais">
                             {branches.map((branch) => (
                                 <CommandItem
                                     key={branch.id}
@@ -113,12 +129,7 @@ function BranchSwitcher() {
                                         setOpen(false);
                                     }}
                                 >
-                                    <Check
-                                        className={cn(
-                                            "mr-2 h-4 w-4",
-                                            currentBranch?.id === branch.id ? "opacity-100" : "opacity-0"
-                                        )}
-                                    />
+                                    <Check className={cn("mr-2 h-4 w-4", currentBranch?.id === branch.id ? "opacity-100" : "opacity-0")}/>
                                     {branch.name}
                                 </CommandItem>
                             ))}
@@ -129,55 +140,6 @@ function BranchSwitcher() {
         </Popover>
     );
 }
-
-function OrganizationSwitcher() {
-    const { organizations, startImpersonation, user } = useAuth();
-    const [open, setOpen] = useState(false);
-
-    if (user?.isImpersonating || user?.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
-        return null;
-    }
-
-    return (
-        <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-                <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={open}
-                    className="w-[250px] justify-between"
-                >
-                     <Building className="mr-2 h-4 w-4 shrink-0" />
-                    <span className="truncate">Trocar de Organização</span>
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[250px] p-0">
-                <Command>
-                    <CommandInput placeholder="Buscar organização..." />
-                    <CommandList>
-                        <CommandEmpty>Nenhuma organização encontrada.</CommandEmpty>
-                        <CommandGroup>
-                            {organizations.map((org) => (
-                                <CommandItem
-                                    key={org.id}
-                                    value={org.name}
-                                    onSelect={() => {
-                                        startImpersonation(org.id);
-                                        setOpen(false);
-                                    }}
-                                >
-                                    {org.name}
-                                </CommandItem>
-                            ))}
-                        </CommandGroup>
-                    </CommandList>
-                </Command>
-            </PopoverContent>
-        </Popover>
-    );
-}
-
 
 function UserNav() {
     const { user, logout } = useAuth();
@@ -273,12 +235,10 @@ function ImpersonationExitButton() {
     }
 
     return (
-        <div className="fixed bottom-4 right-4 z-50">
-            <Button onClick={stopImpersonation} variant="destructive">
-                <LogOut className="mr-2" />
-                Sair da Personificação
-            </Button>
-        </div>
+        <Button onClick={stopImpersonation} variant="destructive" className="w-full">
+            <LogOut className="mr-2" />
+            Sair da Personificação
+        </Button>
     )
 }
 
@@ -324,7 +284,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                     <DashboardNav />
                 </SidebarContent>
                 <SidebarFooter>
-                    {/* Conteúdo do rodapé, se houver */}
+                    <ImpersonationExitButton />
                 </SidebarFooter>
             </Sidebar>
             <div className="flex flex-1 flex-col md:ml-64">
@@ -339,7 +299,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                             <Menu />
                             <span className="sr-only">Abrir Menu</span>
                         </Button>
-                        {user?.isImpersonating ? <BranchSwitcher /> : <OrganizationSwitcher />}
+                        <BranchSwitcher />
                     </div>
                     <div className="flex w-full items-center justify-end gap-4">
                         <UserNav />
@@ -352,7 +312,6 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                      </div>
                 </main>
             </div>
-             <ImpersonationExitButton />
         </div>
     )
 }
@@ -374,3 +333,4 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </SidebarProvider>
     );
 }
+

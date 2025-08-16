@@ -31,6 +31,7 @@ import { StockMovementForm } from '@/components/stock-movement-form';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { RadioGroup } from '@/components/ui/radio-group';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
 
 type ProductWithStock = Product & { stock: number };
@@ -1126,6 +1127,7 @@ export default function ProductsPage() {
     </div>
   );
 }
+
 
 
 

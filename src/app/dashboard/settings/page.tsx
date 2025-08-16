@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import * as React from 'react';
@@ -34,6 +32,7 @@ import { ImportAnamnesisQuestionsDialog } from '@/components/import-anamnesis-di
 import { Checkbox } from '@/components/ui/checkbox';
 import Image from 'next/image';
 import { Switch } from '@/components/ui/switch';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 
 const availableAvatars = [
@@ -1598,7 +1597,7 @@ function SettingsPageContent() {
                 <TabsList>
                     <TabsTrigger value="users">Usuários</TabsTrigger>
                     <TabsTrigger value="branches">Filiais</TabsTrigger>
-                    <TabsTrigger value="suppliers">Fornecedores</TabsTrigger>
+                    <TabsTrigger value="suppliers"><Truck className="mr-2 h-4 w-4"/>Fornecedores</TabsTrigger>
                     <TabsTrigger value="payments">Pagamentos</TabsTrigger>
                     <TabsTrigger value="branding">Branding</TabsTrigger>
                     <TabsTrigger value="roles">Perfis &amp; Permissões</TabsTrigger>
@@ -1636,29 +1635,54 @@ function SettingsPageContent() {
     )
 }
 
-function SupplierForm({ supplier, onSave, onDone }: { supplier?: Supplier; onSave: (data: Partial<Supplier>, linkAll: boolean) => void; onDone: () => void }) {
-    const [formData, setFormData] = useState(
-        supplier || { name: '', contactName: '', phone: '', email: '', address: '' }
-    );
-    const [linkAllProducts, setLinkAllProducts] = useState(false);
-    
+function SupplierForm({ 
+    supplier, 
+    products,
+    onSave, 
+    onDone 
+}: { 
+    supplier?: Supplier; 
+    products: Product[];
+    onSave: (data: Partial<Supplier>, productsToLink: string[], productsToUnlink: string[]) => void; 
+    onDone: () => void 
+}) {
+    const [formData, setFormData] = useState<Partial<Supplier>>({ name: '', contactName: '', phone: '', email: '', address: '' });
+    const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+    const [initialProductIds, setInitialProductIds] = useState<string[]>([]);
+
     useEffect(() => {
-        setFormData(supplier || { name: '', contactName: '', phone: '', email: '', address: '' });
-        setLinkAllProducts(false); // Reset on form open
-    }, [supplier]);
+        if (supplier) {
+            setFormData(supplier);
+            const linkedIds = products.filter(p => p.supplierId === supplier.id).map(p => p.id);
+            setSelectedProductIds(linkedIds);
+            setInitialProductIds(linkedIds);
+        } else {
+            setFormData({ name: '', contactName: '', phone: '', email: '', address: '' });
+            setSelectedProductIds([]);
+            setInitialProductIds([]);
+        }
+    }, [supplier, products]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({...prev, [name]: value}));
     };
     
+    const handleProductSelection = (productId: string) => {
+        setSelectedProductIds(prev => 
+            prev.includes(productId) ? prev.filter(id => id !== productId) : [...prev, productId]
+        );
+    }
+    
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData, linkAllProducts);
+        const productsToLink = selectedProductIds.filter(id => !initialProductIds.includes(id));
+        const productsToUnlink = initialProductIds.filter(id => !selectedProductIds.includes(id));
+        onSave(formData, productsToLink, productsToUnlink);
     }
 
     return (
-         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+         <form onSubmit={handleSubmit} className="space-y-4 pt-4 max-h-[80vh] overflow-y-auto pr-4">
             <div className="space-y-2">
                 <Label htmlFor="name">Nome do Fornecedor</Label>
                 <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
@@ -1681,18 +1705,25 @@ function SupplierForm({ supplier, onSave, onDone }: { supplier?: Supplier; onSav
                 <Label htmlFor="address">Endereço</Label>
                 <Input id="address" name="address" value={formData.address} onChange={handleChange} />
             </div>
-            {!supplier && (
-                <div className="flex items-center space-x-2">
-                    <Checkbox
-                        id="linkAllProducts"
-                        checked={linkAllProducts}
-                        onCheckedChange={(checked) => setLinkAllProducts(checked === true)}
-                    />
-                    <Label htmlFor="linkAllProducts" className="font-normal">
-                        Vincular todos os produtos cadastrados a este fornecedor.
-                    </Label>
-                </div>
-            )}
+
+            <div className="space-y-2">
+                <Label>Produtos Vinculados</Label>
+                <ScrollArea className="h-64 rounded-md border">
+                    <div className="p-4">
+                    {products.map(product => (
+                        <div key={product.id} className="flex items-center space-x-2 mb-2">
+                            <Checkbox 
+                                id={`product-${product.id}`}
+                                checked={selectedProductIds.includes(product.id)}
+                                onCheckedChange={() => handleProductSelection(product.id)}
+                            />
+                            <Label htmlFor={`product-${product.id}`} className="font-normal w-full">{product.name}</Label>
+                        </div>
+                    ))}
+                    </div>
+                </ScrollArea>
+            </div>
+            
              <DialogFooter>
                 <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
                 <Button type="submit">Salvar Fornecedor</Button>
@@ -1703,6 +1734,7 @@ function SupplierForm({ supplier, onSave, onDone }: { supplier?: Supplier; onSav
 
 function SuppliersSettings() {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<Supplier | undefined>(undefined);
@@ -1711,43 +1743,55 @@ function SuppliersSettings() {
     
     useEffect(() => {
         if (!user?.organizationId) return;
-        const q = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+
+        const qSuppliers = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId));
+        const unsubSuppliers = onSnapshot(qSuppliers, (snapshot) => {
             setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
             setLoading(false);
         });
-        return () => unsubscribe();
-    }, [user]);
 
-    const handleSave = async (data: Partial<Supplier>, linkAll: boolean) => {
+        if (currentBranch?.id) {
+            const qProducts = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
+            const unsubProducts = onSnapshot(qProducts, (snapshot) => {
+                setProducts(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as Product)));
+            });
+            return () => { unsubSuppliers(); unsubProducts(); };
+        }
+
+        return () => unsubSuppliers();
+    }, [user, currentBranch]);
+
+    const handleSave = async (data: Partial<Supplier>, productsToLink: string[], productsToUnlink: string[]) => {
         if (!user?.organizationId || !currentBranch?.id) return;
         
-        let supplierId = editingSupplier?.id;
-        let supplierName = data.name;
+        const isEditing = !!editingSupplier;
+        const supplierId = editingSupplier?.id || doc(collection(db, 'suppliers')).id;
 
         const batch = writeBatch(db);
 
+        // 1. Save supplier data
+        const supplierRef = doc(db, "suppliers", supplierId);
+        if (isEditing) {
+            batch.update(supplierRef, data);
+        } else {
+            batch.set(supplierRef, { ...data, id: supplierId, organizationId: user.organizationId });
+        }
+        
+        // 2. Link products
+        productsToLink.forEach(productId => {
+            const productRef = doc(db, 'products', productId);
+            batch.update(productRef, { supplierId: supplierId, supplierName: data.name });
+        });
+
+        // 3. Unlink products
+        productsToUnlink.forEach(productId => {
+            const productRef = doc(db, 'products', productId);
+            batch.update(productRef, { supplierId: null, supplierName: '' });
+        });
+
         try {
-            if (supplierId) {
-                await updateDoc(doc(db, "suppliers", supplierId), data);
-                toast({ title: 'Fornecedor atualizado!' });
-            } else {
-                const newSupplierRef = doc(collection(db, "suppliers"));
-                supplierId = newSupplierRef.id;
-                await addDoc(collection(db, "suppliers"), { ...data, id: supplierId, organizationId: user.organizationId });
-                toast({ title: 'Fornecedor adicionado!' });
-            }
-
-            if (linkAll && supplierId && supplierName) {
-                const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
-                const productsSnap = await getDocs(productsQuery);
-                productsSnap.forEach(productDoc => {
-                    batch.update(productDoc.ref, { supplierId: supplierId, supplierName: supplierName });
-                });
-                await batch.commit();
-                toast({ title: `Todos os ${productsSnap.size} produtos foram vinculados a ${supplierName}!` });
-            }
-
+            await batch.commit();
+            toast({ title: `Fornecedor ${isEditing ? 'atualizado' : 'adicionado'} com sucesso!` });
             setIsFormOpen(false);
         } catch (error) {
             toast({ title: 'Erro ao salvar fornecedor', variant: 'destructive' });
@@ -1756,6 +1800,7 @@ function SuppliersSettings() {
     
     const handleDelete = async (id: string) => {
         try {
+            // TODO: Unlink products associated with this supplier? For now, we'll just delete the supplier.
             await deleteDoc(doc(db, "suppliers", id));
             toast({ title: 'Fornecedor excluído!', variant: 'destructive' });
         } catch (error) {
@@ -1810,11 +1855,16 @@ function SuppliersSettings() {
                 </Table>
             </CardContent>
              <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                <DialogContent>
+                <DialogContent className="max-w-2xl">
                     <DialogHeader>
                         <DialogTitle>{editingSupplier ? 'Editar Fornecedor' : 'Novo Fornecedor'}</DialogTitle>
                     </DialogHeader>
-                    <SupplierForm supplier={editingSupplier} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
+                    <SupplierForm 
+                        supplier={editingSupplier}
+                        products={products}
+                        onSave={handleSave} 
+                        onDone={() => setIsFormOpen(false)} 
+                    />
                 </DialogContent>
             </Dialog>
         </Card>
@@ -1828,8 +1878,4 @@ export default function SettingsPage() {
         </React.Suspense>
     )
 }
-
-    
-
-
 

@@ -270,23 +270,21 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
     return (
         <Card
             ref={setNodeRef}
+            style={draggableStyle}
             {...listeners}
             {...attributes}
-            style={draggableStyle}
-            onClick={() => onEdit(appointment)}
-            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-0 overflow-hidden cursor-grab", isDragging && "opacity-50")}
+            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden cursor-grab", isDragging && "opacity-50")}
         >
-            <CardContent className="p-3 h-full flex flex-col justify-between">
-                <div>
+            <div className="flex justify-between items-start gap-2 h-full" onClick={() => onEdit(appointment)}>
+                <div className="space-y-1 flex-grow overflow-hidden">
                     <CardTitle className="text-sm truncate">{appointment.serviceName}</CardTitle>
-                     {!anamnesisDone && <div className="flex items-center gap-1 text-yellow-600 text-xs mt-1"><AlertTriangle className="h-3 w-3"/><span>Anamnese pendente</span></div>}
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground"><Users className="h-3 w-3" /><span className="truncate">{appointment.customerName}</span></div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground"><Briefcase className="h-3 w-3" /><span className="truncate">{appointment.professionalName}</span></div>
+                    {!anamnesisDone && <div className="flex items-center gap-1 text-yellow-600 text-xs"><AlertTriangle className="h-3 w-3"/><span>Anamnese pendente</span></div>}
                 </div>
-                <CardFooter className="p-0 mt-2 flex justify-between items-end">
-                    <div className="space-y-1 text-xs text-muted-foreground">
-                        <div className="flex items-center gap-2 "><Users className="h-3 w-3" /><span className="truncate">{appointment.customerName}</span></div>
-                        <div className="flex items-center gap-2"><Briefcase className="h-3 w-3" /><span className="truncate">{appointment.professionalName}</span></div>
-                    </div>
-                     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                <div className="flex flex-col items-end gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    {getStatusBadge(appointment.status)}
+                    <div className="flex items-center gap-1">
                         {appointment.status === 'pending-confirmation' && can.edit ? (
                             <Button size="sm" className="h-7" onClick={() => onEdit(appointment)}><Check className="mr-1 h-3 w-3" />Confirmar</Button>
                         ) : can.edit ? (
@@ -301,8 +299,8 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
-                </CardFooter>
-            </CardContent>
+                </div>
+            </div>
         </Card>
     );
 }
@@ -397,7 +395,7 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                                                 onStartAttendance={onStartAttendance}
                                                 onReschedule={onReschedule}
                                                 onDelete={onDelete}
-                                                style={{ top: `${top}px`, height: `${height}px` }}
+                                                style={{ top: `${top}px`, minHeight: '5rem', height: `${height}px` }}
                                                 isDragging={activeAppointment?.id === app.id}
                                             />
                                         )
@@ -885,4 +883,5 @@ export default function AppointmentsPage() {
         </div>
     )
 }
+
 

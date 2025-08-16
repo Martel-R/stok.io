@@ -261,10 +261,10 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
             <CardContent>
                  <ScrollArea className="h-[70vh] w-full">
                     <div className="relative flex">
-                        <div className="w-16 flex-shrink-0">
+                        <div className="w-16 flex-shrink-0 text-right pr-2">
                            {hours.map(hour => (
-                                <div key={hour} className="relative h-[60px] text-right pr-2">
-                                    <span className="text-xs text-muted-foreground">{format(setHours(new Date(), hour), 'HH:mm')}</span>
+                                <div key={hour} className="relative h-[60px]">
+                                    <span className="text-xs text-muted-foreground -top-2 absolute right-2">{format(setHours(new Date(), hour), 'HH:mm')}</span>
                                 </div>
                             ))}
                         </div>
@@ -295,9 +295,9 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                                                     <div className="flex items-center gap-2 text-xs text-muted-foreground"><Briefcase className="h-3 w-3" /><span className="truncate">{app.professionalName}</span></div>
                                                     {!anamnesisDone && <div className="flex items-center gap-1 text-yellow-600 text-xs"><AlertTriangle className="h-3 w-3"/><span>Anamnese pendente</span></div>}
                                                 </div>
-                                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                                <div className="flex flex-col items-end justify-between h-full shrink-0" onClick={(e) => e.stopPropagation()}>
                                                     {getStatusBadge(app.status)}
-                                                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                                    <div className="flex items-center gap-1">
                                                         {app.status === 'pending-confirmation' && can.edit ? (
                                                             <Button size="sm" className="h-7" onClick={() => onEdit(app)}><Check className="mr-1 h-3 w-3" />Confirmar</Button>
                                                         ) : can.edit ? (

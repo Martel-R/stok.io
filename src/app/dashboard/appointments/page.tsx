@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
-import { format, addMinutes, setHours, setMinutes, startOfDay, endOfDay, isSameDay, getHours, getMinutes, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth } from 'date-fns';
+import { format, addMinutes, setHours, setMinutes, startOfDay, endOfDay, isSameDay, getHours, getMinutes, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, parse } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -27,6 +27,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { DndContext, useDraggable, useDroppable, type DragEndEvent } from '@dnd-kit/core';
 
 
 function AppointmentForm({ 
@@ -231,21 +232,85 @@ const isAnamnesisComplete = (customer: Customer | undefined): boolean => {
     });
 }
 
-function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, onDelete, customers }: { 
+function DraggableAppointment({ appointment, customers, onEdit, onStartAttendance, onReschedule, onDelete, style }: {
+    appointment: Appointment;
+    customers: Customer[];
+    onEdit: (app: Appointment) => void;
+    onStartAttendance: (app: Appointment) => void;
+    onReschedule: (app: Appointment) => void;
+    onDelete: (id: string) => void;
+    style: React.CSSProperties;
+}) {
+    const { user } = useAuth();
+    const { attributes, listeners, setNodeRef, transform } = useDraggable({
+        id: appointment.id,
+        data: appointment,
+        disabled: user?.enabledModules?.appointments?.edit === false
+    });
+    
+    const draggableStyle = transform ? {
+        ...style,
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+        zIndex: 10,
+    } : style;
+    
+    const customer = customers.find(c => c.id === appointment.customerId);
+    const anamnesisDone = isAnamnesisComplete(customer);
+
+    const can = useMemo(() => ({
+        edit: user?.enabledModules?.appointments?.edit ?? false,
+        delete: user?.enabledModules?.appointments?.delete ?? false,
+    }), [user]);
+
+    return (
+        <Card
+            ref={setNodeRef}
+            style={draggableStyle}
+            {...listeners}
+            {...attributes}
+            className="absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden cursor-grab"
+            onClick={() => onEdit(appointment)}
+        >
+            <div className="flex justify-between items-start gap-2 h-full">
+                <div className="space-y-1 flex-grow overflow-hidden">
+                    <CardTitle className="text-sm truncate">{appointment.serviceName}</CardTitle>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground"><Users className="h-3 w-3" /><span className="truncate">{appointment.customerName}</span></div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground"><Briefcase className="h-3 w-3" /><span className="truncate">{appointment.professionalName}</span></div>
+                    {!anamnesisDone && <div className="flex items-center gap-1 text-yellow-600 text-xs"><AlertTriangle className="h-3 w-3"/><span>Anamnese pendente</span></div>}
+                </div>
+                <div className="flex flex-col items-end justify-between h-full shrink-0" onClick={(e) => e.stopPropagation()}>
+                    {getStatusBadge(appointment.status)}
+                    <div className="flex items-center gap-1">
+                        {appointment.status === 'pending-confirmation' && can.edit ? (
+                            <Button size="sm" className="h-7" onClick={() => onEdit(appointment)}><Check className="mr-1 h-3 w-3" />Confirmar</Button>
+                        ) : can.edit ? (
+                            <Button size="sm" className="h-7" variant={appointment.attendanceId ? "outline" : "default"} onClick={() => onStartAttendance(appointment)} disabled={appointment.status !== 'scheduled'}><PlayCircle className="mr-1 h-3 w-3" />{appointment.attendanceId ? 'Ver' : 'Iniciar'}</Button>
+                        ) : null}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                {can.edit && <DropdownMenuItem onClick={() => onEdit(appointment)}>Editar</DropdownMenuItem>}
+                                {can.edit && <DropdownMenuItem onClick={() => onReschedule(appointment)}><RefreshCw className="mr-2 h-4 w-4" />Reagendar</DropdownMenuItem>}
+                                {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(appointment.id)}>Excluir</DropdownMenuItem>}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+                </div>
+            </div>
+        </Card>
+    );
+}
+
+function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, onDelete, onUpdateAppointmentTime, customers }: { 
     appointments: Appointment[];
     date: Date;
     onEdit: (app: Appointment) => void;
     onStartAttendance: (app: Appointment) => void;
     onReschedule: (app: Appointment) => void;
     onDelete: (id: string) => void;
+    onUpdateAppointmentTime: (id: string, newStart: Date) => void;
     customers: Customer[];
 }) {
-    const { user } = useAuth();
-    const can = useMemo(() => ({
-        edit: user?.enabledModules?.appointments?.edit ?? false,
-        delete: user?.enabledModules?.appointments?.delete ?? false,
-    }), [user]);
-
     const hourHeight = 60; // 60px per hour
     const startHour = 0;
     const endHour = 23;
@@ -255,72 +320,70 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
     
     const appointmentsForDay = useMemo(() => appointments.filter(app => isSameDay(app.start, date)), [appointments, date]);
 
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over, delta } = event;
+        if (!over || !active) return;
+        
+        const appointment = active.data.current as Appointment;
+        if (!appointment) return;
+        
+        const currentTop = getPosition(appointment.start);
+        const newTop = currentTop + delta.y;
+        
+        const minutesFromTop = (newTop / hourHeight) * 60;
+        const newHour = Math.floor(minutesFromTop / 60) + startHour;
+        const newMinute = Math.round((minutesFromTop % 60) / 15) * 15; // Snap to 15 min intervals
+
+        const newStartDate = setHours(setMinutes(appointment.start, newMinute), newHour);
+
+        onUpdateAppointmentTime(appointment.id, newStartDate);
+    }
+    
     return (
         <Card>
             <CardHeader><CardTitle>Agenda do Dia - {format(date, 'dd/MM/yyyy')}</CardTitle></CardHeader>
             <CardContent>
-                 <ScrollArea className="h-[70vh] w-full">
-                    <div className="relative flex">
-                        <div className="w-16 flex-shrink-0 text-right pr-2">
-                           {hours.map(hour => (
-                                <div key={hour} className="relative h-[60px]">
-                                    <span className="text-xs text-muted-foreground -top-2 absolute right-2">{format(setHours(new Date(), hour), 'HH:mm')}</span>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="relative flex-grow border-l">
-                            <div className="grid absolute inset-0">
-                                {hours.map(hour => (
-                                    <div key={hour} className="h-[60px] border-t border-muted"></div>
+                <DndContext onDragEnd={handleDragEnd}>
+                    <ScrollArea className="h-[70vh] w-full">
+                        <div className="relative flex">
+                            {/* Time Ruler */}
+                            <div className="w-16 flex-shrink-0 text-right pr-2">
+                               {hours.map(hour => (
+                                    <div key={hour} className="relative h-[60px]">
+                                        <span className="text-xs text-muted-foreground -top-2 absolute right-2">{format(setHours(new Date(), hour), 'HH:mm')}</span>
+                                    </div>
                                 ))}
                             </div>
-                            <div className="absolute inset-0">
-                                {appointmentsForDay.map(app => {
-                                    const top = getPosition(app.start);
-                                    const height = Math.max(getPosition(app.end) - top, 40);
-                                    const customer = customers.find(c => c.id === app.customerId);
-                                    const anamnesisDone = isAnamnesisComplete(customer);
-
-                                    return (
-                                        <Card 
-                                            key={app.id} 
-                                            className="absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden cursor-pointer" 
-                                            style={{ top: `${top}px`, height: `${height}px`, minHeight: '40px' }}
-                                            onClick={() => onEdit(app)}
-                                        >
-                                            <div className="flex justify-between items-start gap-2 h-full">
-                                                <div className="space-y-1 flex-grow overflow-hidden">
-                                                    <CardTitle className="text-sm truncate">{app.serviceName}</CardTitle>
-                                                    <div className="flex items-center gap-2 text-xs text-muted-foreground"><Users className="h-3 w-3" /><span className="truncate">{app.customerName}</span></div>
-                                                    <div className="flex items-center gap-2 text-xs text-muted-foreground"><Briefcase className="h-3 w-3" /><span className="truncate">{app.professionalName}</span></div>
-                                                    {!anamnesisDone && <div className="flex items-center gap-1 text-yellow-600 text-xs"><AlertTriangle className="h-3 w-3"/><span>Anamnese pendente</span></div>}
-                                                </div>
-                                                <div className="flex flex-col items-end justify-between h-full shrink-0" onClick={(e) => e.stopPropagation()}>
-                                                    {getStatusBadge(app.status)}
-                                                    <div className="flex items-center gap-1">
-                                                        {app.status === 'pending-confirmation' && can.edit ? (
-                                                            <Button size="sm" className="h-7" onClick={() => onEdit(app)}><Check className="mr-1 h-3 w-3" />Confirmar</Button>
-                                                        ) : can.edit ? (
-                                                            <Button size="sm" className="h-7" variant={app.attendanceId ? "outline" : "default"} onClick={() => onStartAttendance(app)} disabled={app.status !== 'scheduled'}><PlayCircle className="mr-1 h-3 w-3" />{app.attendanceId ? 'Ver' : 'Iniciar'}</Button>
-                                                        ) : null}
-                                                        <DropdownMenu>
-                                                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
-                                                            <DropdownMenuContent align="end">
-                                                                {can.edit && <DropdownMenuItem onClick={() => onEdit(app)}>Editar</DropdownMenuItem>}
-                                                                {can.edit && <DropdownMenuItem onClick={() => onReschedule(app)}><RefreshCw className="mr-2 h-4 w-4" />Reagendar</DropdownMenuItem>}
-                                                                {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(app.id)}>Excluir</DropdownMenuItem>}
-                                                            </DropdownMenuContent>
-                                                        </DropdownMenu>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </Card>
-                                    )
-                                })}
+                            
+                            {/* Schedule Grid */}
+                            <div className="relative flex-grow border-l">
+                                <div className="grid absolute inset-0">
+                                    {hours.map(hour => (
+                                        <div key={hour} className="h-[60px] border-t border-muted"></div>
+                                    ))}
+                                </div>
+                                <div className="absolute inset-0">
+                                    {appointmentsForDay.map(app => {
+                                        const top = getPosition(app.start);
+                                        const height = Math.max(getPosition(app.end) - top, 40);
+                                        return (
+                                            <DraggableAppointment
+                                                key={app.id}
+                                                appointment={app}
+                                                customers={customers}
+                                                onEdit={onEdit}
+                                                onStartAttendance={onStartAttendance}
+                                                onReschedule={onReschedule}
+                                                onDelete={onDelete}
+                                                style={{ top: `${top}px`, minHeight: '40px', height: `${height}px` }}
+                                            />
+                                        )
+                                    })}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </ScrollArea>
+                    </ScrollArea>
+                </DndContext>
             </CardContent>
         </Card>
     )
@@ -489,6 +552,21 @@ export default function AppointmentsPage() {
             toast({ title: 'Erro ao atualizar status', variant: 'destructive' });
         }
     };
+
+    const handleUpdateAppointmentTime = async (id: string, newStart: Date) => {
+        const appointment = appointments.find(a => a.id === id);
+        if (!appointment) return;
+
+        const duration = (appointment.end.getTime() - appointment.start.getTime()) / (1000 * 60); // duration in minutes
+        const newEnd = addMinutes(newStart, duration);
+
+        try {
+            await updateDoc(doc(db, "appointments", id), { start: newEnd > startOfDay(newStart) ? newStart : appointment.start, end: newEnd });
+            toast({ title: 'Agendamento reagendado!' });
+        } catch (error) {
+            toast({ title: 'Erro ao reagendar', variant: 'destructive' });
+        }
+    }
     
     const handleDelete = async (id: string) => {
         try {
@@ -645,6 +723,7 @@ export default function AppointmentsPage() {
                         onStartAttendance={handleStartAttendance}
                         onReschedule={handleReschedule}
                         onDelete={handleDelete}
+                        onUpdateAppointmentTime={handleUpdateAppointmentTime}
                         customers={customers}
                     />}
                     {viewMode === 'week' && <WeekView

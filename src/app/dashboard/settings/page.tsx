@@ -1636,11 +1636,17 @@ function SettingsPageContent() {
     )
 }
 
-function SupplierForm({ supplier, onSave, onDone }: { supplier?: Supplier; onSave: (data: Partial<Supplier>) => void; onDone: () => void }) {
+function SupplierForm({ supplier, onSave, onDone }: { supplier?: Supplier; onSave: (data: Partial<Supplier>, linkAll: boolean) => void; onDone: () => void }) {
     const [formData, setFormData] = useState(
         supplier || { name: '', contactName: '', phone: '', email: '', address: '' }
     );
+    const [linkAllProducts, setLinkAllProducts] = useState(false);
     
+    useEffect(() => {
+        setFormData(supplier || { name: '', contactName: '', phone: '', email: '', address: '' });
+        setLinkAllProducts(false); // Reset on form open
+    }, [supplier]);
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({...prev, [name]: value}));
@@ -1648,7 +1654,7 @@ function SupplierForm({ supplier, onSave, onDone }: { supplier?: Supplier; onSav
     
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData);
+        onSave(formData, linkAllProducts);
     }
 
     return (
@@ -1675,6 +1681,18 @@ function SupplierForm({ supplier, onSave, onDone }: { supplier?: Supplier; onSav
                 <Label htmlFor="address">Endereço</Label>
                 <Input id="address" name="address" value={formData.address} onChange={handleChange} />
             </div>
+            {!supplier && (
+                <div className="flex items-center space-x-2">
+                    <Checkbox
+                        id="linkAllProducts"
+                        checked={linkAllProducts}
+                        onCheckedChange={(checked) => setLinkAllProducts(checked === true)}
+                    />
+                    <Label htmlFor="linkAllProducts" className="font-normal">
+                        Vincular todos os produtos cadastrados a este fornecedor.
+                    </Label>
+                </div>
+            )}
              <DialogFooter>
                 <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
                 <Button type="submit">Salvar Fornecedor</Button>
@@ -1688,7 +1706,7 @@ function SuppliersSettings() {
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<Supplier | undefined>(undefined);
-    const { user } = useAuth();
+    const { user, currentBranch } = useAuth();
     const { toast } = useToast();
     
     useEffect(() => {
@@ -1701,16 +1719,35 @@ function SuppliersSettings() {
         return () => unsubscribe();
     }, [user]);
 
-    const handleSave = async (data: Partial<Supplier>) => {
-        if (!user?.organizationId) return;
+    const handleSave = async (data: Partial<Supplier>, linkAll: boolean) => {
+        if (!user?.organizationId || !currentBranch?.id) return;
+        
+        let supplierId = editingSupplier?.id;
+        let supplierName = data.name;
+
+        const batch = writeBatch(db);
+
         try {
-            if (editingSupplier?.id) {
-                await updateDoc(doc(db, "suppliers", editingSupplier.id), data);
+            if (supplierId) {
+                await updateDoc(doc(db, "suppliers", supplierId), data);
                 toast({ title: 'Fornecedor atualizado!' });
             } else {
-                await addDoc(collection(db, "suppliers"), { ...data, organizationId: user.organizationId });
+                const newSupplierRef = doc(collection(db, "suppliers"));
+                supplierId = newSupplierRef.id;
+                await addDoc(collection(db, "suppliers"), { ...data, id: supplierId, organizationId: user.organizationId });
                 toast({ title: 'Fornecedor adicionado!' });
             }
+
+            if (linkAll && supplierId && supplierName) {
+                const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
+                const productsSnap = await getDocs(productsQuery);
+                productsSnap.forEach(productDoc => {
+                    batch.update(productDoc.ref, { supplierId: supplierId, supplierName: supplierName });
+                });
+                await batch.commit();
+                toast({ title: `Todos os ${productsSnap.size} produtos foram vinculados a ${supplierName}!` });
+            }
+
             setIsFormOpen(false);
         } catch (error) {
             toast({ title: 'Erro ao salvar fornecedor', variant: 'destructive' });
@@ -1793,5 +1830,6 @@ export default function SettingsPage() {
 }
 
     
+
 
 

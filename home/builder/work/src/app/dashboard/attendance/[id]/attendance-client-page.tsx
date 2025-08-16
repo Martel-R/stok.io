@@ -107,6 +107,23 @@ const formatAnamnesisAnswer = (answer: AnamnesisAnswer) => {
     return String(answer.answer);
 };
 
+const getAttendanceStatusName = (status: AttendanceStatus) => {
+    const names = {
+        'pending': 'Pendente',
+        'in-progress': 'Em Andamento',
+        'completed': 'Concluído'
+    };
+    return names[status] || status;
+};
+
+const getPaymentStatusName = (status: AttendancePaymentStatus) => {
+    const names = {
+        'pending': 'Pendente',
+        'paid': 'Pago'
+    };
+    return names[status] || status;
+};
+
 export default function AttendanceClientPage({ id }: { id: string }) {
     const router = useRouter();
     const { user, currentBranch } = useAuth();
@@ -454,12 +471,12 @@ export default function AttendanceClientPage({ id }: { id: string }) {
                              <div className="flex items-center gap-2">
                                 <Clock className="h-4 w-4 text-muted-foreground" />
                                 <span>Status Atendimento:</span>
-                                <Badge variant={attendance.status === 'completed' ? 'default' : 'secondary'}>{attendance.status}</Badge>
+                                <Badge variant={attendance.status === 'completed' ? 'default' : 'secondary'}>{getAttendanceStatusName(attendance.status)}</Badge>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Clock className="h-4 w-4 text-muted-foreground" />
                                 <span>Status Pagamento:</span>
-                                <Badge variant={attendance.paymentStatus === 'paid' ? 'default' : 'destructive'}>{attendance.paymentStatus}</Badge>
+                                <Badge variant={attendance.paymentStatus === 'paid' ? 'default' : 'destructive'}>{getPaymentStatusName(attendance.paymentStatus)}</Badge>
                             </div>
                             <Separator />
                             <div className="flex justify-between items-baseline">
@@ -474,7 +491,7 @@ export default function AttendanceClientPage({ id }: { id: string }) {
                             {isSaving ? <Loader2 className="mr-2 animate-spin"/> : <CheckCircle className="mr-2" />}
                              Finalizar Atendimento
                         </Button>
-                         <Button onClick={() => handleSave('in-progress')} variant="outline" size="lg" className="w-full" disabled={isSaving}>
+                         <Button onClick={() => handleSave(attendance.status)} variant="outline" size="lg" className="w-full" disabled={isSaving}>
                              {isSaving ? <Loader2 className="mr-2 animate-spin"/> : <Save className="mr-2"/>}
                              Salvar Rascunho
                         </Button>

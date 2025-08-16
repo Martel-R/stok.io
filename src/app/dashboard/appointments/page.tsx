@@ -281,7 +281,7 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
                 </div>
                 <div className="flex flex-col items-end justify-between h-full shrink-0" onClick={(e) => e.stopPropagation()}>
                     {getStatusBadge(appointment.status)}
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 mt-1">
                         {appointment.status === 'pending-confirmation' && can.edit ? (
                             <Button size="sm" className="h-7" onClick={() => onEdit(appointment)}><Check className="mr-1 h-3 w-3" />Confirmar</Button>
                         ) : can.edit ? (
@@ -330,17 +330,15 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, delta } = event;
+        setActiveAppointment(null);
         const appointment = active.data.current as Appointment | undefined;
         if (!appointment) return;
 
-        // Calculate new start time based on drag delta
         const currentTop = getPosition(appointment.start);
-        const newTop = Math.max(0, currentTop + delta.y); // Prevent dragging to negative time
+        const newTop = Math.max(0, currentTop + delta.y);
 
-        // Convert new pixel position back to minutes
         const minutesFromTop = (newTop / hourHeight) * 60;
         
-        // Snap to nearest 15-minute interval
         const snappedMinutes = Math.round(minutesFromTop / 15) * 15;
         
         const newHour = Math.floor(snappedMinutes / 60) + startHour;
@@ -349,7 +347,6 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
         const newStartDate = setHours(setMinutes(appointment.start, newMinute), newHour);
         
         onUpdateAppointmentTime(appointment.id, newStartDate);
-        setActiveAppointment(null);
     };
 
     const handleDragCancel = () => {
@@ -363,7 +360,6 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                 <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
                     <ScrollArea className="h-[70vh] w-full">
                         <div className="relative flex">
-                            {/* Time Ruler */}
                             <div className="w-16 flex-shrink-0 text-right pr-2">
                                {hours.map(hour => (
                                     <div key={hour} className="relative h-[60px] border-t border-muted first:border-t-0">
@@ -372,7 +368,6 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                                 ))}
                             </div>
                             
-                            {/* Schedule Grid */}
                             <div className="relative flex-grow">
                                 <div className="grid absolute inset-0">
                                     {hours.map(hour => (
@@ -404,7 +399,6 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                     <DragOverlay>
                         {activeAppointment ? (
                              <Card className="p-3 overflow-hidden cursor-grabbing w-full h-full">
-                                {/* Simplified content for overlay */}
                                 <div className="flex justify-between items-start gap-2 h-full">
                                     <div className="space-y-1 flex-grow overflow-hidden">
                                         <CardTitle className="text-sm truncate">{activeAppointment.serviceName}</CardTitle>
@@ -877,3 +871,4 @@ export default function AppointmentsPage() {
         </div>
     )
 }
+

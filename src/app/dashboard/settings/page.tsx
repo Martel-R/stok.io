@@ -330,8 +330,9 @@ function BranchesSettings() {
                 // Seed products for the new branch
                 MOCK_PRODUCTS.forEach(product => {
                     const productDocRef = doc(collection(db, 'products'));
-                    const productWithBranchInfo: Omit<Product, 'id'|'stock'> = {
-                        ...product,
+                    const { stock, ...productData } = product; // Remove stock from mock
+                    const productWithBranchInfo: Omit<Product, 'id'> = {
+                        ...(productData as any),
                         branchId: branchDocRef.id,
                         organizationId: currentUser.organizationId,
                         isSalable: true,
@@ -483,7 +484,7 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
         });
     };
 
-    const handleSubmit = (e: React.EventFormEvent) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave(formData as Omit<Branch, 'id' | 'organizationId'>);
         onDone();
@@ -561,12 +562,12 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
 }
 
 
-function PaymentConditionForm({ condition, onSave, onDone }: { condition?: PaymentCondition, onSave: (data: PartialPaymentCondition) => void, onDone: () => void }) {
+function PaymentConditionForm({ condition, onSave, onDone }: { condition?: PaymentCondition, onSave: (data: Partial<PaymentCondition>) => void, onDone: () => void }) {
     const [formData, setFormData] = useState(
         condition || { name: '', type: 'credit', fee: 0, feeType: 'percentage', maxInstallments: 12 }
     );
     
-    const handleInputChange = (e: React.ChangeEvent) => {
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value, type } = e.target;
         setFormData(prev => ({
             ...prev,
@@ -578,7 +579,7 @@ function PaymentConditionForm({ condition, onSave, onDone }: { condition?: Payme
          setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleSubmit = (e: React.EventFormEvent) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave(formData);
     };
@@ -646,12 +647,12 @@ function PaymentConditionForm({ condition, onSave, onDone }: { condition?: Payme
 }
 
 function PaymentConditions() {
-    const [conditions, setConditions] = useState([]);
+    const [conditions, setConditions] = useState<PaymentCondition[]>([]);
     const [loading, setLoading] = useState(true);
     const { user } = useAuth();
     const { toast } = useToast();
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingCondition, setEditingCondition] = useState(undefined);
+    const [editingCondition, setEditingCondition] = useState<PaymentCondition | undefined>(undefined);
 
     useEffect(() => {
         if (!user?.organizationId) return;
@@ -664,7 +665,7 @@ function PaymentConditions() {
         return () => unsubscribe();
     }, [user]);
 
-    const handleSave = async (data: PartialPaymentCondition) => {
+    const handleSave = async (data: Partial<PaymentCondition>) => {
         if (!user?.organizationId) {
             toast({ title: 'Organização não encontrada.', variant: 'destructive' });
             return;
@@ -785,7 +786,7 @@ function PaymentConditions() {
     );
 }
 
-const typeNames: RecordAnamnesisQuestionType, string = {
+const typeNames: Record<AnamnesisQuestionType, string> = {
     text: 'Discursiva',
     boolean: 'Sim/Não',
     boolean_with_text: 'Sim/Não com Texto',
@@ -799,12 +800,12 @@ function AnamnesisQuestionForm({
     onDone 
 }: { 
     question?: AnamnesisQuestion; 
-    onSave: (data: PartialAnamnesisQuestion) => void; 
+    onSave: (data: Partial<AnamnesisQuestion>) => void; 
     onDone: () => void 
 }) {
-    const [formData, setFormData] = useState(question || { label: '', type: 'text' });
+    const [formData, setFormData] = useState<Partial<AnamnesisQuestion>>(question || { label: '', type: 'text' });
     
-    const handleInputChange = (e: React.ChangeEvent) => {
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData(prev => ({ ...prev, label: e.target.value }));
     };
 
@@ -812,7 +813,7 @@ function AnamnesisQuestionForm({
         setFormData(prev => ({ ...prev, type: value }));
     };
 
-    const handleSubmit = (e: React.EventFormEvent) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave(formData);
         onDone();
@@ -824,7 +825,7 @@ function AnamnesisQuestionForm({
                 <Label htmlFor="questionLabel">Texto da Pergunta</Label>
                 <Input 
                     id="questionLabel"
-                    value={formData.label} 
+                    value={formData.label || ''} 
                     onChange={handleInputChange}
                     placeholder="Ex: Você possui alguma alergia?"
                     required
@@ -853,12 +854,12 @@ function AnamnesisQuestionForm({
 
 
 function AnamnesisSettings() {
-    const [questions, setQuestions] = useState([]);
+    const [questions, setQuestions] = useState<AnamnesisQuestion[]>([]);
     const [loading, setLoading] = useState(true);
     const { user } = useAuth();
     const [isImportOpen, setIsImportOpen] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingQuestion, setEditingQuestion] = useState(undefined);
+    const [editingQuestion, setEditingQuestion] = useState<AnamnesisQuestion | undefined>(undefined);
     const { toast } = useToast();
     
     useEffect(() => {
@@ -880,7 +881,7 @@ function AnamnesisSettings() {
         return () => unsubscribe();
     }, [user]);
 
-    const handleSave = async (data: PartialAnamnesisQuestion) => {
+    const handleSave = async (data: Partial<AnamnesisQuestion>) => {
         if (!user?.organizationId) {
             toast({ title: 'Organização não encontrada.', variant: 'destructive' });
             return;
@@ -922,7 +923,7 @@ function AnamnesisSettings() {
         setIsFormOpen(true);
     }
 
-    const handleImport = async (importedQuestions: OmitAnamnesisQuestion, 'id' | 'organizationId' | 'order'>[]) => {
+    const handleImport = async (importedQuestions: Omit<AnamnesisQuestion, 'id' | 'organizationId' | 'order'>[]) => {
       if (!user?.organizationId) {
           toast({ title: 'Organização não encontrada', variant: 'destructive' });
           return;
@@ -956,104 +957,110 @@ function AnamnesisSettings() {
                         <CardDescription>Configure as perguntas que aparecerão no formulário de anamnese dos clientes.</CardDescription>
                     </div>
                      <div className="flex flex-wrap gap-2">
-                        
-                             
-                                 
-                                    Importar
-                                
-                            
-                        
-                        
-                            
-                                 Adicionar Pergunta
-                            
-                             
-                                
-                                    {editingQuestion ? 'Editar Pergunta' : 'Adicionar Pergunta'}
-                                
-                                
-                                    
-                                        
-                                            
-                                            
-                                        
-                                    
-                                
-                            
-                        
-                    
-                
-            CardContent>
-                 
-                    
-                        
-                            Pergunta
-                            Tipo
-                            Ações
-                        
-                    
-                    
+                        <ImportAnamnesisQuestionsDialog
+                            isOpen={isImportOpen}
+                            onOpenChange={setIsImportOpen}
+                            onImport={handleImport}
+                        >
+                             <Button variant="outline">
+                                <FileUp className="mr-2" />
+                                Importar
+                            </Button>
+                        </ImportAnamnesisQuestionsDialog>
+                        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                            <DialogTrigger asChild>
+                                 <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Pergunta</Button>
+                            </DialogTrigger>
+                             <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>{editingQuestion ? 'Editar Pergunta' : 'Adicionar Pergunta'}</DialogTitle>
+                                </DialogHeader>
+                                <AnamnesisQuestionForm
+                                    question={editingQuestion}
+                                    onSave={handleSave}
+                                    onDone={() => setIsFormOpen(false)}
+                                />
+                            </DialogContent>
+                        </Dialog>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent>
+                 <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Pergunta</TableHead>
+                            <TableHead>Tipo</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
                          {loading ? (
                             Array.from({length: 3}).map((_, i) => (
-                                
-                                    
-                                
+                                <TableRow key={i}><TableCell colSpan={3}><Skeleton className="h-5 w-full" /></TableCell></TableRow>
                             ))
                         ) : questions.length > 0 ? (
                             questions.map(q => (
-                                
-                                    {q.label}
-                                    
-                                        {typeNames[q.type] || 'Desconhecido'}
-                                    
-                                    
-                                         
-                                             
-                                                 
-                                                     
-                                                         
-                                                         
-                                                     
-                                                     
-                                                          Editar
-                                                          
-                                                      
-                                                       
-                                                          Excluir
-                                                     
-                                                
-                                             
-                                             
-                                                
-                                                    Excluir Pergunta?
-                                                    Essa ação é irreversível.
-                                                
-                                                
-                                                    Cancelar
-                                                    
+                                <TableRow key={q.id}>
+                                    <TableCell className="font-medium">{q.label}</TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline">
+                                            {typeNames[q.type] || 'Desconhecido'}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <AlertDialog>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" className="h-8 w-8 p-0">
+                                                        <MoreHorizontal className="h-4 w-4" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuItem onSelect={() => openEditDialog(q)}>
+                                                        Editar
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuSeparator/>
+                                                     <AlertDialogTrigger asChild>
+                                                        <DropdownMenuItem className="text-destructive focus:text-destructive">
+                                                            Excluir
+                                                        </DropdownMenuItem>
+                                                     </AlertDialogTrigger>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Excluir Pergunta?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        Essa ação é irreversível.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={() => handleDelete(q.id)} className={buttonVariants({variant: 'destructive'})}>
                                                         Sim, excluir
-                                                    
-                                                
-                                             
-                                         
-                                    
-                                
+                                                    </AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    </TableCell>
+                                </TableRow>
                             ))
                         ) : (
-                             
-                                 Nenhuma pergunta encontrada.
-                             
+                             <TableRow>
+                                <TableCell colSpan={3} className="h-24 text-center">Nenhuma pergunta encontrada.</TableCell>
+                             </TableRow>
                         )}
-                    
-                
-            
-        
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
     );
 }
 
 function BrandingSettings() {
     const { user, updateOrganizationBranding } = useAuth();
-    const [branding, setBranding] = useState({
+    const [branding, setBranding] = useState<BrandingSettings>({
         logoUrl: user?.organization?.branding?.logoUrl || '',
         primaryColor: user?.organization?.branding?.primaryColor || '',
     });
@@ -1068,7 +1075,7 @@ function BrandingSettings() {
         })
     }, [user?.organization?.branding]);
 
-    const handleImageUpload = (e: React.ChangeEvent) => {
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
             setIsUploading(true);
@@ -1081,17 +1088,17 @@ function BrandingSettings() {
         }
     };
 
-    const handleColorChange = (e: React.ChangeEvent) => {
+    const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { value } = e.target;
         // Basic HSL validation
-        if (/^\d1,3\s\d1,3%\s\d1,3%$/.test(value)) {
+        if (/^\d{1,3}\s\d{1,3}%\s\d{1,3}%$/.test(value)) {
             setBranding(prev => ({...prev, primaryColor: value}));
         } else {
              setBranding(prev => ({...prev, primaryColor: value}));
         }
     }
     
-    const handleSubmit = async (e: React.EventFormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSaving(true);
         try {
@@ -1106,63 +1113,70 @@ function BrandingSettings() {
     }
 
     return (
-        
-            
-                Branding da Organização
-                Personalize a aparência do sistema com a identidade visual da sua marca.
-            
-            
-                
-                    
-                        
-                            Logo
-                            Cores
-                        
-                        
-                             
-                                URL do Logo
-                                
-                                     placeholder="https://exemplo.com/logo.png" 
-                                
-                            
-                        
-                        
-                             
-                                Cor Primária (HSL)
-                                
-                                     placeholder="Ex: 231 48% 48%"
-                                
-                                Insira o valor no formato HSL sem vírgulas. Ex:  231 48% 48%
-                            
-                        
-                    
+        <Card>
+            <CardHeader>
+                <CardTitle>Branding da Organização</CardTitle>
+                <CardDescription>Personalize a aparência do sistema com a identidade visual da sua marca.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <Tabs defaultValue="logo" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="logo"><Upload className="mr-2 h-4 w-4" /> Logo</TabsTrigger>
+                            <TabsTrigger value="colors"><Palette className="mr-2 h-4 w-4" /> Cores</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="logo" className="pt-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="logoUrl">URL do Logo</Label>
+                                <Input 
+                                    id="logoUrl" 
+                                    name="logoUrl" 
+                                    value={branding.logoUrl || ''} 
+                                    onChange={(e) => setBranding(prev => ({...prev, logoUrl: e.target.value}))} 
+                                    placeholder="https://exemplo.com/logo.png" 
+                                />
+                            </div>
+                        </TabsContent>
+                        <TabsContent value="colors" className="pt-4">
+                             <div className="space-y-2">
+                                <Label htmlFor="primaryColor">Cor Primária (HSL)</Label>
+                                <Input 
+                                    id="primaryColor" 
+                                    name="primaryColor" 
+                                    value={branding.primaryColor || ''} 
+                                    onChange={handleColorChange}
+                                    placeholder='Ex: 231 48% 48%'
+                                />
+                                <p className="text-sm text-muted-foreground">Insira o valor no formato HSL sem vírgulas. Ex: `231 48% 48%`</p>
+                            </div>
+                        </TabsContent>
+                    </Tabs>
 
                     {branding.logoUrl && (
-                        
-                            Pré-visualização do Logo
-                            
-                                
-                                
-                            
-                        
+                        <div>
+                            <Label>Pré-visualização do Logo</Label>
+                            <div className="mt-2 rounded-md border p-2 flex justify-center items-center h-24 w-24">
+                                <Image src={branding.logoUrl} alt="Pré-visualização do logo" width={80} height={80} className="object-contain h-full w-full" data-ai-hint="company logo" />
+                            </div>
+                        </div>
                     )}
                     
-                    
-                        {isSaving   }
+                    <Button type="submit" disabled={isSaving}>
+                        {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                         Salvar Branding
-                    
-                
-            
-        
+                    </Button>
+                </form>
+            </CardContent>
+        </Card>
     );
 }
 
 function RolesSettings() {
     const { user } = useAuth();
-    const [profiles, setProfiles] = useState([]);
+    const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingProfile, setEditingProfile] = useState(undefined);
+    const [editingProfile, setEditingProfile] = useState<PermissionProfile | undefined>(undefined);
     const { toast } = useToast();
 
     useEffect(() => {
@@ -1179,7 +1193,7 @@ function RolesSettings() {
         return () => unsubscribe();
     }, [user]);
 
-    const handleSave = async (profileData: PartialPermissionProfile) => {
+    const handleSave = async (profileData: Partial<PermissionProfile>) => {
         if (!user?.organizationId) return;
 
         try {
@@ -1207,61 +1221,69 @@ function RolesSettings() {
     };
     
     return (
-        
-            
-                
-                    
-                        Perfis e Permissões
-                        Crie perfis de usuário e defina quais módulos cada um pode acessar.
-                    
-                     Adicionar Perfil
-                
-            
-            
-                
-                    
-                        Nome do Perfil
-                        Permissões
-                        Ações
-                    
-                    
+        <Card>
+            <CardHeader>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                    <div>
+                        <CardTitle>Perfis e Permissões</CardTitle>
+                        <CardDescription>
+                            Crie perfis de usuário e defina quais módulos cada um pode acessar.
+                        </CardDescription>
+                    </div>
+                     <Button onClick={() => { setEditingProfile(undefined); setIsFormOpen(true); }}>
+                        <PlusCircle className="mr-2" /> Adicionar Perfil
+                    </Button>
+                </div>
+            </CardHeader>
+            <CardContent>
+                 <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Nome do Perfil</TableHead>
+                            <TableHead>Permissões</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
                         {loading ? (
-                             
+                            <TableRow><TableCell colSpan={3}><Skeleton className="h-5 w-full"/></TableCell></TableRow>
                         ) : profiles.map(profile => (
-                             
-                                {profile.name}
-                                
-                                    {Object.entries(profile.permissions)
-                                        .filter(([, perms]) => perms.view)
-                                        .map(([key]) => (
-                                        {key}
-                                    ))}
-                                
-                                
-                                    
-                                
-                            
+                            <TableRow key={profile.id}>
+                                <TableCell className="font-medium">{profile.name}</TableCell>
+                                <TableCell>
+                                    <div className="flex flex-wrap gap-1">
+                                        {Object.entries(profile.permissions)
+                                            .filter(([, perms]) => perms.view)
+                                            .map(([key]) => (
+                                            <Badge key={key} variant="outline">{key}</Badge>
+                                        ))}
+                                    </div>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                    <Button variant="ghost" size="icon" onClick={() => { setEditingProfile(profile); setIsFormOpen(true);}}>
+                                        <Pencil className="h-4 w-4"/>
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
                         ))}
-                    
-                
-
-                 
-                     
-                         
-                             {editingProfile ? 'Editar Perfil' : 'Novo Perfil'}
-                         
-                         
-                             
-                                 
-                                 
-                                 
-                                 
-                             
-                         
-                     
-                 
-            
-        
+                    </TableBody>
+                </Table>
+                <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                    <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>{editingProfile ? 'Editar Perfil' : 'Novo Perfil'}</DialogTitle>
+                        </DialogHeader>
+                        <PermissionProfileForm
+                            profile={editingProfile}
+                            organization={user!.organization!}
+                            onSave={handleSave}
+                            onDelete={handleDelete}
+                            onDone={() => setIsFormOpen(false)}
+                        />
+                    </DialogContent>
+                </Dialog>
+            </CardContent>
+        </Card>
     );
 }
 
@@ -1298,33 +1320,39 @@ function TestDataSettings() {
     };
 
     return (
-        
-            
-                Dados de Teste
-                Esta ação excluirá permanentemente todos os produtos, combos, kits, vendas e entradas de estoque da sua organização.
-                Use para limpar o ambiente de teste. Esta ação é irreversível e só pode ser executada uma vez.
-            
-            
-                
-                     
-                         
-                            
-                                Você tem certeza absoluta?
+        <Card className="border-destructive">
+            <CardHeader>
+                <CardTitle>Dados de Teste</CardTitle>
+                <CardDescription>
+                    Esta ação excluirá permanentemente todos os produtos, combos, kits, vendas e entradas de estoque da sua organização.
+                    Use para limpar o ambiente de teste. Esta ação é irreversível e só pode ser executada uma vez.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                         <Button variant="destructive" disabled={isDeleting}>
+                            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Excluir Dados de Teste
+                         </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Você tem certeza absoluta?</AlertDialogTitle>
+                            <AlertDialogDescription>
                                 Esta ação não pode ser desfeita. Todos os dados transacionais (produtos, vendas, combos, kits) serão removidos permanentemente.
-                            
-                         
-                         
-                            
-                                Cancelar
-                                
-                                    Sim, excluir tudo
-                                
-                            
-                         
-                     
-                
-            
-        
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDelete} className={buttonVariants({ variant: "destructive" })}>
+                                Sim, excluir tudo
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            </CardContent>
+        </Card>
     );
 }
 
@@ -1335,187 +1363,73 @@ function SettingsPageContent() {
     
     if (!user?.enabledModules?.settings?.view) {
         return (
-             
-                
-                    
-                         Acesso Negado
-                    
-                    
-                        Você não tem permissão para acessar a página de configurações.
-                    
-                
-            
+             <div className="flex h-full items-center justify-center">
+                <Card className="w-full max-w-md text-center">
+                    <CardHeader>
+                        <CardTitle className="flex items-center justify-center gap-2"><Lock /> Acesso Negado</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <p>Você não tem permissão para acessar a página de configurações.</p>
+                    </CardContent>
+                </Card>
+            </div>
         );
     }
 
     return (
-        
-            
-                
-                    
-                        Configurações
-                        Gerencie as configurações gerais do sistema.
-                    
-                
-                
-                    
-                        
-                            Usuários
-                            Filiais
-                            Fornecedores
-                            Pagamentos
-                            Branding
-                            Perfis &amp; Permissões
-                            {user?.enabledModules?.customers?.view && (
-                                Anamnese
-                            )}
-                        
-                        
-                           
-                        
-                        
-                           
-                        
-                        
-                           
-                        
-                        
-                           
-                        
-                        
-                           
-                        
-                         {user?.enabledModules?.customers?.view && (
-                            
-                        )}
-                    
-                
-             
-            
-        
-    )
-}
-
-function SupplierForm({ 
-    supplier, 
-    products,
-    onSave, 
-    onDone 
-}: { 
-    supplier?: Supplier; 
-    products: Product[];
-    onSave: (data: PartialSupplier, productsToLink: string[], productsToUnlink: string[]) => void; 
-    onDone: () => void 
-}) {
-    const [formData, setFormData] = useState({ name: '', contactName: '', phone: '', email: '', address: '' });
-    const [selectedProductIds, setSelectedProductIds] = useState([]);
-    const [initialProductIds, setInitialProductIds] = useState([]);
-
-    useEffect(() => {
-        if (supplier) {
-            setFormData(supplier);
-            const linkedIds = products.filter(p => p.supplierId === supplier.id).map(p => p.id);
-            setSelectedProductIds(linkedIds);
-            setInitialProductIds(linkedIds);
-        } else {
-            setFormData({ name: '', contactName: '', phone: '', email: '', address: '' });
-            setSelectedProductIds([]);
-            setInitialProductIds([]);
-        }
-    }, [supplier, products]);
-
-    const handleChange = (e: React.ChangeEvent) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({...prev, [name]: value}));
-    };
-    
-    const handleProductSelection = (productId: string) => {
-        setSelectedProductIds(prev => 
-            prev.includes(productId) ? prev.filter(id => id !== productId) : [...prev, productId]
-        );
-    }
-    
-    const handleSubmit = (e: React.EventFormEvent) => {
-        e.preventDefault();
-        const productsToLink = selectedProductIds.filter(id => !initialProductIds.includes(id));
-        const productsToUnlink = initialProductIds.filter(id => !selectedProductIds.includes(id));
-        onSave(formData, productsToLink, productsToUnlink);
-    }
-
-    return (
-         
-            
-                
-                    Nome do Fornecedor
-                    
-                         placeholder="Nome do Fornecedor" required 
-                    
-                
-                
-                    
-                        
-                            Nome do Contato
-                            
-                                 placeholder="Nome do Contato" 
-                            
-                        
-                        
-                            Telefone
-                            
-                                 placeholder="Telefone" 
-                            
-                        
-                    
-                     
-                        Email
-                        
-                             placeholder="Email" 
-                        
-                    
-                    
-                        Endereço
-                        
-                             placeholder="Endereço" 
-                        
-                    
-                
-
-                
-                    Produtos Vinculados
-                    
-                        
-                            
-                            
-                                {products.map(product => (
-                                    
-                                        
-                                             
-                                            
-                                            {product.name}
-                                        
-                                    
-                                ))}
-                            
-                        
-                    
-                
-            
-            
-                
-                    Cancelar
-                    Salvar Fornecedor
-                
-            
-        
+        <div className="space-y-6">
+            <div>
+                <h1 className="text-3xl font-bold">Configurações</h1>
+                <p className="text-muted-foreground">Gerencie as configurações gerais do sistema.</p>
+            </div>
+            <Tabs defaultValue={tab} className="space-y-4">
+                <TabsList>
+                    <TabsTrigger value="users">Usuários</TabsTrigger>
+                    <TabsTrigger value="branches">Filiais</TabsTrigger>
+                    <TabsTrigger value="suppliers"><Truck className="mr-2 h-4 w-4"/>Fornecedores</TabsTrigger>
+                    <TabsTrigger value="payments">Pagamentos</TabsTrigger>
+                    <TabsTrigger value="branding">Branding</TabsTrigger>
+                    <TabsTrigger value="roles">Perfis &amp; Permissões</TabsTrigger>
+                    {user?.enabledModules?.customers?.view && (
+                        <TabsTrigger value="anamnesis">Anamnese</TabsTrigger>
+                    )}
+                </TabsList>
+                <TabsContent value="users">
+                   <UsersTable />
+                </TabsContent>
+                <TabsContent value="branches">
+                   <BranchesSettings />
+                </TabsContent>
+                <TabsContent value="suppliers">
+                    <SuppliersSettings />
+                </TabsContent>
+                <TabsContent value="payments">
+                    <PaymentConditions />
+                </TabsContent>
+                <TabsContent value="branding">
+                    <BrandingSettings />
+                </TabsContent>
+                 <TabsContent value="roles">
+                    <RolesSettings />
+                </TabsContent>
+                 {user?.enabledModules?.customers?.view && (
+                    <TabsContent value="anamnesis">
+                        <AnamnesisSettings />
+                    </TabsContent>
+                 )}
+            </Tabs>
+             <Separator />
+            <TestDataSettings />
+        </div>
     )
 }
 
 function SuppliersSettings() {
-    const [suppliers, setSuppliers] = useState([]);
-    const [products, setProducts] = useState([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingSupplier, setEditingSupplier] = useState(undefined);
+    const [editingSupplier, setEditingSupplier] = useState<Supplier | undefined>(undefined);
     const { user, currentBranch } = useAuth();
     const { toast } = useToast();
     
@@ -1528,22 +1442,25 @@ function SuppliersSettings() {
             setLoading(false);
         });
 
-        if (currentBranch?.id) {
-            const qProducts = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
-            const unsubProducts = onSnapshot(qProducts, (snapshot) => {
-                setProducts(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as Product)));
-            });
-            return () => { unsubSuppliers(); unsubProducts(); };
-        }
+        const qProducts = query(collection(db, 'products'), where('organizationId', '==', user.organizationId));
+        const unsubProducts = onSnapshot(qProducts, (snapshot) => {
+             setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+        });
 
-        return () => unsubSuppliers();
-    }, [user, currentBranch]);
+        return () => { unsubSuppliers(); unsubProducts(); };
+    }, [user]);
 
-    const handleSave = async (data: PartialSupplier, productsToLink: string[], productsToUnlink: string[]) => {
-        if (!user?.organizationId || !currentBranch?.id) return;
+    const productsForCurrentBranch = useMemo(() => {
+        if (!currentBranch) return [];
+        return products.filter(p => p.branchId === currentBranch.id);
+    }, [products, currentBranch]);
+
+    const handleSave = async (data: Partial<Supplier>, productsToLink: string[], productsToUnlink: string[]) => {
+        if (!user?.organizationId) return;
         
         const isEditing = !!editingSupplier;
         const supplierId = editingSupplier?.id || doc(collection(db, 'suppliers')).id;
+        const supplierName = data.name;
 
         const batch = writeBatch(db);
 
@@ -1558,7 +1475,7 @@ function SuppliersSettings() {
         // 2. Link products
         productsToLink.forEach(productId => {
             const productRef = doc(db, 'products', productId);
-            batch.update(productRef, { supplierId: supplierId, supplierName: data.name });
+            batch.update(productRef, { supplierId: supplierId, supplierName: supplierName });
         });
 
         // 3. Unlink products
@@ -1586,69 +1503,72 @@ function SuppliersSettings() {
     };
 
     return (
-        
-            
-                 
-                    
-                        Fornecedores
-                        Gerencie os fornecedores dos seus produtos.
-                    
-                    Adicionar Fornecedor
-                
-            
-            
-                 
-                    
-                        Nome
-                        Contato
-                        Telefone
-                        Email
-                        Ações
-                    
-                    
-                        {loading   
-                               {s.name}
-                                {s.contactName}
-                                {s.phone}
-                                {s.email}
-                                
-                                     
-                                         
-                                             Editar
-                                             Excluir
-                                         
-                                     
-                                 
-                            
+        <Card>
+            <CardHeader>
+                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                    <div>
+                        <CardTitle>Fornecedores</CardTitle>
+                        <CardDescription>Gerencie os fornecedores dos seus produtos.</CardDescription>
+                    </div>
+                    <Button onClick={() => { setEditingSupplier(undefined); setIsFormOpen(true); }}><PlusCircle className="mr-2" /> Adicionar Fornecedor</Button>
+                </div>
+            </CardHeader>
+            <CardContent>
+                 <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Nome</TableHead>
+                            <TableHead>Contato</TableHead>
+                            <TableHead>Telefone</TableHead>
+                            <TableHead>Email</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {loading ? <TableRow><TableCell colSpan={5}><Skeleton className="h-5"/></TableCell></TableRow> :
+                        suppliers.map(s => (
+                            <TableRow key={s.id}>
+                                <TableCell>{s.name}</TableCell>
+                                <TableCell>{s.contactName}</TableCell>
+                                <TableCell>{s.phone}</TableCell>
+                                <TableCell>{s.email}</TableCell>
+                                <TableCell className="text-right">
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4"/></Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent>
+                                            <DropdownMenuItem onClick={() => { setEditingSupplier(s); setIsFormOpen(true); }}>Editar</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => handleDelete(s.id)} className="text-destructive focus:text-destructive">Excluir</DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </TableCell>
+                            </TableRow>
                         ))}
-                    
-                
-            
-
-                 
-                     
-                         
-                             {editingSupplier ? 'Editar Fornecedor' : 'Novo Fornecedor'}
-                         
-                         
-                             
-                                 
-                                 
-                                 
-                                 
-                             
-                         
-                     
-                 
-            
-        
+                    </TableBody>
+                </Table>
+            </CardContent>
+             <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                <DialogContent className="sm:max-w-xl">
+                    <DialogHeader>
+                        <DialogTitle>{editingSupplier ? 'Editar Fornecedor' : 'Novo Fornecedor'}</DialogTitle>
+                    </DialogHeader>
+                    <SupplierForm 
+                        supplier={editingSupplier} 
+                        products={productsForCurrentBranch}
+                        onSave={handleSave} 
+                        onDone={() => setIsFormOpen(false)} />
+                </DialogContent>
+            </Dialog>
+        </Card>
     )
 }
 
 export default function SettingsPage() {
     return (
-        
-            
-        
+        <React.Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
+            <SettingsPageContent />
+        </React.Suspense>
     )
 }
+

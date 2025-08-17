@@ -29,6 +29,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { DateRange } from 'react-day-picker';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
+import { allModuleConfig } from '@/components/module-permission-row';
 
 type OrgWithUser = Organization & { owner?: User };
 
@@ -435,18 +436,6 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
         }
     };
 
-    const moduleConfig = [
-        { key: 'customers', label: 'Clientes' },
-        { key: 'services', label: 'Serviços' },
-        { key: 'appointments', label: 'Agendamentos' },
-        { key: 'pos', label: 'Frente de Caixa (PDV)' },
-        { key: 'combos', label: 'Combos Promocionais' },
-        { key: 'kits', label: 'Kits Dinâmicos' },
-        { key: 'assistant', label: 'Oráculo AI' },
-        { key: 'reports', label: 'Relatórios Gerenciais' },
-        { key: 'expenses', label: 'Despesas' },
-    ] as const;
-
     if (!isOpen) return null;
 
     return (
@@ -457,7 +446,7 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
                     <DialogDescription>Habilite ou desabilite funcionalidades para a organização "{organization.name}".</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
-                     {moduleConfig.map(mod => (
+                     {allModuleConfig.map(mod => (
                         <div key={mod.key} className="flex flex-row items-center justify-between rounded-lg border p-4">
                             <Label htmlFor={`module-${mod.key}`} className="text-base">{mod.label}</Label>
                             <Switch

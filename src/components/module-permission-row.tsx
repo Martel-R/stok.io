@@ -4,6 +4,24 @@ import * as React from 'react';
 import { TableRow, TableCell } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { ModulePermissions, EnabledModules } from '@/lib/types';
+import { Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, ArrowDownCircle } from 'lucide-react';
+
+export const allModuleConfig = [
+    { key: 'dashboard', label: 'Início', icon: Home },
+    { key: 'customers', label: 'Clientes', icon: Users },
+    { key: 'services', label: 'Serviços', icon: Briefcase },
+    { key: 'appointments', label: 'Agendamentos', icon: Calendar },
+    { key: 'products', label: 'Produtos', icon: Package },
+    { key: 'combos', label: 'Combos', icon: Gift },
+    { key: 'kits', label: 'Kits', icon: Component },
+    { key: 'inventory', label: 'Estoque', icon: BarChart },
+    { key: 'pos', label: 'Frente de Caixa', icon: ShoppingCart },
+    { key: 'expenses', label: 'Despesas', icon: ArrowDownCircle },
+    { key: 'assistant', label: 'Oráculo AI', icon: Bot },
+    { key: 'reports', label: 'Relatórios', icon: FileText },
+    { key: 'settings', label: 'Configurações', icon: Settings },
+] as const;
+
 
 interface ModulePermissionRowProps {
     module: {

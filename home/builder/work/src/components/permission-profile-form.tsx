@@ -1,5 +1,4 @@
 
-
 'use client';
 import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
@@ -10,25 +9,9 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, ArrowDownCircle } from 'lucide-react';
-import { ModulePermissionRow } from '@/components/module-permission-row';
+import { allModuleConfig } from '@/components/module-permission-row';
 import { Checkbox } from './ui/checkbox';
 
-const allModuleConfig = [
-    { key: 'dashboard', label: 'Início', icon: Home },
-    { key: 'customers', label: 'Clientes', icon: Users },
-    { key: 'services', label: 'Serviços', icon: Briefcase },
-    { key: 'appointments', label: 'Agendamentos', icon: Calendar },
-    { key: 'products', label: 'Produtos', icon: Package },
-    { key: 'combos', label: 'Combos', icon: Gift },
-    { key: 'kits', label: 'Kits', icon: Component },
-    { key: 'inventory', label: 'Estoque', icon: BarChart },
-    { key: 'pos', label: 'Frente de Caixa', icon: ShoppingCart },
-    { key: 'expenses', label: 'Despesas', icon: ArrowDownCircle },
-    { key: 'assistant', label: 'Oráculo AI', icon: Bot },
-    { key: 'reports', label: 'Relatórios', icon: FileText },
-    { key: 'settings', label: 'Configurações', icon: Settings },
-] as const;
 
 export function PermissionProfileForm({
     profile, organization, onSave, onDelete, onDone
@@ -41,9 +24,13 @@ export function PermissionProfileForm({
 }) {
     const [formData, setFormData] = useState<Partial<PermissionProfile>>({});
     
-    const activeModuleConfig = allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]);
+    const activeModuleConfig = React.useMemo(() => 
+        organization ? allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]) : [],
+    [allModuleConfig, organization]);
 
     useEffect(() => {
+        if (!organization) return;
+
         const defaultPermissions: Partial<EnabledModules> = {};
         activeModuleConfig.forEach(mod => {
             defaultPermissions[mod.key] = { view: false, edit: false, delete: false };
@@ -58,7 +45,7 @@ export function PermissionProfileForm({
             name: profile?.name || '',
             permissions: initialPermissions as EnabledModules,
         });
-    }, [profile, activeModuleConfig]);
+    }, [profile, activeModuleConfig, organization]);
 
     const handlePermissionChange = useCallback((
         module: keyof EnabledModules, 
@@ -116,6 +103,10 @@ export function PermissionProfileForm({
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave(formData);
+    }
+
+    if (!organization) {
+        return <div>Carregando informações da organização...</div>;
     }
 
     return (

@@ -338,7 +338,7 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
       
         <div className="space-y-2">
             <Label htmlFor="supplierId">Fornecedor</Label>
-            <Select value={formData.supplierId || 'none'} onValueChange={(val) => setFormData(prev => ({...prev, supplierId: val === 'none' ? undefined : val}))}>
+            <Select value={formData.supplierId || 'none'} onValueChange={(val) => setFormData(prev => ({...prev, supplierId: val === 'none' ? '' : val}))}>
                 <SelectTrigger>
                     <SelectValue placeholder="Selecione um fornecedor..."/>
                 </SelectTrigger>

@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -44,7 +43,7 @@ function ExpenseForm({ expense, suppliers, onSave, onDone }: { expense?: Expense
             category: expenseCategories[0],
             date: new Date(),
             notes: '',
-            supplierId: ''
+            supplierId: undefined
         }
     );
 
@@ -57,7 +56,7 @@ function ExpenseForm({ expense, suppliers, onSave, onDone }: { expense?: Expense
     };
 
     const handleSelectChange = (name: string, value: string) => {
-        setFormData(prev => ({ ...prev, [name]: value === 'none' ? '' : value }));
+        setFormData(prev => ({ ...prev, [name]: value === 'none' ? undefined : value }));
     };
     
     const handleDateChange = (date: Date | undefined) => {

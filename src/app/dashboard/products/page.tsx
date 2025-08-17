@@ -750,8 +750,8 @@ export default function ProductsPage() {
         selectedProductIds.forEach(id => {
             const productRef = doc(db, 'products', id);
             batch.update(productRef, { 
-                supplierId: newSupplierId || null,
-                supplierName: newSupplier?.name || ''
+                supplierId: newSupplierId === 'none' ? null : newSupplierId,
+                supplierName: newSupplierId === 'none' ? '' : (newSupplier?.name || '')
              });
         });
 
@@ -809,7 +809,7 @@ export default function ProductsPage() {
                             <DropdownMenuItem onClick={() => handleBulkUpdateSalable(true)}>
                                 Marcar como Comerciável
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleBulkUpdateSalable(false)}>
+                            <DropdownMenuItem onClick={()={() => handleBulkUpdateSalable(false)}>
                                 Marcar como Não Comerciável
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => setIsChangeCategoryDialogOpen(true)}>
@@ -1134,3 +1134,6 @@ export default function ProductsPage() {
 
 
 
+
+
+    

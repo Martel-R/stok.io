@@ -1066,7 +1066,7 @@ function BrandingSettings() {
         logoUrl: user?.organization?.branding?.logoUrl || '',
         primaryColor: user?.organization?.branding?.primaryColor || '',
     });
-    const [isUploading, setIsUploading] = useState(false);
+    const [isUploading, setIsUploading] = useState(isUploading);
     const [isSaving, setIsSaving] = useState(false);
     const { toast } = useToast();
 
@@ -1262,7 +1262,7 @@ function RolesSettings() {
                                     </div>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                    <Button variant="ghost" size="icon" onClick={() => { setEditingProfile(profile); setIsFormOpen(true);}}>
+                                    <Button variant="ghost" size="icon" onClick={()={() => { setEditingProfile(profile); setIsFormOpen(true);}}>
                                         <Pencil className="h-4 w-4"/>
                                     </Button>
                                 </TableCell>
@@ -1426,98 +1426,6 @@ function SettingsPageContent() {
     )
 }
 
-function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Supplier; products: Product[]; onSave: (data: Partial<Supplier>, productsToLink: string[], productsToUnlink: string[]) => void; onDone: () => void }) {
-    const [formData, setFormData] = useState<Partial<Supplier>>(
-        supplier || { name: '', contactName: '', phone: '', email: '', address: '' }
-    );
-    const [linkedProductIds, setLinkedProductIds] = useState<string[]>([]);
-    
-    useEffect(() => {
-        if (supplier) {
-            setFormData(supplier);
-            const initiallyLinked = products.filter(p => p.supplierId === supplier.id).map(p => p.id);
-            setLinkedProductIds(initiallyLinked);
-        } else {
-             setFormData({ name: '', contactName: '', phone: '', email: '', address: '' });
-             setLinkedProductIds([]);
-        }
-    }, [supplier, products]);
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({...prev, [name]: value}));
-    };
-
-    const toggleProductLink = (productId: string) => {
-        setLinkedProductIds(prev =>
-            prev.includes(productId) ? prev.filter(id => id !== productId) : [...prev, productId]
-        );
-    };
-    
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-
-        const originalLinked = products.filter(p => p.supplierId === supplier?.id).map(p => p.id);
-        const productsToLink = linkedProductIds.filter(id => !originalLinked.includes(id));
-        const productsToUnlink = originalLinked.filter(id => !linkedProductIds.includes(id));
-        
-        onSave(formData, productsToLink, productsToUnlink);
-        onDone();
-    }
-
-    return (
-         <form onSubmit={handleSubmit} className="space-y-4 pt-4 max-h-[80vh] overflow-y-auto pr-4">
-            <div className="space-y-2">
-                <Label htmlFor="name">Nome do Fornecedor</Label>
-                <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} required />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <Label htmlFor="contactName">Nome do Contato</Label>
-                    <Input id="contactName" name="contactName" value={formData.contactName || ''} onChange={handleChange} />
-                </div>
-                <div className="space-y-2">
-                    <Label htmlFor="phone">Telefone</Label>
-                    <Input id="phone" name="phone" value={formData.phone || ''} onChange={handleChange} />
-                </div>
-            </div>
-             <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" name="email" type="email" value={formData.email || ''} onChange={handleChange} />
-            </div>
-            <div className="space-y-2">
-                <Label htmlFor="address">Endereço</Label>
-                <Input id="address" name="address" value={formData.address || ''} onChange={handleChange} />
-            </div>
-            {supplier && (
-                 <div className="space-y-2">
-                    <Label>Produtos Associados (Filial Atual)</Label>
-                    <ScrollArea className="h-40 rounded-md border p-4">
-                        {products.map(p => (
-                            (p.supplierId === supplier.id || !p.supplierId) && (
-                                <div key={p.id} className="flex items-center space-x-2">
-                                    <Checkbox
-                                        id={`product-${p.id}`}
-                                        checked={linkedProductIds.includes(p.id)}
-                                        onCheckedChange={() => toggleProductLink(p.id)}
-                                    />
-                                    <label htmlFor={`product-${p.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                        {p.name}
-                                    </label>
-                                </div>
-                            )
-                        ))}
-                    </ScrollArea>
-                </div>
-            )}
-             <DialogFooter>
-                <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
-                <Button type="submit">Salvar Fornecedor</Button>
-            </DialogFooter>
-        </form>
-    )
-}
-
 function SuppliersSettings() {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
@@ -1660,9 +1568,11 @@ function SuppliersSettings() {
 
 export default function SettingsPage() {
     return (
-        <React.Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
+        <React.Suspense fallback={<Skeleton className="h-[400px] w-full" />} >
             <SettingsPageContent />
         </React.Suspense>
     )
 }
+
+
 

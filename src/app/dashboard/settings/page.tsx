@@ -1,3 +1,5 @@
+
+
 'use client';
 
 import * as React from 'react';
@@ -14,7 +16,7 @@ import type { User, Branch, PaymentCondition, PaymentConditionType, Product, Ena
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash, Lock, Truck } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash, Lock, Truck, ArrowDownCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -337,6 +339,8 @@ function BranchesSettings() {
                         purchasePrice: product.price * 0.6,
                         marginType: 'percentage',
                         marginValue: 66.67,
+                        supplierId: '',
+                        supplierName: ''
                     };
                     batch.set(productDocRef, productWithBranchInfo);
                 });
@@ -1304,16 +1308,19 @@ function PermissionProfileForm({
         { key: 'kits', label: 'Kits', icon: Component },
         { key: 'inventory', label: 'Estoque', icon: BarChart },
         { key: 'pos', label: 'Frente de Caixa', icon: ShoppingCart },
+        { key: 'expenses', label: 'Despesas', icon: ArrowDownCircle },
         { key: 'assistant', label: 'Oráculo AI', icon: Bot },
         { key: 'reports', label: 'Relatórios', icon: FileText },
         { key: 'settings', label: 'Configurações', icon: Settings },
     ] as const, []);
 
     const activeModuleConfig = React.useMemo(() => 
-        allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]),
-    [allModuleConfig, organization.enabledModules]);
+        organization ? allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]) : [],
+    [allModuleConfig, organization]);
 
     useEffect(() => {
+        if (!organization) return;
+        
         const defaultPermissions: Partial<EnabledModules> = {};
         activeModuleConfig.forEach(mod => {
             defaultPermissions[mod.key] = { view: false, edit: false, delete: false };
@@ -1328,7 +1335,7 @@ function PermissionProfileForm({
             name: profile?.name || '',
             permissions: initialPermissions as EnabledModules,
         });
-    }, [profile, activeModuleConfig]);
+    }, [profile, activeModuleConfig, organization]);
 
     const handlePermissionChange = (
         module: keyof EnabledModules, 
@@ -1385,6 +1392,14 @@ function PermissionProfileForm({
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave(formData);
+    }
+    
+    if (!organization) {
+        return (
+            <div className="flex justify-center items-center h-48">
+                <Loader2 className="animate-spin" />
+            </div>
+        );
     }
 
     return (
@@ -1878,4 +1893,3 @@ export default function SettingsPage() {
         </React.Suspense>
     )
 }
-

@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, ArrowDownCircle } from 'lucide-react';
+import { Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, ArrowDownCircle, Loader2 } from 'lucide-react';
 import { ModulePermissionRow } from '@/components/module-permission-row';
 import { Checkbox } from './ui/checkbox';
 
@@ -41,9 +41,13 @@ export function PermissionProfileForm({
 }) {
     const [formData, setFormData] = useState<Partial<PermissionProfile>>({});
     
-    const activeModuleConfig = allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]);
+    const activeModuleConfig = React.useMemo(() => 
+        organization ? allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]) : [],
+    [organization]);
 
     useEffect(() => {
+        if (!organization) return;
+
         const defaultPermissions: Partial<EnabledModules> = {};
         activeModuleConfig.forEach(mod => {
             defaultPermissions[mod.key] = { view: false, edit: false, delete: false };
@@ -58,7 +62,7 @@ export function PermissionProfileForm({
             name: profile?.name || '',
             permissions: initialPermissions as EnabledModules,
         });
-    }, [profile, activeModuleConfig]);
+    }, [profile, activeModuleConfig, organization]);
 
     const handlePermissionChange = useCallback((
         module: keyof EnabledModules, 
@@ -116,6 +120,14 @@ export function PermissionProfileForm({
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave(formData);
+    }
+
+    if (!organization) {
+        return (
+            <div className="flex justify-center items-center h-48">
+                <Loader2 className="animate-spin" />
+            </div>
+        );
     }
 
     return (

@@ -64,6 +64,7 @@ const defaultPermissions: EnabledModules = {
     customers: { view: true, edit: true, delete: true },
     appointments: { view: true, edit: true, delete: true },
     services: { view: true, edit: true, delete: true },
+    expenses: { view: true, edit: true, delete: true },
 };
 
 const professionalPermissions: EnabledModules = {
@@ -95,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       // Clean up previous listeners
       unsubscribers.forEach(unsub => unsub());
-      unsubscribers = [];
+      unsubscribers.length = 0;
       
       setLoading(true);
 
@@ -109,12 +110,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         const baseUser = { id: userDocSnap.id, ...userDocSnap.data() } as User;
         const isSuperAdmin = baseUser.email === process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL;
-        const impersonatedOrgId = typeof window !== 'undefined' ? localStorage.getItem('impersonatedOrgId') : null;
+        const impersonatedOrgId = localStorage.getItem('impersonatedOrgId');
         const isImpersonating = isSuperAdmin && !!impersonatedOrgId;
 
         const effectiveOrgId = isImpersonating ? impersonatedOrgId : baseUser.organizationId;
         
-        let userData: UserWithOrg = { ...baseUser, isImpersonating, organizationId: effectiveOrgId };
+        let userData: UserWithOrg = { ...baseUser, isImpersonating };
 
         // Super Admin NOT impersonating - special view
         if (isSuperAdmin && !isImpersonating) {
@@ -122,13 +123,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const unsub = onSnapshot(allOrgsQuery, (snapshot) => {
                 const orgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Organization));
                 setOrganizations(orgs);
+                // Grant full permissions for the Super Admin panel itself
                 setUser({ ...userData, enabledModules: defaultPermissions });
                 setBranches([]);
                 setCurrentBranchState(null);
                 setLoading(false);
             });
             unsubscribers.push(unsub);
-            return;
+            return; // Exit here for Super Admin view
         }
 
         // Regular user or Impersonating Super Admin
@@ -144,15 +146,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 let finalPermissions: Partial<EnabledModules> = {};
 
                 if (isImpersonating || baseUser.role === 'admin') {
-                    Object.keys(defaultPermissions).forEach(key => {
-                        const moduleKey = key as keyof EnabledModules;
-                        if (orgModules[moduleKey] !== undefined) {
-                            finalPermissions[moduleKey] = { view: true, edit: true, delete: true };
-                        } else {
-                            finalPermissions[moduleKey] = { view: false, edit: false, delete: false };
-                        }
+                    // Super admin impersonating OR a regular admin: gets all modules enabled by the org
+                    Object.keys(orgModules).forEach(key => {
+                      const moduleKey = key as keyof EnabledModules;
+                      if (orgModules[moduleKey]) {
+                        finalPermissions[moduleKey] = { view: true, edit: true, delete: true };
+                      }
                     });
                 } else {
+                    // Regular user: permissions based on profile
                     const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId));
                     const profilesSnap = await getDocs(profilesQuery);
                     const profiles = profilesSnap.docs.map(p => ({ id: p.id, ...p.data() } as PermissionProfile));
@@ -171,6 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 userData = { ...userData, organization: orgData, enabledModules: finalPermissions as EnabledModules, paymentStatus: orgData.paymentStatus };
                 setUser(userData);
                 
+                // Fetch branches for the organization
                 const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId));
                 const unsubBranches = onSnapshot(branchesQuery, (branchSnap) => {
                     const orgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
@@ -196,9 +199,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             });
             unsubscribers.push(unsubOrg);
         } else {
+            // User without an org ID
             setUser(null); setLoading(false);
         }
       } else {
+        // No Firebase user
         setUser(null);
         setOrganizations([]);
         setBranches([]);

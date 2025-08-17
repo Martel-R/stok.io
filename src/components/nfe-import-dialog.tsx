@@ -1,3 +1,4 @@
+
 // src/components/nfe-import-dialog.tsx
 'use client';
 import { useState } from 'react';
@@ -13,6 +14,7 @@ import type { Product, Expense, StockEntry } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 import { db } from '@/lib/firebase';
 import { collection, writeBatch, doc, getDocs, query, where, addDoc } from 'firebase/firestore';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
 interface NfeProduct {
     code: string;
@@ -100,7 +102,8 @@ export function NfeImportDialog({ products }: { products: Product[] }) {
         try {
             for (const nfeProd of parsedData.products) {
                 let productDocId: string;
-                const q = query(productsRef, where("branchId", "==", currentBranch.id), where("code", "==", nfeProd.code));
+                // NF-e 'code' corresponds to Product 'barcode' for uniqueness within the branch
+                const q = query(productsRef, where("branchId", "==", currentBranch.id), where("barcode", "==", nfeProd.code));
                 const querySnapshot = await getDocs(q);
                 
                 if (querySnapshot.empty) {
@@ -109,7 +112,7 @@ export function NfeImportDialog({ products }: { products: Product[] }) {
                     productDocId = newProductRef.id;
                     const newProduct: Omit<Product, 'id'> = {
                         name: nfeProd.name,
-                        code: nfeProd.code,
+                        barcode: nfeProd.code, // Use barcode for the product code from NF-e
                         category: 'Importado NF-e',
                         price: nfeProd.unitPrice * 1.5, // Default 50% margin
                         purchasePrice: nfeProd.unitPrice,

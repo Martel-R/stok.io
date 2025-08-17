@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query, where, runTransaction, serverTimestamp, Timestamp } from 'firebase/firestore';
-import type { Product, StockEntry, Branch } from '@/lib/types';
+import type { Product, StockEntry, Branch, Supplier } from '@/lib/types';
 import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp, ListChecks, Search, Trash2, Camera, Barcode, Percent, Tag } from 'lucide-react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -31,6 +31,7 @@ import { StockMovementForm } from '@/components/stock-movement-form';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { RadioGroup } from '@/components/ui/radio-group';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
 
 type ProductWithStock = Product & { stock: number };
@@ -139,11 +140,11 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
 }
 
 
-function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (product: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => void; onDone: () => void }) {
+function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product; suppliers: Supplier[]; onSave: (product: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Product>>(
     product || { 
         name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
-        purchasePrice: 0, marginValue: 0, marginType: 'percentage'
+        purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: '', supplierName: ''
     }
   );
   const [isUploading, setIsUploading] = useState(false);
@@ -157,7 +158,7 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
     useEffect(() => {
         setFormData(product || { 
             name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
-            purchasePrice: 0, marginValue: 0, marginType: 'percentage'
+            purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: '', supplierName: ''
         });
     }, [product]);
 
@@ -272,8 +273,10 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const supplier = suppliers.find(s => s.id === formData.supplierId);
     onSave({
       ...formData,
+      supplierName: supplier ? supplier.name : '',
       imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png'
     } as Omit<Product, 'id' | 'branchId' | 'organizationId'>);
     onDone();
@@ -333,6 +336,19 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
         </CardContent>
       </Card>
       
+        <div className="space-y-2">
+            <Label htmlFor="supplierId">Fornecedor</Label>
+            <Select value={formData.supplierId || 'none'} onValueChange={(val) => setFormData(prev => ({...prev, supplierId: val === 'none' ? undefined : val}))}>
+                <SelectTrigger>
+                    <SelectValue placeholder="Selecione um fornecedor..."/>
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="none">Nenhum</SelectItem>
+                    {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                </SelectContent>
+            </Select>
+        </div>
+
       <div className="grid grid-cols-2 gap-4">
         <div>
           <Label htmlFor="lowStockThreshold">Alerta de Estoque Baixo</Label>
@@ -416,6 +432,7 @@ function ProductForm({ product, onSave, onDone }: { product?: Product; onSave: (
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<ProductWithStock[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isStockFormOpen, setIsStockFormOpen] = useState(false);
@@ -433,6 +450,9 @@ export default function ProductsPage() {
   const [isCopyProductsDialogOpen, setIsCopyProductsDialogOpen] = useState(false);
   const [branchesToCopyTo, setBranchesToCopyTo] = useState<string[]>([]);
   const [isProcessingBulkAction, setIsProcessingBulkAction] = useState(false);
+  const [isChangeSupplierDialogOpen, setIsChangeSupplierDialogOpen] = useState(false);
+  const [newSupplierId, setNewSupplierId] = useState("");
+
 
   const can = useMemo(() => ({
     edit: user?.enabledModules?.products?.edit ?? false,
@@ -485,7 +505,15 @@ export default function ProductsPage() {
         setLoading(false);
     });
 
-    return () => unsubscribeProducts();
+    const qSuppliers = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId));
+    const unsubscribeSuppliers = onSnapshot(qSuppliers, (snapshot) => {
+        setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
+    });
+
+    return () => {
+        unsubscribeProducts();
+        unsubscribeSuppliers();
+    };
   }, [currentBranch, authLoading, toast, user]);
 
   const filteredProducts = useMemo(() => {
@@ -710,6 +738,36 @@ export default function ProductsPage() {
         }
     };
 
+    const handleBulkChangeSupplier = async () => {
+        if (selectedProductIds.length === 0) {
+            toast({ title: 'Nenhum produto selecionado', variant: 'destructive' });
+            return;
+        }
+        setIsProcessingBulkAction(true);
+        const batch = writeBatch(db);
+        const newSupplier = suppliers.find(s => s.id === newSupplierId);
+
+        selectedProductIds.forEach(id => {
+            const productRef = doc(db, 'products', id);
+            batch.update(productRef, { 
+                supplierId: newSupplierId === 'none' ? '' : newSupplierId,
+                supplierName: newSupplierId === 'none' ? '' : (newSupplier?.name || '')
+             });
+        });
+
+        try {
+            await batch.commit();
+            toast({ title: 'Fornecedor atualizado com sucesso para os produtos selecionados!' });
+            setSelectedProductIds([]);
+            setNewSupplierId("");
+            setIsChangeSupplierDialogOpen(false);
+        } catch (error) {
+            toast({ title: 'Erro ao atualizar fornecedor', variant: 'destructive' });
+        } finally {
+            setIsProcessingBulkAction(false);
+        }
+    };
+
 
   if (!currentBranch && !authLoading) {
     return (
@@ -760,15 +818,20 @@ export default function ProductsPage() {
                              <DropdownMenuItem onClick={() => setIsChangeStockThresholdDialogOpen(true)}>
                                 Alterar Limite de Estoque
                             </DropdownMenuItem>
+                             <DropdownMenuItem onClick={() => setIsChangeSupplierDialogOpen(true)}>
+                                Alterar Fornecedor
+                            </DropdownMenuItem>
                              <DropdownMenuItem onClick={() => setIsCopyProductsDialogOpen(true)}>
                                 Copiar para Filial(is)
                             </DropdownMenuItem>
-                            {can.delete && <DropdownMenuSeparator />}
-                             {can.delete && <AlertDialogTrigger asChild>
-                                 <DropdownMenuItem className="text-destructive focus:text-destructive">
-                                    <Trash2 className="mr-2" /> Excluir Selecionados
-                                </DropdownMenuItem>
-                            </AlertDialogTrigger>}
+                            {can.delete && <>
+                                <DropdownMenuSeparator />
+                                <AlertDialogTrigger asChild>
+                                    <DropdownMenuItem className="text-destructive focus:text-destructive">
+                                        <Trash2 className="mr-2" /> Excluir Selecionados
+                                    </DropdownMenuItem>
+                                </AlertDialogTrigger>
+                            </>}
                         </DropdownMenuContent>
                     </DropdownMenu>
                     <AlertDialogContent>
@@ -825,7 +888,7 @@ export default function ProductsPage() {
                     <DialogHeader>
                         <DialogTitle>{editingProduct ? 'Editar Produto' : 'Adicionar Novo Produto'}</DialogTitle>
                     </DialogHeader>
-                    <ProductForm product={editingProduct} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
+                    <ProductForm product={editingProduct} suppliers={suppliers} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
                 </DialogContent>
             </Dialog>}
         </div>
@@ -855,6 +918,7 @@ export default function ProductsPage() {
             </TableHead>}
             <TableHead className="w-[80px]">Imagem</TableHead>
             <TableHead>Nome</TableHead>
+            <TableHead>Fornecedor</TableHead>
             <TableHead>Categoria</TableHead>
             <TableHead>Comerciável</TableHead>
             <TableHead className="text-right">Preço de Compra</TableHead>
@@ -872,6 +936,7 @@ export default function ProductsPage() {
                     <TableCell><Skeleton className="h-10 w-10 rounded-md" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-48" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
@@ -894,6 +959,7 @@ export default function ProductsPage() {
                    <Image src={product.imageUrl} alt={product.name} width={40} height={40} className="rounded-md object-cover aspect-square" data-ai-hint="product image" />
                 </TableCell>
                 <TableCell className="font-medium">{product.name}</TableCell>
+                <TableCell>{product.supplierName || '-'}</TableCell>
                 <TableCell>{product.category}</TableCell>
                 <TableCell>
                     <Badge variant={product.isSalable ? "secondary" : "outline"}>
@@ -926,7 +992,7 @@ export default function ProductsPage() {
             ))
           ) : (
              <TableRow>
-                <TableCell colSpan={can.edit ? 10 : 9} className="h-24 text-center">
+                <TableCell colSpan={can.edit ? 11 : 10} className="h-24 text-center">
                     Nenhum produto encontrado. Adicione produtos para começar.
                 </TableCell>
             </TableRow>
@@ -985,6 +1051,34 @@ export default function ProductsPage() {
             </DialogContent>
         </Dialog>
         
+        {/* Dialog for Changing Supplier */}
+        <Dialog open={isChangeSupplierDialogOpen} onOpenChange={setIsChangeSupplierDialogOpen}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Alterar Fornecedor em Lote</DialogTitle>
+                </DialogHeader>
+                <div className="py-4">
+                    <Label htmlFor="newSupplier">Novo Fornecedor</Label>
+                     <Select value={newSupplierId} onValueChange={setNewSupplierId}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Selecione um fornecedor..."/>
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="none">Nenhum</SelectItem>
+                            {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <DialogFooter>
+                    <Button variant="ghost" onClick={() => setIsChangeSupplierDialogOpen(false)}>Cancelar</Button>
+                    <Button onClick={handleBulkChangeSupplier} disabled={isProcessingBulkAction}>
+                        {isProcessingBulkAction && <Loader2 className="mr-2 animate-spin"/>}
+                        Alterar Fornecedor
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+        
         {/* Dialog for Copying Products */}
         <Dialog open={isCopyProductsDialogOpen} onOpenChange={setIsCopyProductsDialogOpen}>
             <DialogContent>
@@ -1034,9 +1128,3 @@ export default function ProductsPage() {
     </div>
   );
 }
-
-
-
-
-
-    

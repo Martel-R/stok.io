@@ -16,7 +16,7 @@ import type { User, Branch, PaymentCondition, PaymentConditionType, Product, Ena
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash, Lock, Truck } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash, Lock, Truck, ArrowDownCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -34,6 +34,8 @@ import { ImportAnamnesisQuestionsDialog } from '@/components/import-anamnesis-di
 import { Checkbox } from '@/components/ui/checkbox';
 import Image from 'next/image';
 import { Switch } from '@/components/ui/switch';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { PermissionProfileForm } from '@/components/permission-profile-form';
 
 
 const availableAvatars = [
@@ -330,14 +332,17 @@ function BranchesSettings() {
                 // Seed products for the new branch
                 MOCK_PRODUCTS.forEach(product => {
                     const productDocRef = doc(collection(db, 'products'));
-                    const productWithBranchInfo: Omit<Product, 'id'|'stock'> = {
-                        ...product,
+                    const { stock, ...productData } = product; // Remove stock from mock
+                    const productWithBranchInfo: Omit<Product, 'id'> = {
+                        ...(productData as any),
                         branchId: branchDocRef.id,
                         organizationId: currentUser.organizationId,
                         isSalable: true,
                         purchasePrice: product.price * 0.6,
                         marginType: 'percentage',
                         marginValue: 66.67,
+                        supplierId: '',
+                        supplierName: ''
                     };
                     batch.set(productDocRef, productWithBranchInfo);
                 });
@@ -822,7 +827,7 @@ function AnamnesisQuestionForm({
                 <Label htmlFor="questionLabel">Texto da Pergunta</Label>
                 <Input 
                     id="questionLabel"
-                    value={formData.label} 
+                    value={formData.label || ''} 
                     onChange={handleInputChange}
                     placeholder="Ex: Você possui alguma alergia?"
                     required
@@ -1128,7 +1133,7 @@ function BrandingSettings() {
                                 <Input 
                                     id="logoUrl" 
                                     name="logoUrl" 
-                                    value={branding.logoUrl} 
+                                    value={branding.logoUrl || ''} 
                                     onChange={(e) => setBranding(prev => ({...prev, logoUrl: e.target.value}))} 
                                     placeholder="https://exemplo.com/logo.png" 
                                 />
@@ -1140,9 +1145,9 @@ function BrandingSettings() {
                                 <Input 
                                     id="primaryColor" 
                                     name="primaryColor" 
-                                    value={branding.primaryColor} 
+                                    value={branding.primaryColor || ''} 
                                     onChange={handleColorChange}
-                                    placeholder="Ex: 231 48% 48%"
+                                    placeholder='Ex: 231 48% 48%'
                                 />
                                 <p className="text-sm text-muted-foreground">Insira o valor no formato HSL sem vírgulas. Ex: `231 48% 48%`</p>
                             </div>
@@ -1284,221 +1289,6 @@ function RolesSettings() {
     );
 }
 
-function PermissionProfileForm({
-    profile, organization, onSave, onDelete, onDone
-}: {
-    profile?: PermissionProfile,
-    organization: Organization,
-    onSave: (data: Partial<PermissionProfile>) => void,
-    onDelete: (id: string) => void,
-    onDone: () => void,
-}) {
-    const [formData, setFormData] = useState<Partial<PermissionProfile>>({});
-    
-    const allModuleConfig = React.useMemo(() => [
-        { key: 'dashboard', label: 'Início', icon: Home },
-        { key: 'customers', label: 'Clientes', icon: Users },
-        { key: 'services', label: 'Serviços', icon: Briefcase },
-        { key: 'appointments', label: 'Agendamentos', icon: Calendar },
-        { key: 'products', label: 'Produtos', icon: Package },
-        { key: 'combos', label: 'Combos', icon: Gift },
-        { key: 'kits', label: 'Kits', icon: Component },
-        { key: 'inventory', label: 'Estoque', icon: BarChart },
-        { key: 'pos', label: 'Frente de Caixa', icon: ShoppingCart },
-        { key: 'assistant', label: 'Oráculo AI', icon: Bot },
-        { key: 'reports', label: 'Relatórios', icon: FileText },
-        { key: 'settings', label: 'Configurações', icon: Settings },
-    ] as const, []);
-
-    const activeModuleConfig = React.useMemo(() => 
-        allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]),
-    [allModuleConfig, organization.enabledModules]);
-
-    useEffect(() => {
-        const defaultPermissions: Partial<EnabledModules> = {};
-        activeModuleConfig.forEach(mod => {
-            defaultPermissions[mod.key] = { view: false, edit: false, delete: false };
-        });
-
-        const initialPermissions = profile?.permissions 
-            ? { ...defaultPermissions, ...profile.permissions } 
-            : defaultPermissions;
-
-        setFormData({
-            ...profile,
-            name: profile?.name || '',
-            permissions: initialPermissions as EnabledModules,
-        });
-    }, [profile, activeModuleConfig]);
-
-    const handlePermissionChange = (
-        module: keyof EnabledModules, 
-        permission: keyof ModulePermissions, 
-        checked: boolean
-    ) => {
-        setFormData(prev => {
-            const newPermissions = { ...prev.permissions };
-            const currentModulePerms = newPermissions[module] || { view: false, edit: false, delete: false };
-            const updatedModulePerms = { ...currentModulePerms, [permission]: checked };
-            
-            if (permission === 'view' && !checked) {
-                updatedModulePerms.edit = false;
-                updatedModulePerms.delete = false;
-            }
-            if ((permission === 'edit' || permission === 'delete') && checked) {
-                 updatedModulePerms.view = true;
-            }
-
-            return { ...prev, permissions: {...newPermissions, [module]: updatedModulePerms} as EnabledModules };
-        });
-    };
-
-    const handleSelectAll = (permission: keyof ModulePermissions, checked: boolean) => {
-        setFormData(prev => {
-            const newPermissions = { ...prev.permissions } as EnabledModules;
-            activeModuleConfig.forEach(mod => {
-                const currentModulePerms = newPermissions[mod.key] || { view: false, edit: false, delete: false };
-                const updatedModulePerms = { ...currentModulePerms, [permission]: checked };
-
-                if (permission === 'view' && !checked) {
-                    updatedModulePerms.edit = false;
-                    updatedModulePerms.delete = false;
-                }
-                if ((permission === 'edit' || permission === 'delete') && checked) {
-                    updatedModulePerms.view = true;
-                }
-                newPermissions[mod.key] = updatedModulePerms;
-            });
-            return { ...prev, permissions: newPermissions };
-        });
-    };
-
-    const getSelectAllState = (permission: keyof ModulePermissions): boolean | 'indeterminate' => {
-        const selectedCount = activeModuleConfig
-            .filter(mod => formData.permissions?.[mod.key]?.[permission])
-            .length;
-        
-        if (selectedCount === 0) return false;
-        if (selectedCount === activeModuleConfig.length) return true;
-        return 'indeterminate';
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave(formData);
-    }
-
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-            <div className="space-y-2">
-                <Label htmlFor="profileName">Nome do Perfil</Label>
-                <Input
-                    id="profileName"
-                    value={formData.name || ''}
-                    onChange={(e) => setFormData(prev => ({...prev, name: e.target.value}))}
-                    required
-                />
-            </div>
-            <div className="space-y-2">
-                <Label>Permissões dos Módulos</Label>
-                <div className="rounded-md border">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Módulo</TableHead>
-                                <TableHead className="text-center">
-                                    <div className="flex flex-col items-center gap-1">
-                                        <Checkbox
-                                            checked={getSelectAllState('view')}
-                                            onCheckedChange={(checked) => handleSelectAll('view', checked === true)}
-                                            id="select-all-view"
-                                        />
-                                        <Label htmlFor="select-all-view" className="cursor-pointer">Visualizar</Label>
-                                    </div>
-                                </TableHead>
-                                <TableHead className="text-center">
-                                     <div className="flex flex-col items-center gap-1">
-                                        <Checkbox
-                                            checked={getSelectAllState('edit')}
-                                            onCheckedChange={(checked) => handleSelectAll('edit', checked === true)}
-                                            id="select-all-edit"
-                                        />
-                                        <Label htmlFor="select-all-edit" className="cursor-pointer">Editar</Label>
-                                    </div>
-                                </TableHead>
-                                <TableHead className="text-center">
-                                     <div className="flex flex-col items-center gap-1">
-                                        <Checkbox
-                                            checked={getSelectAllState('delete')}
-                                            onCheckedChange={(checked) => handleSelectAll('delete', checked === true)}
-                                            id="select-all-delete"
-                                        />
-                                        <Label htmlFor="select-all-delete" className="cursor-pointer">Excluir</Label>
-                                    </div>
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {activeModuleConfig.map(mod => (
-                                <TableRow key={mod.key}>
-                                    <TableCell className="font-medium flex items-center gap-2">
-                                        <mod.icon className="h-4 w-4"/> {mod.label}
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        <Checkbox
-                                            checked={formData.permissions?.[mod.key]?.view ?? false}
-                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'view', checked === true)}
-                                        />
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        <Checkbox
-                                            checked={formData.permissions?.[mod.key]?.edit ?? false}
-                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'edit', checked === true)}
-                                            disabled={!formData.permissions?.[mod.key]?.view}
-                                        />
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        <Checkbox
-                                            checked={formData.permissions?.[mod.key]?.delete ?? false}
-                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'delete', checked === true)}
-                                            disabled={!formData.permissions?.[mod.key]?.view}
-                                        />
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-            </div>
-            <DialogFooter className="justify-between pt-4">
-                <div>
-                {profile?.id && (
-                     <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                           <Button variant="destructive" type="button">Excluir</Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                               <AlertDialogTitle>Excluir Perfil?</AlertDialogTitle>
-                               <AlertDialogDescription>Esta ação é irreversível. O perfil será removido permanentemente.</AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => onDelete(profile.id)}>Sim, excluir</AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-                )}
-                </div>
-                <div className="flex gap-2">
-                    <Button variant="ghost" type="button" onClick={onDone}>Cancelar</Button>
-                    <Button type="submit">Salvar Perfil</Button>
-                </div>
-            </DialogFooter>
-        </form>
-    )
-}
-
 function TestDataSettings() {
     const { deleteTestData, user } = useAuth();
     const { toast } = useToast();
@@ -1636,45 +1426,90 @@ function SettingsPageContent() {
     )
 }
 
-function SupplierForm({ supplier, onSave, onDone }: { supplier?: Supplier; onSave: (data: Partial<Supplier>) => void; onDone: () => void }) {
-    const [formData, setFormData] = useState(
+function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Supplier; products: Product[]; onSave: (data: Partial<Supplier>, productsToLink: string[], productsToUnlink: string[]) => void; onDone: () => void }) {
+    const [formData, setFormData] = useState<Partial<Supplier>>(
         supplier || { name: '', contactName: '', phone: '', email: '', address: '' }
     );
+    const [linkedProductIds, setLinkedProductIds] = useState<string[]>([]);
     
+    useEffect(() => {
+        if (supplier) {
+            setFormData(supplier);
+            const initiallyLinked = products.filter(p => p.supplierId === supplier.id).map(p => p.id);
+            setLinkedProductIds(initiallyLinked);
+        } else {
+             setFormData({ name: '', contactName: '', phone: '', email: '', address: '' });
+             setLinkedProductIds([]);
+        }
+    }, [supplier, products]);
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({...prev, [name]: value}));
     };
+
+    const toggleProductLink = (productId: string) => {
+        setLinkedProductIds(prev =>
+            prev.includes(productId) ? prev.filter(id => id !== productId) : [...prev, productId]
+        );
+    };
     
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData);
+
+        const originalLinked = products.filter(p => p.supplierId === supplier?.id).map(p => p.id);
+        const productsToLink = linkedProductIds.filter(id => !originalLinked.includes(id));
+        const productsToUnlink = originalLinked.filter(id => !linkedProductIds.includes(id));
+        
+        onSave(formData, productsToLink, productsToUnlink);
+        onDone();
     }
 
     return (
-         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+         <form onSubmit={handleSubmit} className="space-y-4 pt-4 max-h-[80vh] overflow-y-auto pr-4">
             <div className="space-y-2">
                 <Label htmlFor="name">Nome do Fornecedor</Label>
-                <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
+                <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} required />
             </div>
             <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                     <Label htmlFor="contactName">Nome do Contato</Label>
-                    <Input id="contactName" name="contactName" value={formData.contactName} onChange={handleChange} />
+                    <Input id="contactName" name="contactName" value={formData.contactName || ''} onChange={handleChange} />
                 </div>
                 <div className="space-y-2">
                     <Label htmlFor="phone">Telefone</Label>
-                    <Input id="phone" name="phone" value={formData.phone} onChange={handleChange} />
+                    <Input id="phone" name="phone" value={formData.phone || ''} onChange={handleChange} />
                 </div>
             </div>
              <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} />
+                <Input id="email" name="email" type="email" value={formData.email || ''} onChange={handleChange} />
             </div>
             <div className="space-y-2">
                 <Label htmlFor="address">Endereço</Label>
-                <Input id="address" name="address" value={formData.address} onChange={handleChange} />
+                <Input id="address" name="address" value={formData.address || ''} onChange={handleChange} />
             </div>
+            {supplier && (
+                 <div className="space-y-2">
+                    <Label>Produtos Associados (Filial Atual)</Label>
+                    <ScrollArea className="h-40 rounded-md border p-4">
+                        {products.map(p => (
+                            (p.supplierId === supplier.id || !p.supplierId) && (
+                                <div key={p.id} className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id={`product-${p.id}`}
+                                        checked={linkedProductIds.includes(p.id)}
+                                        onCheckedChange={() => toggleProductLink(p.id)}
+                                    />
+                                    <label htmlFor={`product-${p.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                        {p.name}
+                                    </label>
+                                </div>
+                            )
+                        ))}
+                    </ScrollArea>
+                </div>
+            )}
              <DialogFooter>
                 <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
                 <Button type="submit">Salvar Fornecedor</Button>
@@ -1685,32 +1520,67 @@ function SupplierForm({ supplier, onSave, onDone }: { supplier?: Supplier; onSav
 
 function SuppliersSettings() {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<Supplier | undefined>(undefined);
-    const { user } = useAuth();
+    const { user, currentBranch } = useAuth();
     const { toast } = useToast();
     
     useEffect(() => {
         if (!user?.organizationId) return;
-        const q = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+
+        const qSuppliers = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId));
+        const unsubSuppliers = onSnapshot(qSuppliers, (snapshot) => {
             setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
             setLoading(false);
         });
-        return () => unsubscribe();
+
+        const qProducts = query(collection(db, 'products'), where('organizationId', '==', user.organizationId));
+        const unsubProducts = onSnapshot(qProducts, (snapshot) => {
+             setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+        });
+
+        return () => { unsubSuppliers(); unsubProducts(); };
     }, [user]);
 
-    const handleSave = async (data: Partial<Supplier>) => {
+    const productsForCurrentBranch = useMemo(() => {
+        if (!currentBranch) return [];
+        return products.filter(p => p.branchId === currentBranch.id);
+    }, [products, currentBranch]);
+
+    const handleSave = async (data: Partial<Supplier>, productsToLink: string[], productsToUnlink: string[]) => {
         if (!user?.organizationId) return;
+        
+        const isEditing = !!editingSupplier;
+        const supplierId = editingSupplier?.id || doc(collection(db, 'suppliers')).id;
+        const supplierName = data.name;
+
+        const batch = writeBatch(db);
+
+        // 1. Save supplier data
+        const supplierRef = doc(db, "suppliers", supplierId);
+        if (isEditing) {
+            batch.update(supplierRef, data);
+        } else {
+            batch.set(supplierRef, { ...data, id: supplierId, organizationId: user.organizationId });
+        }
+        
+        // 2. Link products
+        productsToLink.forEach(productId => {
+            const productRef = doc(db, 'products', productId);
+            batch.update(productRef, { supplierId: supplierId, supplierName: supplierName });
+        });
+
+        // 3. Unlink products
+        productsToUnlink.forEach(productId => {
+            const productRef = doc(db, 'products', productId);
+            batch.update(productRef, { supplierId: '', supplierName: '' });
+        });
+
         try {
-            if (editingSupplier?.id) {
-                await updateDoc(doc(db, "suppliers", editingSupplier.id), data);
-                toast({ title: 'Fornecedor atualizado!' });
-            } else {
-                await addDoc(collection(db, "suppliers"), { ...data, organizationId: user.organizationId });
-                toast({ title: 'Fornecedor adicionado!' });
-            }
+            await batch.commit();
+            toast({ title: `Fornecedor ${isEditing ? 'atualizado' : 'adicionado'} com sucesso!` });
             setIsFormOpen(false);
         } catch (error) {
             toast({ title: 'Erro ao salvar fornecedor', variant: 'destructive' });
@@ -1773,11 +1643,15 @@ function SuppliersSettings() {
                 </Table>
             </CardContent>
              <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                <DialogContent>
+                <DialogContent className="sm:max-w-xl">
                     <DialogHeader>
                         <DialogTitle>{editingSupplier ? 'Editar Fornecedor' : 'Novo Fornecedor'}</DialogTitle>
                     </DialogHeader>
-                    <SupplierForm supplier={editingSupplier} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
+                    <SupplierForm 
+                        supplier={editingSupplier} 
+                        products={productsForCurrentBranch}
+                        onSave={handleSave} 
+                        onDone={() => setIsFormOpen(false)} />
                 </DialogContent>
             </Dialog>
         </Card>
@@ -1791,8 +1665,4 @@ export default function SettingsPage() {
         </React.Suspense>
     )
 }
-
-    
-
-
 

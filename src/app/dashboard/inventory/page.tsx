@@ -2,9 +2,9 @@
 
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, query, where, Timestamp, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, Timestamp, orderBy, writeBatch, doc, addDoc, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Product, StockEntry, StockEntryType, Branch } from '@/lib/types';
+import type { Product, StockEntry, StockEntryType, Branch, Expense } from '@/lib/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import Link from 'next/link';
 import { format, startOfDay, endOfDay, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, ArrowRightLeft, MinusCircle, Package, History, Search, Printer, FileDown, Calendar as CalendarIcon } from 'lucide-react';
+import { PlusCircle, ArrowRightLeft, MinusCircle, Package, History, Search, Printer, FileDown, Calendar as CalendarIcon, Upload } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { StockMovementForm } from '@/components/stock-movement-form';
 import { useToast } from '@/hooks/use-toast';
@@ -27,6 +27,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { ptBR } from 'date-fns/locale';
+import { NfeImportDialog } from '@/components/nfe-import-dialog';
 
 const convertDate = (dateField: any): Date => {
     if (dateField instanceof Timestamp) return dateField.toDate();
@@ -223,33 +224,37 @@ export default function InventoryPage() {
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 no-print">
                 <h1 className="text-3xl font-bold">Gestão de Estoque</h1>
                 {canManageStock && (
-                    <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                        <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" onClick={() => handleOpenForm('entry')}><PlusCircle className="mr-2" />Entrada</Button>
-                            <Button variant="outline" onClick={() => handleOpenForm('adjustment')}><MinusCircle className="mr-2" />Saída</Button>
-                            <Button variant="outline" onClick={() => handleOpenForm('transfer')} disabled={branches.length <= 1}><ArrowRightLeft className="mr-2" />Transferir</Button>
-                        </div>
-                        <DialogContent>
-                            <DialogHeader>
-                                <DialogTitle>
-                                    {formType === 'entry' && 'Entrada de Estoque'}
-                                    {formType === 'adjustment' && 'Saída de Estoque'}
-                                    {formType === 'transfer' && 'Transferência de Estoque'}
-                                </DialogTitle>
-                                 <DialogDescription>
-                                    {formType === 'transfer' ? "Selecione o produto, quantidade e filial de destino." : "Selecione o produto e a quantidade para registrar a movimentação."}
-                                </DialogDescription>
-                            </DialogHeader>
-                            <StockMovementForm 
-                                type={formType}
-                                products={products}
-                                branches={branches.filter(b => b.id !== currentBranch?.id)}
-                                onDone={() => setIsFormOpen(false)}
-                            />
-                        </DialogContent>
-                    </Dialog>
+                     <div className="flex flex-wrap gap-2">
+                        <NfeImportDialog products={products} />
+                        <Button variant="outline" onClick={() => handleOpenForm('entry')}><PlusCircle className="mr-2" />Entrada</Button>
+                        <Button variant="outline" onClick={() => handleOpenForm('adjustment')}><MinusCircle className="mr-2" />Saída</Button>
+                        <Button variant="outline" onClick={() => handleOpenForm('transfer')} disabled={branches.length <= 1}><ArrowRightLeft className="mr-2" />Transferir</Button>
+                    </div>
                 )}
             </div>
+
+            {canManageStock && (
+                <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>
+                                {formType === 'entry' && 'Entrada de Estoque'}
+                                {formType === 'adjustment' && 'Saída de Estoque'}
+                                {formType === 'transfer' && 'Transferência de Estoque'}
+                            </DialogTitle>
+                             <DialogDescription>
+                                {formType === 'transfer' ? "Selecione o produto, quantidade e filial de destino." : "Selecione o produto e a quantidade para registrar a movimentação."}
+                            </DialogDescription>
+                        </DialogHeader>
+                        <StockMovementForm 
+                            type={formType}
+                            products={products}
+                            branches={branches.filter(b => b.id !== currentBranch?.id)}
+                            onDone={() => setIsFormOpen(false)}
+                        />
+                    </DialogContent>
+                </Dialog>
+            )}
 
             <Tabs defaultValue="current">
                 <TabsList className="grid w-full grid-cols-2 no-print">

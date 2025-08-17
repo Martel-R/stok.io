@@ -193,6 +193,7 @@ export interface Product {
   marginType: 'percentage' | 'fixed';
   supplierId?: string;
   supplierName?: string;
+  code?: string;
 }
 
 export type PaymentConditionType = 'credit' | 'debit' | 'cash' | 'pix';

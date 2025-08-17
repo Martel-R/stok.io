@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -9,9 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { Expense, Supplier } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, ArrowDownCircle } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, ArrowDownCircle, Lock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -43,7 +44,7 @@ function ExpenseForm({ expense, suppliers, onSave, onDone }: { expense?: Expense
             category: expenseCategories[0],
             date: new Date(),
             notes: '',
-            supplierId: ''
+            supplierId: undefined
         }
     );
 
@@ -56,7 +57,7 @@ function ExpenseForm({ expense, suppliers, onSave, onDone }: { expense?: Expense
     };
 
     const handleSelectChange = (name: string, value: string) => {
-        setFormData(prev => ({ ...prev, [name]: value }));
+        setFormData(prev => ({ ...prev, [name]: value === 'none' ? undefined : value }));
     };
     
     const handleDateChange = (date: Date | undefined) => {
@@ -71,6 +72,8 @@ function ExpenseForm({ expense, suppliers, onSave, onDone }: { expense?: Expense
         onSave({ ...formData, supplierName: supplier?.name || '' });
         onDone();
     };
+
+    const displayDate = formData.date instanceof Timestamp ? formData.date.toDate() : formData.date;
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-4">
@@ -89,11 +92,11 @@ function ExpenseForm({ expense, suppliers, onSave, onDone }: { expense?: Expense
                         <PopoverTrigger asChild>
                             <Button variant="outline" className="w-full justify-start text-left font-normal">
                                 <CalendarIcon className="mr-2 h-4 w-4" />
-                                {formData.date ? format(new Date(formData.date), 'PPP', { locale: ptBR }) : <span>Escolha uma data</span>}
+                                {displayDate ? format(displayDate, 'PPP', { locale: ptBR }) : <span>Escolha uma data</span>}
                             </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0">
-                            <Calendar mode="single" selected={formData.date ? new Date(formData.date) : undefined} onSelect={handleDateChange} initialFocus />
+                            <Calendar mode="single" selected={displayDate} onSelect={handleDateChange} initialFocus />
                         </PopoverContent>
                     </Popover>
                 </div>
@@ -110,10 +113,10 @@ function ExpenseForm({ expense, suppliers, onSave, onDone }: { expense?: Expense
                 </div>
                  <div className="space-y-2">
                     <Label htmlFor="supplierId">Fornecedor (Opcional)</Label>
-                    <Select value={formData.supplierId || ''} onValueChange={(value) => handleSelectChange('supplierId', value)}>
+                    <Select value={formData.supplierId || 'none'} onValueChange={(value) => handleSelectChange('supplierId', value)}>
                         <SelectTrigger><SelectValue placeholder="Nenhum"/></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="">Nenhum</SelectItem>
+                            <SelectItem value="none">Nenhum</SelectItem>
                             {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                         </SelectContent>
                     </Select>
@@ -154,8 +157,15 @@ export default function ExpensesPage() {
 
         const expensesQuery = query(collection(db, 'expenses'), where("branchId", "==", currentBranch.id));
         const expensesUnsub = onSnapshot(expensesQuery, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense));
-            setExpenses(data.sort((a, b) => new Date(b.date.seconds * 1000).getTime() - new Date(a.date.seconds * 1000).getTime()));
+            const data = snapshot.docs.map(doc => {
+                const expenseData = doc.data();
+                return { 
+                    id: doc.id, 
+                    ...expenseData,
+                    date: expenseData.date instanceof Timestamp ? expenseData.date.toDate() : new Date()
+                } as Expense;
+            });
+            setExpenses(data.sort((a, b) => (b.date as Date).getTime() - (a.date as Date).getTime()));
             setLoading(false);
         });
 
@@ -213,6 +223,21 @@ export default function ExpensesPage() {
         setIsFormOpen(true);
     };
 
+    if (!can.view) {
+        return (
+            <div className="flex h-full items-center justify-center">
+                <Card className="w-full max-w-md text-center">
+                    <CardHeader>
+                        <CardTitle className="flex items-center justify-center gap-2"><Lock /> Acesso Negado</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <p>Você não tem permissão para acessar o módulo de Despesas.</p>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center gap-4">
@@ -266,7 +291,7 @@ export default function ExpensesPage() {
                     ) : expenses.length > 0 ? (
                         expenses.map((expense) => (
                             <TableRow key={expense.id}>
-                                <TableCell>{format(new Date(expense.date.seconds * 1000), 'dd/MM/yyyy')}</TableCell>
+                                <TableCell>{format(expense.date as Date, 'dd/MM/yyyy')}</TableCell>
                                 <TableCell className="font-medium">{expense.description}</TableCell>
                                 <TableCell>{expense.category}</TableCell>
                                 <TableCell>{expense.supplierName || 'N/A'}</TableCell>

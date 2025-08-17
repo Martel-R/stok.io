@@ -1066,7 +1066,7 @@ function BrandingSettings() {
         logoUrl: user?.organization?.branding?.logoUrl || '',
         primaryColor: user?.organization?.branding?.primaryColor || '',
     });
-    const [isUploading, setIsUploading] = useState(isUploading);
+    const [isUploading, setIsUploading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const { toast } = useToast();
 
@@ -1563,7 +1563,7 @@ function SuppliersSettings() {
                 </DialogContent>
             </Dialog>
         </Card>
-    )
+    );
 }
 
 export default function SettingsPage() {
@@ -1576,3 +1576,5 @@ export default function SettingsPage() {
 
 
 
+
+```

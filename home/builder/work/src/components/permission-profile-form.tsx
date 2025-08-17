@@ -9,8 +9,9 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { allModuleConfig } from '@/components/module-permission-row';
+import { ModulePermissionRow, allModuleConfig } from '@/components/module-permission-row';
 import { Checkbox } from './ui/checkbox';
+import { Loader2 } from 'lucide-react';
 
 
 export function PermissionProfileForm({
@@ -26,7 +27,7 @@ export function PermissionProfileForm({
     
     const activeModuleConfig = React.useMemo(() => 
         organization ? allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]) : [],
-    [allModuleConfig, organization]);
+    [organization]);
 
     useEffect(() => {
         if (!organization) return;
@@ -105,8 +106,12 @@ export function PermissionProfileForm({
         onSave(formData);
     }
 
-    if (!organization) {
-        return <div>Carregando informações da organização...</div>;
+    if (!organization || !formData.permissions) {
+        return (
+            <div className="flex justify-center items-center h-48">
+                <Loader2 className="animate-spin" />
+            </div>
+        );
     }
 
     return (

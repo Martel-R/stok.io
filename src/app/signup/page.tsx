@@ -123,15 +123,7 @@ export default function SignupPage() {
         </div>
       </div>
       <div className="relative hidden h-full flex-col bg-muted p-10 text-white dark:border-r lg:flex">
-         <Image
-          src="https://placehold.co/1080x1920.png"
-          alt="Banner de autenticação"
-          layout="fill"
-          objectFit="cover"
-          className="absolute inset-0"
-          data-ai-hint="warehouse inventory"
-        />
-        <div className="absolute inset-0 bg-primary/80" />
+         <div className="absolute inset-0 bg-gradient-to-br from-primary to-primary/70" />
         <div className="relative z-20 flex items-center text-lg font-medium">
           <Icons.logo className="mr-2 h-8 w-8" />
           Stokio

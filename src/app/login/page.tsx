@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
+import { cn } from '@/lib/utils';
 
 
 export default function LoginPage() {
@@ -65,7 +66,10 @@ export default function LoginPage() {
   return (
     <div className="w-full h-screen lg:grid lg:grid-cols-2">
       <div className="relative hidden h-full flex-col bg-muted p-10 text-white dark:border-r lg:flex">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary to-primary/70" />
+        <div className={cn(
+          "absolute inset-0 bg-gradient-to-br from-primary via-primary/70 to-secondary",
+          "animate-animated-gradient bg-[length:200%_200%]"
+        )} />
         <div className="relative z-20 flex items-center text-lg font-medium">
           <Icons.logo className="mr-2 h-8 w-8" />
           Stokio

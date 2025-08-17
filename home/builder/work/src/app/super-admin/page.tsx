@@ -13,7 +13,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn, ArrowDownCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -417,7 +417,6 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
     }, [organization]);
 
     const handleModuleToggle = async (module: keyof EnabledModules, checked: boolean) => {
-        // When enabling a module, enable all its permissions by default.
         const newPermissions = checked ? { view: true, edit: true, delete: true } : { view: false, edit: false, delete: false };
         const updatedModules = { ...enabledModules, [module]: newPermissions };
         
@@ -429,7 +428,6 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
             toast({ title: 'Módulo atualizado com sucesso!' });
         } catch (error) {
             toast({ title: 'Erro ao atualizar módulo', variant: 'destructive' });
-            // Revert on error
             setEnabledModules(prev => {
                 const reverted = {...prev};
                 delete reverted[module];

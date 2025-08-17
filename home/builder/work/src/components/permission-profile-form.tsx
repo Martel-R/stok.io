@@ -1,4 +1,5 @@
 
+
 'use client';
 import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
@@ -9,8 +10,25 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings } from 'lucide-react';
+import { Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, ArrowDownCircle } from 'lucide-react';
 import { ModulePermissionRow } from '@/components/module-permission-row';
+import { Checkbox } from './ui/checkbox';
+
+const allModuleConfig = [
+    { key: 'dashboard', label: 'Início', icon: Home },
+    { key: 'customers', label: 'Clientes', icon: Users },
+    { key: 'services', label: 'Serviços', icon: Briefcase },
+    { key: 'appointments', label: 'Agendamentos', icon: Calendar },
+    { key: 'products', label: 'Produtos', icon: Package },
+    { key: 'combos', label: 'Combos', icon: Gift },
+    { key: 'kits', label: 'Kits', icon: Component },
+    { key: 'inventory', label: 'Estoque', icon: BarChart },
+    { key: 'pos', label: 'Frente de Caixa', icon: ShoppingCart },
+    { key: 'expenses', label: 'Despesas', icon: ArrowDownCircle },
+    { key: 'assistant', label: 'Oráculo AI', icon: Bot },
+    { key: 'reports', label: 'Relatórios', icon: FileText },
+    { key: 'settings', label: 'Configurações', icon: Settings },
+] as const;
 
 export function PermissionProfileForm({
     profile, organization, onSave, onDelete, onDone
@@ -23,24 +41,7 @@ export function PermissionProfileForm({
 }) {
     const [formData, setFormData] = useState<Partial<PermissionProfile>>({});
     
-    const allModuleConfig = [
-        { key: 'dashboard', label: 'Início', icon: Home },
-        { key: 'customers', label: 'Clientes', icon: Users },
-        { key: 'services', label: 'Serviços', icon: Briefcase },
-        { key: 'appointments', label: 'Agendamentos', icon: Calendar },
-        { key: 'products', label: 'Produtos', icon: Package },
-        { key: 'combos', label: 'Combos', icon: Gift },
-        { key: 'kits', label: 'Kits', icon: Component },
-        { key: 'inventory', label: 'Estoque', icon: BarChart },
-        { key: 'pos', label: 'Frente de Caixa', icon: ShoppingCart },
-        { key: 'assistant', label: 'Oráculo AI', icon: Bot },
-        { key: 'reports', label: 'Relatórios', icon: FileText },
-        { key: 'settings', label: 'Configurações', icon: Settings },
-    ] as const;
-
-    const activeModuleConfig = React.useMemo(() => 
-        allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]),
-    [allModuleConfig, organization.enabledModules]);
+    const activeModuleConfig = allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]);
 
     useEffect(() => {
         const defaultPermissions: Partial<EnabledModules> = {};
@@ -57,7 +58,7 @@ export function PermissionProfileForm({
             name: profile?.name || '',
             permissions: initialPermissions as EnabledModules,
         });
-    }, [profile?.id, activeModuleConfig]);
+    }, [profile, activeModuleConfig]);
 
     const handlePermissionChange = useCallback((
         module: keyof EnabledModules, 
@@ -76,11 +77,41 @@ export function PermissionProfileForm({
             if ((permission === 'edit' || permission === 'delete') && checked) {
                  updatedModulePerms.view = true;
             }
-
+            
             newPermissions[module] = updatedModulePerms;
             return { ...prev, permissions: newPermissions as EnabledModules };
         });
     }, []);
+
+    const handleSelectAll = (permission: keyof ModulePermissions, checked: boolean) => {
+        setFormData(prev => {
+            const newPermissions = { ...prev.permissions } as EnabledModules;
+            activeModuleConfig.forEach(mod => {
+                const currentModulePerms = newPermissions[mod.key] || { view: false, edit: false, delete: false };
+                const updatedModulePerms = { ...currentModulePerms, [permission]: checked };
+
+                if (permission === 'view' && !checked) {
+                    updatedModulePerms.edit = false;
+                    updatedModulePerms.delete = false;
+                }
+                if ((permission === 'edit' || permission === 'delete') && checked) {
+                    updatedModulePerms.view = true;
+                }
+                newPermissions[mod.key] = updatedModulePerms;
+            });
+            return { ...prev, permissions: newPermissions };
+        });
+    };
+
+    const getSelectAllState = (permission: keyof ModulePermissions): boolean | 'indeterminate' => {
+        const selectedCount = activeModuleConfig
+            .filter(mod => formData.permissions?.[mod.key]?.[permission])
+            .length;
+        
+        if (selectedCount === 0) return false;
+        if (selectedCount === activeModuleConfig.length) return true;
+        return 'indeterminate';
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -105,9 +136,36 @@ export function PermissionProfileForm({
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Módulo</TableHead>
-                                <TableHead className="text-center">Visualizar</TableHead>
-                                <TableHead className="text-center">Editar</TableHead>
-                                <TableHead className="text-center">Excluir</TableHead>
+                                <TableHead className="text-center">
+                                    <div className="flex flex-col items-center gap-1">
+                                        <Checkbox
+                                            checked={getSelectAllState('view')}
+                                            onCheckedChange={(checked) => handleSelectAll('view', checked === true)}
+                                            id="select-all-view"
+                                        />
+                                        <Label htmlFor="select-all-view" className="cursor-pointer">Visualizar</Label>
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-center">
+                                     <div className="flex flex-col items-center gap-1">
+                                        <Checkbox
+                                            checked={getSelectAllState('edit')}
+                                            onCheckedChange={(checked) => handleSelectAll('edit', checked === true)}
+                                            id="select-all-edit"
+                                        />
+                                        <Label htmlFor="select-all-edit" className="cursor-pointer">Editar</Label>
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-center">
+                                     <div className="flex flex-col items-center gap-1">
+                                        <Checkbox
+                                            checked={getSelectAllState('delete')}
+                                            onCheckedChange={(checked) => handleSelectAll('delete', checked === true)}
+                                            id="select-all-delete"
+                                        />
+                                        <Label htmlFor="select-all-delete" className="cursor-pointer">Excluir</Label>
+                                    </div>
+                                </TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>

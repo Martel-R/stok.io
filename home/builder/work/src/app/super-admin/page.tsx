@@ -447,6 +447,7 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
         { key: 'kits', label: 'Kits Dinâmicos' },
         { key: 'assistant', label: 'Oráculo AI' },
         { key: 'reports', label: 'Relatórios Gerenciais' },
+        { key: 'expenses', label: 'Despesas' },
     ] as const;
 
     if (!isOpen) return null;

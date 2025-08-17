@@ -1,5 +1,4 @@
 
-
 // src/app/super-admin/page.tsx
 'use client';
 import * as React from 'react';
@@ -417,7 +416,6 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
     }, [organization]);
 
     const handleModuleToggle = async (module: keyof EnabledModules, checked: boolean) => {
-        // When enabling a module, enable all its permissions by default.
         const newPermissions = checked ? { view: true, edit: true, delete: true } : { view: false, edit: false, delete: false };
         const updatedModules = { ...enabledModules, [module]: newPermissions };
         
@@ -429,7 +427,6 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
             toast({ title: 'Módulo atualizado com sucesso!' });
         } catch (error) {
             toast({ title: 'Erro ao atualizar módulo', variant: 'destructive' });
-            // Revert on error
             setEnabledModules(prev => {
                 const reverted = {...prev};
                 delete reverted[module];
@@ -447,6 +444,7 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
         { key: 'kits', label: 'Kits Dinâmicos' },
         { key: 'assistant', label: 'Oráculo AI' },
         { key: 'reports', label: 'Relatórios Gerenciais' },
+        { key: 'expenses', label: 'Despesas' },
     ] as const;
 
     if (!isOpen) return null;

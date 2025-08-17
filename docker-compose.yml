@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   stokio:
     build:
@@ -25,14 +23,14 @@ services:
       # A porta externa (9001) não precisa ser exposta aqui se você usa o Traefik como proxy.
       - "9001:3000"
     networks:
-      - traefik_proxy # Rede do Traefik
+      - traefik_default # Rede do Traefik
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.stokio.rule=Host(`stokio.martel.page`)"
       - "traefik.http.routers.stokio.entrypoints=websecure"
       - "traefik.http.routers.stokio.tls.certresolver=cloudflare"
-      - "traefik.http.services.stokio.loadbalancer.server.port=3000"
+      - "traefik.http.services.stokio.loadbalancer.server.port=9001"
 
 networks:
-  traefik_proxy:
+  traefik_default:
     external: true

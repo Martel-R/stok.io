@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -143,7 +144,7 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
   const [formData, setFormData] = useState<Partial<Product>>(
     product || { 
         name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
-        purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: '', supplierName: ''
+        purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: ''
     }
   );
   const [isUploading, setIsUploading] = useState(false);
@@ -157,7 +158,7 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
     useEffect(() => {
         setFormData(product || { 
             name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
-            purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: '', supplierName: ''
+            purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: ''
         });
     }, [product]);
 

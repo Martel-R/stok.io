@@ -1,17 +1,16 @@
-
-# 1. Fase de Dependências
+# 1. Fase de Dependências (deps)
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install
 
-# 2. Fase de Build
+# 2. Fase de Build (builder)
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Argumentos de Build para chaves de ambiente
+# Argumentos de build para as variáveis de ambiente
 ARG NEXT_PUBLIC_FIREBASE_API_KEY
 ARG NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
 ARG NEXT_PUBLIC_FIREBASE_PROJECT_ID
@@ -23,7 +22,7 @@ ARG NEXT_PUBLIC_RECAPTCHA_SITE_KEY
 ARG NEXT_PUBLIC_SUPER_ADMIN_EMAIL
 ARG GEMINI_API_KEY
 
-# Atribuição das variáveis de ambiente
+# Atribui os argumentos às variáveis de ambiente
 ENV NEXT_PUBLIC_FIREBASE_API_KEY=$NEXT_PUBLIC_FIREBASE_API_KEY
 ENV NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
 ENV NEXT_PUBLIC_FIREBASE_PROJECT_ID=$NEXT_PUBLIC_FIREBASE_PROJECT_ID
@@ -34,37 +33,21 @@ ENV NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=$NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 ENV NEXT_PUBLIC_RECAPTCHA_SITE_KEY=$NEXT_PUBLIC_RECAPTCHA_SITE_KEY
 ENV NEXT_PUBLIC_SUPER_ADMIN_EMAIL=$NEXT_PUBLIC_SUPER_ADMIN_EMAIL
 ENV GEMINI_API_KEY=$GEMINI_API_KEY
-ENV NEXT_TELEMETRY_DISABLED 1
 
 RUN npm run build
 
-# 3. Fase de Produção
+# 3. Fase de Produção (runner)
 FROM node:20-alpine AS runner
 WORKDIR /app
 
+# Variáveis de ambiente para o container de produção
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED 1
 
-
 COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
 
-# Adicione as variáveis de ambiente necessárias para a execução
-ENV NEXT_PUBLIC_FIREBASE_API_KEY=$NEXT_PUBLIC_FIREBASE_API_KEY
-ENV NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-ENV NEXT_PUBLIC_FIREBASE_PROJECT_ID=$NEXT_PUBLIC_FIREBASE_PROJECT_ID
-ENV NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=$NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-ENV NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
-ENV NEXT_PUBLIC_FIREBASE_APP_ID=$NEXT_PUBLIC_FIREBASE_APP_ID
-ENV NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=$NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
-ENV NEXT_PUBLIC_RECAPTCHA_SITE_KEY=$NEXT_PUBLIC_RECAPTCHA_SITE_KEY
-ENV NEXT_PUBLIC_SUPER_ADMIN_EMAIL=$NEXT_PUBLIC_SUPER_ADMIN_EMAIL
-ENV GEMINI_API_KEY=$GEMINI_API_KEY
-
-# Expor a porta que o Next.js usa
 EXPOSE 3000
-
-# Comando para iniciar a aplicação
-CMD ["node", "server.js"]
-
+CMD ["npm", "start"]

@@ -177,6 +177,7 @@ export default function AssistantPage() {
     try {
       const response = await answerBusinessQuestion({ 
         question: currentInput,
+        currentDate: format(new Date(), 'dd/MM/yyyy'),
         productsContext,
         servicesContext,
         customersContext,

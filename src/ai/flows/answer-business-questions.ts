@@ -14,6 +14,7 @@ import {z} from 'genkit';
 
 const AnswerBusinessQuestionInputSchema = z.object({
   question: z.string().describe('A natural language question about the business data.'),
+  currentDate: z.string().describe('The current date in dd/MM/yyyy format to provide context for terms like "today" or "yesterday".'),
   productsContext: z.string().describe('A string containing product data.'),
   servicesContext: z.string().describe('A string containing service data.'),
   customersContext: z.string().describe('A string containing customer data.'),
@@ -47,6 +48,9 @@ const prompt = ai.definePrompt({
   input: {schema: AnswerBusinessQuestionInputSchema},
   output: {schema: AnswerBusinessQuestionOutputSchema},
   prompt: `Você é um assistente de IA especialista em análise de negócios. Sua função é responder a perguntas e fornecer insights acionáveis com base nos dados fornecidos sobre uma empresa.
+
+  Para qualquer pergunta que envolva tempo (como "hoje", "ontem", "esta semana"), use a data atual como referência.
+  **Data Atual de Referência:** {{{currentDate}}}
 
   Formate suas respostas em Markdown para clareza (use listas, negrito, etc.).
 

@@ -1262,7 +1262,7 @@ function RolesSettings() {
                                     </div>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                    <Button variant="ghost" size="icon" onClick={()={() => { setEditingProfile(profile); setIsFormOpen(true);}}>
+                                    <Button variant="ghost" size="icon" onClick={() => { setEditingProfile(profile); setIsFormOpen(true);}}>
                                         <Pencil className="h-4 w-4"/>
                                     </Button>
                                 </TableCell>
@@ -1577,4 +1577,72 @@ export default function SettingsPage() {
 
 
 
-```
+function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Supplier; products: Product[]; onSave: (data: Partial<Supplier>, productsToLink: string[], productsToUnlink: string[]) => void; onDone: () => void }) {
+    const [formData, setFormData] = useState<Partial<Supplier>>(supplier || { name: '', contactName: '', phone: '', email: '', address: '' });
+    const [linkedProductIds, setLinkedProductIds] = useState<string[]>([]);
+    const [initialLinkedProductIds, setInitialLinkedProductIds] = useState<string[]>([]);
+
+     useEffect(() => {
+        if (supplier) {
+            const currentlyLinked = products.filter(p => p.supplierId === supplier.id).map(p => p.id);
+            setLinkedProductIds(currentlyLinked);
+            setInitialLinkedProductIds(currentlyLinked);
+        }
+         setFormData(supplier || { name: '', contactName: '', phone: '', email: '', address: '' });
+    }, [supplier, products]);
+    
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setFormData(prev => ({...prev, [e.target.name]: e.target.value}));
+    }
+
+    const toggleProductLink = (productId: string) => {
+        setLinkedProductIds(prev => prev.includes(productId) ? prev.filter(id => id !== productId) : [...prev, productId]);
+    }
+    
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const productsToLink = linkedProductIds.filter(id => !initialLinkedProductIds.includes(id));
+        const productsToUnlink = initialLinkedProductIds.filter(id => !linkedProductIds.includes(id));
+        onSave(formData, productsToLink, productsToUnlink);
+    }
+
+    const availableProducts = useMemo(() => {
+        return products.filter(p => !p.supplierId || linkedProductIds.includes(p.id));
+    }, [products, linkedProductIds]);
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+                <Input name="name" value={formData.name || ''} onChange={handleChange} placeholder="Nome do Fornecedor" required />
+                <Input name="contactName" value={formData.contactName || ''} onChange={handleChange} placeholder="Nome do Contato" />
+            </div>
+             <div className="grid grid-cols-2 gap-4">
+                <Input name="phone" value={formData.phone || ''} onChange={handleChange} placeholder="Telefone" />
+                <Input name="email" type="email" value={formData.email || ''} onChange={handleChange} placeholder="Email" />
+            </div>
+            <Input name="address" value={formData.address || ''} onChange={handleChange} placeholder="Endereço" />
+            
+            <div className="space-y-2">
+                <Label>Produtos Vinculados (nesta filial)</Label>
+                <ScrollArea className="h-40 rounded-md border p-4">
+                    {availableProducts.map(p => (
+                        <div key={p.id} className="flex items-center space-x-2">
+                            <Checkbox 
+                                id={`link-${p.id}`}
+                                checked={linkedProductIds.includes(p.id)}
+                                onCheckedChange={() => toggleProductLink(p.id)}
+                            />
+                            <Label htmlFor={`link-${p.id}`} className="font-normal">{p.name}</Label>
+                        </div>
+                    ))}
+                </ScrollArea>
+            </div>
+            
+            <DialogFooter>
+                <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
+                <Button type="submit">Salvar</Button>
+            </DialogFooter>
+        </form>
+    );
+}
+

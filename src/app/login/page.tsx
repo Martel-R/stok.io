@@ -13,6 +13,7 @@ import { Icons } from '@/components/icons';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import Image from 'next/image';
 
 
 export default function LoginPage() {
@@ -64,7 +65,15 @@ export default function LoginPage() {
   return (
     <div className="w-full h-screen lg:grid lg:grid-cols-2">
       <div className="relative hidden h-full flex-col bg-muted p-10 text-white dark:border-r lg:flex">
-        <div className="absolute inset-0 bg-primary" />
+        <Image
+          src="https://placehold.co/1080x1920.png"
+          alt="Banner de autenticação"
+          layout="fill"
+          objectFit="cover"
+          className="absolute inset-0"
+          data-ai-hint="warehouse inventory"
+        />
+        <div className="absolute inset-0 bg-primary/80" />
         <div className="relative z-20 flex items-center text-lg font-medium">
           <Icons.logo className="mr-2 h-8 w-8" />
           Stokio

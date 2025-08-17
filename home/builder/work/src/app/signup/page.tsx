@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { cn } from '@/lib/utils';
 
 export default function SignupPage() {
   const { signup, loading } = useAuth();
@@ -123,26 +124,15 @@ export default function SignupPage() {
         </div>
       </div>
       <div className="relative hidden h-full flex-col bg-muted p-10 text-white dark:border-r lg:flex">
-         <Image
-          src="https://placehold.co/1080x1920.png"
-          alt="Banner de autenticação"
-          layout="fill"
-          objectFit="cover"
-          className="absolute inset-0"
-          data-ai-hint="warehouse inventory"
-        />
-        <div className="absolute inset-0 bg-primary/80" />
-        <div className="relative z-20 flex items-center text-lg font-medium">
-          <Icons.logo className="mr-2 h-8 w-8" />
-          Stokio
-        </div>
-        <div className="relative z-20 mt-auto">
-          <blockquote className="space-y-2">
-            <p className="text-lg">
-              &ldquo;Este sistema de estoque transformou nosso negócio, nos dando insights que nunca pensamos ser possíveis.&rdquo;
-            </p>
-            <footer className="text-sm">Sofia Davis, CEO</footer>
-          </blockquote>
+         <div className={cn(
+          "absolute inset-0 bg-gradient-to-br from-primary via-primary/70 to-secondary",
+          "animate-animated-gradient bg-[length:200%_200%]"
+        )} />
+        <div className="relative z-20 flex flex-col items-center justify-center h-full">
+            <div className="flex items-center text-lg font-medium">
+                <Icons.logo className="mr-2 h-12 w-12" />
+                <span className="text-4xl font-bold">Stokio</span>
+            </div>
         </div>
       </div>
     </div>

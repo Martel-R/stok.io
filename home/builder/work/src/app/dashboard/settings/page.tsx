@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -1645,4 +1644,3 @@ function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Suppl
         </form>
     );
 }
-

@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -484,7 +483,7 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
         });
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = (e: React.EventFormEvent) => {
         e.preventDefault();
         onSave(formData as Omit<Branch, 'id' | 'organizationId'>);
         onDone();
@@ -562,12 +561,12 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
 }
 
 
-function PaymentConditionForm({ condition, onSave, onDone }: { condition?: PaymentCondition, onSave: (data: Partial<PaymentCondition>) => void, onDone: () => void }) {
+function PaymentConditionForm({ condition, onSave, onDone }: { condition?: PaymentCondition, onSave: (data: PartialPaymentCondition) => void, onDone: () => void }) {
     const [formData, setFormData] = useState(
         condition || { name: '', type: 'credit', fee: 0, feeType: 'percentage', maxInstallments: 12 }
     );
     
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleInputChange = (e: React.ChangeEvent) => {
         const { name, value, type } = e.target;
         setFormData(prev => ({
             ...prev,
@@ -579,7 +578,7 @@ function PaymentConditionForm({ condition, onSave, onDone }: { condition?: Payme
          setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = (e: React.EventFormEvent) => {
         e.preventDefault();
         onSave(formData);
     };
@@ -647,12 +646,12 @@ function PaymentConditionForm({ condition, onSave, onDone }: { condition?: Payme
 }
 
 function PaymentConditions() {
-    const [conditions, setConditions] = useState<PaymentCondition[]>([]);
+    const [conditions, setConditions] = useState([]);
     const [loading, setLoading] = useState(true);
     const { user } = useAuth();
     const { toast } = useToast();
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingCondition, setEditingCondition] = useState<PaymentCondition | undefined>(undefined);
+    const [editingCondition, setEditingCondition] = useState(undefined);
 
     useEffect(() => {
         if (!user?.organizationId) return;
@@ -665,7 +664,7 @@ function PaymentConditions() {
         return () => unsubscribe();
     }, [user]);
 
-    const handleSave = async (data: Partial<PaymentCondition>) => {
+    const handleSave = async (data: PartialPaymentCondition) => {
         if (!user?.organizationId) {
             toast({ title: 'Organização não encontrada.', variant: 'destructive' });
             return;
@@ -786,7 +785,7 @@ function PaymentConditions() {
     );
 }
 
-const typeNames: Record<AnamnesisQuestionType, string> = {
+const typeNames: RecordAnamnesisQuestionType, string = {
     text: 'Discursiva',
     boolean: 'Sim/Não',
     boolean_with_text: 'Sim/Não com Texto',
@@ -800,12 +799,12 @@ function AnamnesisQuestionForm({
     onDone 
 }: { 
     question?: AnamnesisQuestion; 
-    onSave: (data: Partial<AnamnesisQuestion>) => void; 
+    onSave: (data: PartialAnamnesisQuestion) => void; 
     onDone: () => void 
 }) {
-    const [formData, setFormData] = useState<Partial<AnamnesisQuestion>>(question || { label: '', type: 'text' });
+    const [formData, setFormData] = useState(question || { label: '', type: 'text' });
     
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleInputChange = (e: React.ChangeEvent) => {
         setFormData(prev => ({ ...prev, label: e.target.value }));
     };
 
@@ -813,7 +812,7 @@ function AnamnesisQuestionForm({
         setFormData(prev => ({ ...prev, type: value }));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = (e: React.EventFormEvent) => {
         e.preventDefault();
         onSave(formData);
         onDone();
@@ -854,12 +853,12 @@ function AnamnesisQuestionForm({
 
 
 function AnamnesisSettings() {
-    const [questions, setQuestions] = useState<AnamnesisQuestion[]>([]);
+    const [questions, setQuestions] = useState([]);
     const [loading, setLoading] = useState(true);
     const { user } = useAuth();
     const [isImportOpen, setIsImportOpen] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingQuestion, setEditingQuestion] = useState<AnamnesisQuestion | undefined>(undefined);
+    const [editingQuestion, setEditingQuestion] = useState(undefined);
     const { toast } = useToast();
     
     useEffect(() => {
@@ -881,7 +880,7 @@ function AnamnesisSettings() {
         return () => unsubscribe();
     }, [user]);
 
-    const handleSave = async (data: Partial<AnamnesisQuestion>) => {
+    const handleSave = async (data: PartialAnamnesisQuestion) => {
         if (!user?.organizationId) {
             toast({ title: 'Organização não encontrada.', variant: 'destructive' });
             return;
@@ -923,7 +922,7 @@ function AnamnesisSettings() {
         setIsFormOpen(true);
     }
 
-    const handleImport = async (importedQuestions: Omit<AnamnesisQuestion, 'id' | 'organizationId' | 'order'>[]) => {
+    const handleImport = async (importedQuestions: OmitAnamnesisQuestion, 'id' | 'organizationId' | 'order'>[]) => {
       if (!user?.organizationId) {
           toast({ title: 'Organização não encontrada', variant: 'destructive' });
           return;
@@ -957,110 +956,104 @@ function AnamnesisSettings() {
                         <CardDescription>Configure as perguntas que aparecerão no formulário de anamnese dos clientes.</CardDescription>
                     </div>
                      <div className="flex flex-wrap gap-2">
-                        <ImportAnamnesisQuestionsDialog
-                            isOpen={isImportOpen}
-                            onOpenChange={setIsImportOpen}
-                            onImport={handleImport}
-                        >
-                             <Button variant="outline">
-                                <FileUp className="mr-2" />
-                                Importar
-                            </Button>
-                        </ImportAnamnesisQuestionsDialog>
-                        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                            <DialogTrigger asChild>
-                                 <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Pergunta</Button>
-                            </DialogTrigger>
-                             <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>{editingQuestion ? 'Editar Pergunta' : 'Adicionar Pergunta'}</DialogTitle>
-                                </DialogHeader>
-                                <AnamnesisQuestionForm
-                                    question={editingQuestion}
-                                    onSave={handleSave}
-                                    onDone={() => setIsFormOpen(false)}
-                                />
-                            </DialogContent>
-                        </Dialog>
-                    </div>
-                </div>
-            </CardHeader>
-            <CardContent>
-                 <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Pergunta</TableHead>
-                            <TableHead>Tipo</TableHead>
-                            <TableHead className="text-right">Ações</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
+                        
+                             
+                                 
+                                    Importar
+                                
+                            
+                        
+                        
+                            
+                                 Adicionar Pergunta
+                            
+                             
+                                
+                                    {editingQuestion ? 'Editar Pergunta' : 'Adicionar Pergunta'}
+                                
+                                
+                                    
+                                        
+                                            
+                                            
+                                        
+                                    
+                                
+                            
+                        
+                    
+                
+            CardContent>
+                 
+                    
+                        
+                            Pergunta
+                            Tipo
+                            Ações
+                        
+                    
+                    
                          {loading ? (
                             Array.from({length: 3}).map((_, i) => (
-                                <TableRow key={i}><TableCell colSpan={3}><Skeleton className="h-5 w-full" /></TableCell></TableRow>
+                                
+                                    
+                                
                             ))
                         ) : questions.length > 0 ? (
                             questions.map(q => (
-                                <TableRow key={q.id}>
-                                    <TableCell className="font-medium">{q.label}</TableCell>
-                                    <TableCell>
-                                        <Badge variant="outline">
-                                            {typeNames[q.type] || 'Desconhecido'}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <AlertDialog>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button variant="ghost" className="h-8 w-8 p-0">
-                                                        <MoreHorizontal className="h-4 w-4" />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onSelect={() => openEditDialog(q)}>
-                                                        Editar
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuSeparator/>
-                                                     <AlertDialogTrigger asChild>
-                                                        <DropdownMenuItem className="text-destructive focus:text-destructive">
-                                                            Excluir
-                                                        </DropdownMenuItem>
-                                                     </AlertDialogTrigger>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                            <AlertDialogContent>
-                                                <AlertDialogHeader>
-                                                    <AlertDialogTitle>Excluir Pergunta?</AlertDialogTitle>
-                                                    <AlertDialogDescription>
-                                                        Essa ação é irreversível.
-                                                    </AlertDialogDescription>
-                                                </AlertDialogHeader>
-                                                <AlertDialogFooter>
-                                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                    <AlertDialogAction onClick={() => handleDelete(q.id)} className={buttonVariants({variant: 'destructive'})}>
+                                
+                                    {q.label}
+                                    
+                                        {typeNames[q.type] || 'Desconhecido'}
+                                    
+                                    
+                                         
+                                             
+                                                 
+                                                     
+                                                         
+                                                         
+                                                     
+                                                     
+                                                          Editar
+                                                          
+                                                      
+                                                       
+                                                          Excluir
+                                                     
+                                                
+                                             
+                                             
+                                                
+                                                    Excluir Pergunta?
+                                                    Essa ação é irreversível.
+                                                
+                                                
+                                                    Cancelar
+                                                    
                                                         Sim, excluir
-                                                    </AlertDialogAction>
-                                                </AlertDialogFooter>
-                                            </AlertDialogContent>
-                                        </AlertDialog>
-                                    </TableCell>
-                                </TableRow>
+                                                    
+                                                
+                                             
+                                         
+                                    
+                                
                             ))
                         ) : (
-                             <TableRow>
-                                <TableCell colSpan={3} className="h-24 text-center">Nenhuma pergunta encontrada.</TableCell>
-                             </TableRow>
+                             
+                                 Nenhuma pergunta encontrada.
+                             
                         )}
-                    </TableBody>
-                </Table>
-            </CardContent>
-        </Card>
+                    
+                
+            
+        
     );
 }
 
 function BrandingSettings() {
     const { user, updateOrganizationBranding } = useAuth();
-    const [branding, setBranding] = useState<BrandingSettings>({
+    const [branding, setBranding] = useState({
         logoUrl: user?.organization?.branding?.logoUrl || '',
         primaryColor: user?.organization?.branding?.primaryColor || '',
     });
@@ -1075,7 +1068,7 @@ function BrandingSettings() {
         })
     }, [user?.organization?.branding]);
 
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImageUpload = (e: React.ChangeEvent) => {
         const file = e.target.files?.[0];
         if (file) {
             setIsUploading(true);
@@ -1088,17 +1081,17 @@ function BrandingSettings() {
         }
     };
 
-    const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleColorChange = (e: React.ChangeEvent) => {
         const { value } = e.target;
         // Basic HSL validation
-        if (/^\d{1,3}\s\d{1,3}%\s\d{1,3}%$/.test(value)) {
+        if (/^\d1,3\s\d1,3%\s\d1,3%$/.test(value)) {
             setBranding(prev => ({...prev, primaryColor: value}));
         } else {
              setBranding(prev => ({...prev, primaryColor: value}));
         }
     }
     
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.EventFormEvent) => {
         e.preventDefault();
         setIsSaving(true);
         try {
@@ -1113,70 +1106,63 @@ function BrandingSettings() {
     }
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Branding da Organização</CardTitle>
-                <CardDescription>Personalize a aparência do sistema com a identidade visual da sua marca.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <Tabs defaultValue="logo" className="w-full">
-                        <TabsList className="grid w-full grid-cols-2">
-                            <TabsTrigger value="logo"><Upload className="mr-2 h-4 w-4" /> Logo</TabsTrigger>
-                            <TabsTrigger value="colors"><Palette className="mr-2 h-4 w-4" /> Cores</TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="logo" className="pt-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="logoUrl">URL do Logo</Label>
-                                <Input 
-                                    id="logoUrl" 
-                                    name="logoUrl" 
-                                    value={branding.logoUrl} 
-                                    onChange={(e) => setBranding(prev => ({...prev, logoUrl: e.target.value}))} 
-                                    placeholder="https://exemplo.com/logo.png" 
-                                />
-                            </div>
-                        </TabsContent>
-                        <TabsContent value="colors" className="pt-4">
-                             <div className="space-y-2">
-                                <Label htmlFor="primaryColor">Cor Primária (HSL)</Label>
-                                <Input 
-                                    id="primaryColor" 
-                                    name="primaryColor" 
-                                    value={branding.primaryColor} 
-                                    onChange={handleColorChange}
-                                    placeholder="Ex: 231 48% 48%"
-                                />
-                                <p className="text-sm text-muted-foreground">Insira o valor no formato HSL sem vírgulas. Ex: `231 48% 48%`</p>
-                            </div>
-                        </TabsContent>
-                    </Tabs>
+        
+            
+                Branding da Organização
+                Personalize a aparência do sistema com a identidade visual da sua marca.
+            
+            
+                
+                    
+                        
+                            Logo
+                            Cores
+                        
+                        
+                             
+                                URL do Logo
+                                
+                                     placeholder="https://exemplo.com/logo.png" 
+                                
+                            
+                        
+                        
+                             
+                                Cor Primária (HSL)
+                                
+                                     placeholder="Ex: 231 48% 48%"
+                                
+                                Insira o valor no formato HSL sem vírgulas. Ex:  231 48% 48%
+                            
+                        
+                    
 
                     {branding.logoUrl && (
-                        <div>
-                            <Label>Pré-visualização do Logo</Label>
-                            <div className="mt-2 rounded-md border p-2 flex justify-center items-center h-24 w-24">
-                                <Image src={branding.logoUrl} alt="Pré-visualização do logo" width={80} height={80} className="object-contain h-full w-full" data-ai-hint="company logo" />
-                            </div>
-                        </div>
+                        
+                            Pré-visualização do Logo
+                            
+                                
+                                
+                            
+                        
                     )}
                     
-                    <Button type="submit" disabled={isSaving}>
-                        {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    
+                        {isSaving   }
                         Salvar Branding
-                    </Button>
-                </form>
-            </CardContent>
-        </Card>
+                    
+                
+            
+        
     );
 }
 
 function RolesSettings() {
     const { user } = useAuth();
-    const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
+    const [profiles, setProfiles] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingProfile, setEditingProfile] = useState<PermissionProfile | undefined>(undefined);
+    const [editingProfile, setEditingProfile] = useState(undefined);
     const { toast } = useToast();
 
     useEffect(() => {
@@ -1193,7 +1179,7 @@ function RolesSettings() {
         return () => unsubscribe();
     }, [user]);
 
-    const handleSave = async (profileData: Partial<PermissionProfile>) => {
+    const handleSave = async (profileData: PartialPermissionProfile) => {
         if (!user?.organizationId) return;
 
         try {
@@ -1221,296 +1207,62 @@ function RolesSettings() {
     };
     
     return (
-        <Card>
-            <CardHeader>
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-                    <div>
-                        <CardTitle>Perfis e Permissões</CardTitle>
-                        <CardDescription>
-                            Crie perfis de usuário e defina quais módulos cada um pode acessar.
-                        </CardDescription>
-                    </div>
-                     <Button onClick={() => { setEditingProfile(undefined); setIsFormOpen(true); }}>
-                        <PlusCircle className="mr-2" /> Adicionar Perfil
-                    </Button>
-                </div>
-            </CardHeader>
-            <CardContent>
-                 <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Nome do Perfil</TableHead>
-                            <TableHead>Permissões</TableHead>
-                            <TableHead className="text-right">Ações</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {loading ? (
-                            <TableRow><TableCell colSpan={3}><Skeleton className="h-5 w-full"/></TableCell></TableRow>
-                        ) : profiles.map(profile => (
-                            <TableRow key={profile.id}>
-                                <TableCell className="font-medium">{profile.name}</TableCell>
-                                <TableCell>
-                                    <div className="flex flex-wrap gap-1">
-                                        {Object.entries(profile.permissions)
-                                            .filter(([, perms]) => perms.view)
-                                            .map(([key]) => (
-                                            <Badge key={key} variant="outline">{key}</Badge>
-                                        ))}
-                                    </div>
-                                </TableCell>
-                                <TableCell className="text-right">
-                                    <Button variant="ghost" size="icon" onClick={() => { setEditingProfile(profile); setIsFormOpen(true);}}>
-                                        <Pencil className="h-4 w-4"/>
-                                    </Button>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-                <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                    <DialogContent className="max-w-2xl">
-                        <DialogHeader>
-                            <DialogTitle>{editingProfile ? 'Editar Perfil' : 'Novo Perfil'}</DialogTitle>
-                        </DialogHeader>
-                        <PermissionProfileForm
-                            profile={editingProfile}
-                            organization={user!.organization!}
-                            onSave={handleSave}
-                            onDelete={handleDelete}
-                            onDone={() => setIsFormOpen(false)}
-                        />
-                    </DialogContent>
-                </Dialog>
-            </CardContent>
-        </Card>
-    );
-}
-
-function PermissionProfileForm({
-    profile, organization, onSave, onDelete, onDone
-}: {
-    profile?: PermissionProfile,
-    organization: Organization,
-    onSave: (data: Partial<PermissionProfile>) => void,
-    onDelete: (id: string) => void,
-    onDone: () => void,
-}) {
-    const [formData, setFormData] = useState<Partial<PermissionProfile>>({});
-    
-    const allModuleConfig = React.useMemo(() => [
-        { key: 'dashboard', label: 'Início', icon: Home },
-        { key: 'customers', label: 'Clientes', icon: Users },
-        { key: 'services', label: 'Serviços', icon: Briefcase },
-        { key: 'appointments', label: 'Agendamentos', icon: Calendar },
-        { key: 'products', label: 'Produtos', icon: Package },
-        { key: 'combos', label: 'Combos', icon: Gift },
-        { key: 'kits', label: 'Kits', icon: Component },
-        { key: 'inventory', label: 'Estoque', icon: BarChart },
-        { key: 'pos', label: 'Frente de Caixa', icon: ShoppingCart },
-        { key: 'expenses', label: 'Despesas', icon: ArrowDownCircle },
-        { key: 'assistant', label: 'Oráculo AI', icon: Bot },
-        { key: 'reports', label: 'Relatórios', icon: FileText },
-        { key: 'settings', label: 'Configurações', icon: Settings },
-    ] as const, []);
-
-    const activeModuleConfig = React.useMemo(() => 
-        organization ? allModuleConfig.filter(mod => organization.enabledModules[mod.key as keyof EnabledModules]) : [],
-    [allModuleConfig, organization]);
-
-    useEffect(() => {
-        if (!organization) return;
         
-        const defaultPermissions: Partial<EnabledModules> = {};
-        activeModuleConfig.forEach(mod => {
-            defaultPermissions[mod.key] = { view: false, edit: false, delete: false };
-        });
-
-        const initialPermissions = profile?.permissions 
-            ? { ...defaultPermissions, ...profile.permissions } 
-            : defaultPermissions;
-
-        setFormData({
-            ...profile,
-            name: profile?.name || '',
-            permissions: initialPermissions as EnabledModules,
-        });
-    }, [profile, activeModuleConfig, organization]);
-
-    const handlePermissionChange = (
-        module: keyof EnabledModules, 
-        permission: keyof ModulePermissions, 
-        checked: boolean
-    ) => {
-        setFormData(prev => {
-            const newPermissions = { ...prev.permissions };
-            const currentModulePerms = newPermissions[module] || { view: false, edit: false, delete: false };
-            const updatedModulePerms = { ...currentModulePerms, [permission]: checked };
             
-            if (permission === 'view' && !checked) {
-                updatedModulePerms.edit = false;
-                updatedModulePerms.delete = false;
-            }
-            if ((permission === 'edit' || permission === 'delete') && checked) {
-                 updatedModulePerms.view = true;
-            }
+                
+                    
+                        Perfis e Permissões
+                        Crie perfis de usuário e defina quais módulos cada um pode acessar.
+                    
+                     Adicionar Perfil
+                
+            
+            
+                
+                    
+                        Nome do Perfil
+                        Permissões
+                        Ações
+                    
+                    
+                        {loading ? (
+                             
+                        ) : profiles.map(profile => (
+                             
+                                {profile.name}
+                                
+                                    {Object.entries(profile.permissions)
+                                        .filter(([, perms]) => perms.view)
+                                        .map(([key]) => (
+                                        {key}
+                                    ))}
+                                
+                                
+                                    
+                                
+                            
+                        ))}
+                    
+                
 
-            return { ...prev, permissions: {...newPermissions, [module]: updatedModulePerms} as EnabledModules };
-        });
-    };
-
-    const handleSelectAll = (permission: keyof ModulePermissions, checked: boolean) => {
-        setFormData(prev => {
-            const newPermissions = { ...prev.permissions } as EnabledModules;
-            activeModuleConfig.forEach(mod => {
-                const currentModulePerms = newPermissions[mod.key] || { view: false, edit: false, delete: false };
-                const updatedModulePerms = { ...currentModulePerms, [permission]: checked };
-
-                if (permission === 'view' && !checked) {
-                    updatedModulePerms.edit = false;
-                    updatedModulePerms.delete = false;
-                }
-                if ((permission === 'edit' || permission === 'delete') && checked) {
-                    updatedModulePerms.view = true;
-                }
-                newPermissions[mod.key] = updatedModulePerms;
-            });
-            return { ...prev, permissions: newPermissions };
-        });
-    };
-
-    const getSelectAllState = (permission: keyof ModulePermissions): boolean | 'indeterminate' => {
-        const selectedCount = activeModuleConfig
-            .filter(mod => formData.permissions?.[mod.key]?.[permission])
-            .length;
+                 
+                     
+                         
+                             {editingProfile ? 'Editar Perfil' : 'Novo Perfil'}
+                         
+                         
+                             
+                                 
+                                 
+                                 
+                                 
+                             
+                         
+                     
+                 
+            
         
-        if (selectedCount === 0) return false;
-        if (selectedCount === activeModuleConfig.length) return true;
-        return 'indeterminate';
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave(formData);
-    }
-    
-    if (!organization) {
-        return (
-            <div className="flex justify-center items-center h-48">
-                <Loader2 className="animate-spin" />
-            </div>
-        );
-    }
-
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-            <div className="space-y-2">
-                <Label htmlFor="profileName">Nome do Perfil</Label>
-                <Input
-                    id="profileName"
-                    value={formData.name || ''}
-                    onChange={(e) => setFormData(prev => ({...prev, name: e.target.value}))}
-                    required
-                />
-            </div>
-            <div className="space-y-2">
-                <Label>Permissões dos Módulos</Label>
-                <div className="rounded-md border">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Módulo</TableHead>
-                                <TableHead className="text-center">
-                                    <div className="flex flex-col items-center gap-1">
-                                        <Checkbox
-                                            checked={getSelectAllState('view')}
-                                            onCheckedChange={(checked) => handleSelectAll('view', checked === true)}
-                                            id="select-all-view"
-                                        />
-                                        <Label htmlFor="select-all-view" className="cursor-pointer">Visualizar</Label>
-                                    </div>
-                                </TableHead>
-                                <TableHead className="text-center">
-                                     <div className="flex flex-col items-center gap-1">
-                                        <Checkbox
-                                            checked={getSelectAllState('edit')}
-                                            onCheckedChange={(checked) => handleSelectAll('edit', checked === true)}
-                                            id="select-all-edit"
-                                        />
-                                        <Label htmlFor="select-all-edit" className="cursor-pointer">Editar</Label>
-                                    </div>
-                                </TableHead>
-                                <TableHead className="text-center">
-                                     <div className="flex flex-col items-center gap-1">
-                                        <Checkbox
-                                            checked={getSelectAllState('delete')}
-                                            onCheckedChange={(checked) => handleSelectAll('delete', checked === true)}
-                                            id="select-all-delete"
-                                        />
-                                        <Label htmlFor="select-all-delete" className="cursor-pointer">Excluir</Label>
-                                    </div>
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {activeModuleConfig.map(mod => (
-                                <TableRow key={mod.key}>
-                                    <TableCell className="font-medium flex items-center gap-2">
-                                        <mod.icon className="h-4 w-4"/> {mod.label}
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        <Checkbox
-                                            checked={formData.permissions?.[mod.key]?.view ?? false}
-                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'view', checked === true)}
-                                        />
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        <Checkbox
-                                            checked={formData.permissions?.[mod.key]?.edit ?? false}
-                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'edit', checked === true)}
-                                            disabled={!formData.permissions?.[mod.key]?.view}
-                                        />
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        <Checkbox
-                                            checked={formData.permissions?.[mod.key]?.delete ?? false}
-                                            onCheckedChange={(checked) => handlePermissionChange(mod.key, 'delete', checked === true)}
-                                            disabled={!formData.permissions?.[mod.key]?.view}
-                                        />
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-            </div>
-            <DialogFooter className="justify-between pt-4">
-                <div>
-                {profile?.id && (
-                     <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                           <Button variant="destructive" type="button">Excluir</Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                               <AlertDialogTitle>Excluir Perfil?</AlertDialogTitle>
-                               <AlertDialogDescription>Esta ação é irreversível. O perfil será removido permanentemente.</AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => onDelete(profile.id)}>Sim, excluir</AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-                )}
-                </div>
-                <div className="flex gap-2">
-                    <Button variant="ghost" type="button" onClick={onDone}>Cancelar</Button>
-                    <Button type="submit">Salvar Perfil</Button>
-                </div>
-            </DialogFooter>
-        </form>
-    )
+    );
 }
 
 function TestDataSettings() {
@@ -1546,39 +1298,33 @@ function TestDataSettings() {
     };
 
     return (
-        <Card className="border-destructive">
-            <CardHeader>
-                <CardTitle>Dados de Teste</CardTitle>
-                <CardDescription>
-                    Esta ação excluirá permanentemente todos os produtos, combos, kits, vendas e entradas de estoque da sua organização.
-                    Use para limpar o ambiente de teste. Esta ação é irreversível e só pode ser executada uma vez.
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                         <Button variant="destructive" disabled={isDeleting}>
-                            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Excluir Dados de Teste
-                         </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle>Você tem certeza absoluta?</AlertDialogTitle>
-                            <AlertDialogDescription>
+        
+            
+                Dados de Teste
+                Esta ação excluirá permanentemente todos os produtos, combos, kits, vendas e entradas de estoque da sua organização.
+                Use para limpar o ambiente de teste. Esta ação é irreversível e só pode ser executada uma vez.
+            
+            
+                
+                     
+                         
+                            
+                                Você tem certeza absoluta?
                                 Esta ação não pode ser desfeita. Todos os dados transacionais (produtos, vendas, combos, kits) serão removidos permanentemente.
-                            </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleDelete} className={buttonVariants({ variant: "destructive" })}>
-                                Sim, excluir tudo
-                            </AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-            </CardContent>
-        </Card>
+                            
+                         
+                         
+                            
+                                Cancelar
+                                
+                                    Sim, excluir tudo
+                                
+                            
+                         
+                     
+                
+            
+        
     );
 }
 
@@ -1589,64 +1335,64 @@ function SettingsPageContent() {
     
     if (!user?.enabledModules?.settings?.view) {
         return (
-             <div className="flex h-full items-center justify-center">
-                <Card className="w-full max-w-md text-center">
-                    <CardHeader>
-                        <CardTitle className="flex items-center justify-center gap-2"><Lock /> Acesso Negado</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p>Você não tem permissão para acessar a página de configurações.</p>
-                    </CardContent>
-                </Card>
-            </div>
+             
+                
+                    
+                         Acesso Negado
+                    
+                    
+                        Você não tem permissão para acessar a página de configurações.
+                    
+                
+            
         );
     }
 
     return (
-        <div className="space-y-6">
-            <div>
-                <h1 className="text-3xl font-bold">Configurações</h1>
-                <p className="text-muted-foreground">Gerencie as configurações gerais do sistema.</p>
-            </div>
-            <Tabs defaultValue={tab} className="space-y-4">
-                <TabsList>
-                    <TabsTrigger value="users">Usuários</TabsTrigger>
-                    <TabsTrigger value="branches">Filiais</TabsTrigger>
-                    <TabsTrigger value="suppliers"><Truck className="mr-2 h-4 w-4"/>Fornecedores</TabsTrigger>
-                    <TabsTrigger value="payments">Pagamentos</TabsTrigger>
-                    <TabsTrigger value="branding">Branding</TabsTrigger>
-                    <TabsTrigger value="roles">Perfis &amp; Permissões</TabsTrigger>
-                    {user?.enabledModules?.customers?.view && (
-                        <TabsTrigger value="anamnesis">Anamnese</TabsTrigger>
-                    )}
-                </TabsList>
-                <TabsContent value="users">
-                   <UsersTable />
-                </TabsContent>
-                <TabsContent value="branches">
-                   <BranchesSettings />
-                </TabsContent>
-                <TabsContent value="suppliers">
-                    <SuppliersSettings />
-                </TabsContent>
-                <TabsContent value="payments">
-                    <PaymentConditions />
-                </TabsContent>
-                <TabsContent value="branding">
-                    <BrandingSettings />
-                </TabsContent>
-                 <TabsContent value="roles">
-                    <RolesSettings />
-                </TabsContent>
-                 {user?.enabledModules?.customers?.view && (
-                    <TabsContent value="anamnesis">
-                        <AnamnesisSettings />
-                    </TabsContent>
-                 )}
-            </Tabs>
-             <Separator />
-            <TestDataSettings />
-        </div>
+        
+            
+                
+                    
+                        Configurações
+                        Gerencie as configurações gerais do sistema.
+                    
+                
+                
+                    
+                        
+                            Usuários
+                            Filiais
+                            Fornecedores
+                            Pagamentos
+                            Branding
+                            Perfis &amp; Permissões
+                            {user?.enabledModules?.customers?.view && (
+                                Anamnese
+                            )}
+                        
+                        
+                           
+                        
+                        
+                           
+                        
+                        
+                           
+                        
+                        
+                           
+                        
+                        
+                           
+                        
+                         {user?.enabledModules?.customers?.view && (
+                            
+                        )}
+                    
+                
+             
+            
+        
     )
 }
 
@@ -1658,12 +1404,12 @@ function SupplierForm({
 }: { 
     supplier?: Supplier; 
     products: Product[];
-    onSave: (data: Partial<Supplier>, productsToLink: string[], productsToUnlink: string[]) => void; 
+    onSave: (data: PartialSupplier, productsToLink: string[], productsToUnlink: string[]) => void; 
     onDone: () => void 
 }) {
-    const [formData, setFormData] = useState<Partial<Supplier>>({ name: '', contactName: '', phone: '', email: '', address: '' });
-    const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
-    const [initialProductIds, setInitialProductIds] = useState<string[]>([]);
+    const [formData, setFormData] = useState({ name: '', contactName: '', phone: '', email: '', address: '' });
+    const [selectedProductIds, setSelectedProductIds] = useState([]);
+    const [initialProductIds, setInitialProductIds] = useState([]);
 
     useEffect(() => {
         if (supplier) {
@@ -1678,7 +1424,7 @@ function SupplierForm({
         }
     }, [supplier, products]);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleChange = (e: React.ChangeEvent) => {
         const { name, value } = e.target;
         setFormData(prev => ({...prev, [name]: value}));
     };
@@ -1689,7 +1435,7 @@ function SupplierForm({
         );
     }
     
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = (e: React.EventFormEvent) => {
         e.preventDefault();
         const productsToLink = selectedProductIds.filter(id => !initialProductIds.includes(id));
         const productsToUnlink = initialProductIds.filter(id => !selectedProductIds.includes(id));
@@ -1697,62 +1443,79 @@ function SupplierForm({
     }
 
     return (
-         <form onSubmit={handleSubmit} className="space-y-4 pt-4 max-h-[80vh] overflow-y-auto pr-4">
-            <div className="space-y-2">
-                <Label htmlFor="name">Nome do Fornecedor</Label>
-                <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <Label htmlFor="contactName">Nome do Contato</Label>
-                    <Input id="contactName" name="contactName" value={formData.contactName} onChange={handleChange} />
-                </div>
-                <div className="space-y-2">
-                    <Label htmlFor="phone">Telefone</Label>
-                    <Input id="phone" name="phone" value={formData.phone} onChange={handleChange} />
-                </div>
-            </div>
-             <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} />
-            </div>
-            <div className="space-y-2">
-                <Label htmlFor="address">Endereço</Label>
-                <Input id="address" name="address" value={formData.address} onChange={handleChange} />
-            </div>
-
-            <div className="space-y-2">
-                <Label>Produtos Vinculados</Label>
-                <ScrollArea className="h-64 rounded-md border">
-                    <div className="p-4">
-                    {products.map(product => (
-                        <div key={product.id} className="flex items-center space-x-2 mb-2">
-                            <Checkbox 
-                                id={`product-${product.id}`}
-                                checked={selectedProductIds.includes(product.id)}
-                                onCheckedChange={() => handleProductSelection(product.id)}
-                            />
-                            <Label htmlFor={`product-${product.id}`} className="font-normal w-full">{product.name}</Label>
-                        </div>
-                    ))}
-                    </div>
-                </ScrollArea>
-            </div>
+         
             
-             <DialogFooter>
-                <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
-                <Button type="submit">Salvar Fornecedor</Button>
-            </DialogFooter>
-        </form>
+                
+                    Nome do Fornecedor
+                    
+                         placeholder="Nome do Fornecedor" required 
+                    
+                
+                
+                    
+                        
+                            Nome do Contato
+                            
+                                 placeholder="Nome do Contato" 
+                            
+                        
+                        
+                            Telefone
+                            
+                                 placeholder="Telefone" 
+                            
+                        
+                    
+                     
+                        Email
+                        
+                             placeholder="Email" 
+                        
+                    
+                    
+                        Endereço
+                        
+                             placeholder="Endereço" 
+                        
+                    
+                
+
+                
+                    Produtos Vinculados
+                    
+                        
+                            
+                            
+                                {products.map(product => (
+                                    
+                                        
+                                             
+                                            
+                                            {product.name}
+                                        
+                                    
+                                ))}
+                            
+                        
+                    
+                
+            
+            
+                
+                    Cancelar
+                    Salvar Fornecedor
+                
+            
+        
     )
 }
 
 function SuppliersSettings() {
-    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-    const [products, setProducts] = useState<Product[]>([]);
+    const [suppliers, setSuppliers] = useState([]);
+    const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingSupplier, setEditingSupplier] = useState<Supplier | undefined>(undefined);
+    const [editingSupplier, setEditingSupplier] = useState(undefined);
     const { user, currentBranch } = useAuth();
     const { toast } = useToast();
     
@@ -1776,7 +1539,7 @@ function SuppliersSettings() {
         return () => unsubSuppliers();
     }, [user, currentBranch]);
 
-    const handleSave = async (data: Partial<Supplier>, productsToLink: string[], productsToUnlink: string[]) => {
+    const handleSave = async (data: PartialSupplier, productsToLink: string[], productsToUnlink: string[]) => {
         if (!user?.organizationId || !currentBranch?.id) return;
         
         const isEditing = !!editingSupplier;
@@ -1801,7 +1564,7 @@ function SuppliersSettings() {
         // 3. Unlink products
         productsToUnlink.forEach(productId => {
             const productRef = doc(db, 'products', productId);
-            batch.update(productRef, { supplierId: null, supplierName: '' });
+            batch.update(productRef, { supplierId: '', supplierName: '' });
         });
 
         try {
@@ -1815,7 +1578,6 @@ function SuppliersSettings() {
     
     const handleDelete = async (id: string) => {
         try {
-            // TODO: Unlink products associated with this supplier? For now, we'll just delete the supplier.
             await deleteDoc(doc(db, "suppliers", id));
             toast({ title: 'Fornecedor excluído!', variant: 'destructive' });
         } catch (error) {
@@ -1824,72 +1586,69 @@ function SuppliersSettings() {
     };
 
     return (
-        <Card>
-            <CardHeader>
-                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-                    <div>
-                        <CardTitle>Fornecedores</CardTitle>
-                        <CardDescription>Gerencie os fornecedores dos seus produtos.</CardDescription>
-                    </div>
-                    <Button onClick={() => { setEditingSupplier(undefined); setIsFormOpen(true); }}><PlusCircle className="mr-2" /> Adicionar Fornecedor</Button>
-                </div>
-            </CardHeader>
-            <CardContent>
-                 <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Nome</TableHead>
-                            <TableHead>Contato</TableHead>
-                            <TableHead>Telefone</TableHead>
-                            <TableHead>Email</TableHead>
-                            <TableHead className="text-right">Ações</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {loading ? <TableRow><TableCell colSpan={5}><Skeleton className="h-5"/></TableCell></TableRow> :
-                        suppliers.map(s => (
-                            <TableRow key={s.id}>
-                                <TableCell>{s.name}</TableCell>
-                                <TableCell>{s.contactName}</TableCell>
-                                <TableCell>{s.phone}</TableCell>
-                                <TableCell>{s.email}</TableCell>
-                                <TableCell className="text-right">
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4"/></Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent>
-                                            <DropdownMenuItem onClick={() => { setEditingSupplier(s); setIsFormOpen(true); }}>Editar</DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => handleDelete(s.id)} className="text-destructive focus:text-destructive">Excluir</DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
-                                </TableCell>
-                            </TableRow>
+        
+            
+                 
+                    
+                        Fornecedores
+                        Gerencie os fornecedores dos seus produtos.
+                    
+                    Adicionar Fornecedor
+                
+            
+            
+                 
+                    
+                        Nome
+                        Contato
+                        Telefone
+                        Email
+                        Ações
+                    
+                    
+                        {loading   
+                               {s.name}
+                                {s.contactName}
+                                {s.phone}
+                                {s.email}
+                                
+                                     
+                                         
+                                             Editar
+                                             Excluir
+                                         
+                                     
+                                 
+                            
                         ))}
-                    </TableBody>
-                </Table>
-            </CardContent>
-             <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle>{editingSupplier ? 'Editar Fornecedor' : 'Novo Fornecedor'}</DialogTitle>
-                    </DialogHeader>
-                    <SupplierForm 
-                        supplier={editingSupplier}
-                        products={products}
-                        onSave={handleSave} 
-                        onDone={() => setIsFormOpen(false)} 
-                    />
-                </DialogContent>
-            </Dialog>
-        </Card>
+                    
+                
+            
+
+                 
+                     
+                         
+                             {editingSupplier ? 'Editar Fornecedor' : 'Novo Fornecedor'}
+                         
+                         
+                             
+                                 
+                                 
+                                 
+                                 
+                             
+                         
+                     
+                 
+            
+        
     )
 }
 
 export default function SettingsPage() {
     return (
-        <React.Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
-            <SettingsPageContent />
-        </React.Suspense>
+        
+            
+        
     )
 }

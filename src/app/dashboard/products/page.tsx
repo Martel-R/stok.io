@@ -1,5 +1,4 @@
 
-
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -338,7 +337,7 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
       
         <div className="space-y-2">
             <Label htmlFor="supplierId">Fornecedor</Label>
-            <Select value={formData.supplierId || 'none'} onValueChange={(val) => setFormData(prev => ({...prev, supplierId: val === 'none' ? '' : val}))}>
+            <Select value={formData.supplierId || 'none'} onValueChange={(val) => setFormData(prev => ({...prev, supplierId: val === 'none' ? undefined : val}))}>
                 <SelectTrigger>
                     <SelectValue placeholder="Selecione um fornecedor..."/>
                 </SelectTrigger>
@@ -750,7 +749,7 @@ export default function ProductsPage() {
         selectedProductIds.forEach(id => {
             const productRef = doc(db, 'products', id);
             batch.update(productRef, { 
-                supplierId: newSupplierId === 'none' ? null : newSupplierId,
+                supplierId: newSupplierId === 'none' ? '' : newSupplierId,
                 supplierName: newSupplierId === 'none' ? '' : (newSupplier?.name || '')
              });
         });
@@ -809,7 +808,7 @@ export default function ProductsPage() {
                             <DropdownMenuItem onClick={() => handleBulkUpdateSalable(true)}>
                                 Marcar como Comerciável
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={()={() => handleBulkUpdateSalable(false)}>
+                            <DropdownMenuItem onClick={() => handleBulkUpdateSalable(false)}>
                                 Marcar como Não Comerciável
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => setIsChangeCategoryDialogOpen(true)}>
@@ -937,6 +936,7 @@ export default function ProductsPage() {
                     <TableCell><Skeleton className="h-5 w-48" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
@@ -1049,7 +1049,7 @@ export default function ProductsPage() {
                 </DialogFooter>
             </DialogContent>
         </Dialog>
-
+        
         {/* Dialog for Changing Supplier */}
         <Dialog open={isChangeSupplierDialogOpen} onOpenChange={setIsChangeSupplierDialogOpen}>
             <DialogContent>
@@ -1127,13 +1127,3 @@ export default function ProductsPage() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-    

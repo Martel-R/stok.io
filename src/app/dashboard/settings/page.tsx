@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -1260,7 +1261,7 @@ function RolesSettings() {
                                     </div>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                    <Button variant="ghost" size="icon" onClick={()={() => { setEditingProfile(profile); setIsFormOpen(true);}}>
+                                    <Button variant="ghost" size="icon" onClick={() => { setEditingProfile(profile); setIsFormOpen(true);}}>
                                         <Pencil className="h-4 w-4"/>
                                     </Button>
                                 </TableCell>
@@ -1561,7 +1562,7 @@ function SuppliersSettings() {
                 </DialogContent>
             </Dialog>
         </Card>
-    )
+    );
 }
 
 export default function SettingsPage() {
@@ -1571,6 +1572,8 @@ export default function SettingsPage() {
         </React.Suspense>
     )
 }
+
+
 
 
 function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Supplier; products: Product[]; onSave: (data: Partial<Supplier>, productsToLink: string[], productsToUnlink: string[]) => void; onDone: () => void }) {
@@ -1641,3 +1644,6 @@ function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Suppl
         </form>
     );
 }
+
+
+    

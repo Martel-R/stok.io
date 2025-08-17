@@ -331,7 +331,7 @@ function BranchesSettings() {
                 // Seed products for the new branch
                 MOCK_PRODUCTS.forEach(product => {
                     const productDocRef = doc(collection(db, 'products'));
-                    const { stock, ...productData } = product; // Remove stock from mock
+                    const { ...productData } = product; // Remove stock from mock
                     const productWithBranchInfo: Omit<Product, 'id'> = {
                         ...(productData as any),
                         branchId: branchDocRef.id,

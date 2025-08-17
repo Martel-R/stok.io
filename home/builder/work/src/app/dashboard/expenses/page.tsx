@@ -57,7 +57,7 @@ function ExpenseForm({ expense, suppliers, onSave, onDone }: { expense?: Expense
     };
 
     const handleSelectChange = (name: string, value: string) => {
-        setFormData(prev => ({ ...prev, [name]: value }));
+        setFormData(prev => ({ ...prev, [name]: value === 'none' ? '' : value }));
     };
     
     const handleDateChange = (date: Date | undefined) => {
@@ -111,10 +111,10 @@ function ExpenseForm({ expense, suppliers, onSave, onDone }: { expense?: Expense
                 </div>
                  <div className="space-y-2">
                     <Label htmlFor="supplierId">Fornecedor (Opcional)</Label>
-                    <Select value={formData.supplierId || ''} onValueChange={(value) => handleSelectChange('supplierId', value)}>
+                    <Select value={formData.supplierId || 'none'} onValueChange={(value) => handleSelectChange('supplierId', value)}>
                         <SelectTrigger><SelectValue placeholder="Nenhum"/></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="">Nenhum</SelectItem>
+                            <SelectItem value="none">Nenhum</SelectItem>
                             {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                         </SelectContent>
                     </Select>

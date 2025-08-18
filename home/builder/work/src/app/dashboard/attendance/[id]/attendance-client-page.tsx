@@ -149,7 +149,6 @@ export default function AttendanceClientPage({ id }: { id: string }) {
                 const data = docSnap.data() as Attendance;
                 setAttendance({ ...data, id: docSnap.id });
                 
-                // Fetch customer data
                 if (data.customerId) {
                     const customerRef = doc(db, 'customers', data.customerId);
                     const customerSnap = await getDoc(customerRef);
@@ -260,7 +259,12 @@ export default function AttendanceClientPage({ id }: { id: string }) {
         try {
             const snapshot = await uploadBytes(storageRef, file);
             const downloadURL = await getDownloadURL(snapshot.ref);
-            setAttendance(prev => prev ? { ...prev, photos: [...prev.photos, downloadURL] } : null);
+            
+            const attendanceRef = doc(db, 'attendances', attendance.id);
+            const currentAttendance = (await getDoc(attendanceRef)).data() as Attendance;
+            const updatedPhotos = [...(currentAttendance.photos || []), downloadURL];
+            await updateDoc(attendanceRef, { photos: updatedPhotos });
+
             toast({ title: 'Foto enviada com sucesso!' });
         } catch (error) {
             toast({ title: 'Erro ao enviar foto', variant: 'destructive' });
@@ -305,7 +309,11 @@ export default function AttendanceClientPage({ id }: { id: string }) {
         try {
             const { id, ...dataToSave } = attendance;
             const attendanceRef = doc(db, 'attendances', id);
-            batch.update(attendanceRef, { ...dataToSave, status });
+            
+            // We don't save photos directly via this handler, they are uploaded separately.
+            const { photos, ...restOfData } = dataToSave;
+            
+            batch.update(attendanceRef, { ...restOfData, status });
 
             // Also update the original appointment status
             if (attendance.appointmentId) {
@@ -416,47 +424,44 @@ export default function AttendanceClientPage({ id }: { id: string }) {
                                     <Textarea value={attendance.notes} onChange={handleNotesChange} rows={8} placeholder="Descreva os procedimentos, observações e evolução do cliente..." />
                                 </CardContent>
                             </Card>
-                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle>Câmera ao Vivo</CardTitle>
-                                        <CardDescription>Capture fotos do atendimento.</CardDescription>
-                                    </CardHeader>
-                                    <CardContent className="space-y-4">
-                                        <div className="bg-muted rounded-md p-2">
-                                            <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted playsInline />
-                                            <canvas ref={canvasRef} className="hidden" />
-                                        </div>
-                                        {!hasCameraPermission && ( <Alert variant="destructive"><Camera className="h-4 w-4"/><AlertTitle>Acesso à Câmera Necessário</AlertTitle><AlertDescription>Por favor, habilite a permissão para usar a câmera nas configurações do seu navegador.</AlertDescription></Alert>)}
-                                        <Button onClick={handleCapturePhoto} disabled={!hasCameraPermission || isUploading} className="w-full">
-                                            {isUploading && <Loader2 className="mr-2 animate-spin" />}
-                                            <Camera className="mr-2" /> Capturar Foto
-                                        </Button>
-                                    </CardContent>
-                                </Card>
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle>Galeria de Fotos</CardTitle>
-                                        <CardDescription>Fotos do atendimento.</CardDescription>
-                                    </CardHeader>
-                                    <CardContent className="flex flex-col h-full">
-                                        <div className="grid grid-cols-2 gap-4 mb-4 flex-grow">
-                                            {attendance.photos.map(url => (
-                                                <div key={url} className="relative aspect-square">
-                                                    <Image src={url} alt="Foto do atendimento" layout="fill" className="rounded-md object-cover"/>
-                                                </div>
-                                            ))}
-                                            {isUploading && <div className="relative aspect-square flex items-center justify-center rounded-md border"><Loader2 className="animate-spin"/></div>}
-                                        </div>
-                                        <div className="mt-auto">
+                             <Card>
+                                <CardHeader>
+                                    <CardTitle>Fotos do Atendimento</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <Tabs defaultValue="gallery">
+                                        <TabsList className="grid w-full grid-cols-2">
+                                            <TabsTrigger value="gallery">Galeria</TabsTrigger>
+                                            <TabsTrigger value="camera">Câmera</TabsTrigger>
+                                        </TabsList>
+                                        <TabsContent value="gallery" className="pt-4">
+                                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4">
+                                                {attendance.photos.map(url => (
+                                                    <div key={url} className="relative aspect-square">
+                                                        <Image src={url} alt="Foto do atendimento" layout="fill" className="rounded-md object-cover"/>
+                                                    </div>
+                                                ))}
+                                                {isUploading && <div className="relative aspect-square flex items-center justify-center rounded-md border"><Loader2 className="animate-spin"/></div>}
+                                            </div>
                                             <Label htmlFor="photo-upload" className={cn('w-full', isUploading && 'opacity-50 cursor-not-allowed')}>
                                                 <div className="flex items-center justify-center w-full p-4 border-2 border-dashed rounded-md cursor-pointer hover:bg-muted"><Upload className="mr-2"/><span>Enviar Arquivo</span></div>
                                             </Label>
                                             <Input id="photo-upload" type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} disabled={isUploading}/>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            </div>
+                                        </TabsContent>
+                                        <TabsContent value="camera" className="pt-4 space-y-4">
+                                            <div className="bg-muted rounded-md p-2">
+                                                <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted playsInline />
+                                                <canvas ref={canvasRef} className="hidden" />
+                                            </div>
+                                            {!hasCameraPermission && ( <Alert variant="destructive"><Camera className="h-4 w-4"/><AlertTitle>Acesso à Câmera Necessário</AlertTitle><AlertDescription>Por favor, habilite a permissão para usar a câmera nas configurações do seu navegador.</AlertDescription></Alert>)}
+                                            <Button onClick={handleCapturePhoto} disabled={!hasCameraPermission || isUploading} className="w-full">
+                                                {isUploading && <Loader2 className="mr-2 animate-spin" />}
+                                                <Camera className="mr-2" /> Capturar Foto
+                                            </Button>
+                                        </TabsContent>
+                                    </Tabs>
+                                </CardContent>
+                            </Card>
                         </TabsContent>
                     </Tabs>
                 </div>

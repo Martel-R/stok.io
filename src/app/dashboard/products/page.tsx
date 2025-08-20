@@ -32,6 +32,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { RadioGroup } from '@/components/ui/radio-group';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { logUserActivity } from '@/lib/logging';
 
 
 type ProductWithStock = Product & { stock: number };
@@ -288,12 +289,12 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
     <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-4">
       <div>
         <Label htmlFor="name">Nome do Produto</Label>
-        <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
+        <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} required />
       </div>
        <div className="grid grid-cols-2 gap-4">
         <div>
           <Label htmlFor="category">Categoria</Label>
-          <Input id="category" name="category" value={formData.category} onChange={handleChange} required />
+          <Input id="category" name="category" value={formData.category || ''} onChange={handleChange} required />
         </div>
          <div>
           <Label htmlFor="barcode">Código de Barras</Label>
@@ -352,7 +353,7 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
       <div className="grid grid-cols-2 gap-4">
         <div>
           <Label htmlFor="lowStockThreshold">Alerta de Estoque Baixo</Label>
-          <Input id="lowStockThreshold" name="lowStockThreshold" type="number" value={formData.lowStockThreshold} onChange={handleChange} required />
+          <Input id="lowStockThreshold" name="lowStockThreshold" type="number" value={formData.lowStockThreshold || 0} onChange={handleChange} required />
         </div>
          <div>
           <Label htmlFor="order">Ordem de Exibição</Label>
@@ -376,7 +377,7 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
           <TabsContent value="url">
             <div className="space-y-2 mt-4">
               <Label htmlFor="imageUrl">URL da Imagem</Label>
-              <Input id="imageUrl" name="imageUrl" value={formData.imageUrl} onChange={handleChange} placeholder="https://exemplo.com/imagem.png" />
+              <Input id="imageUrl" name="imageUrl" value={formData.imageUrl || ''} onChange={handleChange} placeholder="https://exemplo.com/imagem.png" />
             </div>
           </TabsContent>
            <TabsContent value="camera">
@@ -431,7 +432,8 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
 
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<ProductWithStock[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [allStockEntries, setAllStockEntries] = useState<StockEntry[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -465,99 +467,109 @@ export default function ProductsPage() {
         return;
     }
     
+    const unsubs: (()=>void)[] = [];
+
     const productsRef = collection(db, 'products');
-    const qProducts = query(productsRef, where("branchId", "==", currentBranch.id));
-
-    const unsubscribeProducts = onSnapshot(qProducts, (productsSnapshot) => {
-      const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
-      
-      const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
-      
-      const unsubEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
-          const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
-
-          const productsWithStock = productsData.map(product => {
-              const stock = entriesData
-                  .filter(e => e.productId === product.id)
-                  .reduce((sum, e) => {
-                      const quantity = e.quantity || 0;
-                      return sum + quantity;
-                  }, 0);
-              return { ...product, stock };
-          });
-          
-          const sortedProducts = productsWithStock.sort((a,b) => {
-              if (a.order !== undefined && b.order !== undefined) {
-                  return a.order - b.order;
-              }
-              if (a.order !== undefined) return -1;
-              if (b.order !== undefined) return 1;
-              return a.name.localeCompare(b.name);
-          });
-
-          setProducts(sortedProducts);
-          setLoading(false);
-      });
-      return () => unsubEntries();
-    }, (error) => {
-        console.error("Error fetching products:", error);
-        toast({title: "Erro ao buscar produtos", variant: "destructive"});
+    const qProducts = query(productsRef, where("branchId", "==", currentBranch.id), where("isDeleted", "!=", true));
+    unsubs.push(onSnapshot(qProducts, (productsSnapshot) => {
+        setAllProducts(productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
         setLoading(false);
-    });
+    }));
 
-    const qSuppliers = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId));
-    const unsubscribeSuppliers = onSnapshot(qSuppliers, (snapshot) => {
+    const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
+    unsubs.push(onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
+        setAllStockEntries(entriesSnapshot.docs.map(doc => doc.data() as StockEntry));
+    }));
+
+    const qSuppliers = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId), where("isDeleted", "!=", true));
+    unsubs.push(onSnapshot(qSuppliers, (snapshot) => {
         setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
-    });
+    }));
 
     return () => {
-        unsubscribeProducts();
-        unsubscribeSuppliers();
+        unsubs.forEach(unsub => unsub());
     };
-  }, [currentBranch, authLoading, toast, user]);
+  }, [currentBranch, authLoading, user]);
+
+  const productsWithStock = useMemo(() => {
+     const sortedProducts = [...allProducts].sort((a,b) => {
+        if (a.order !== undefined && b.order !== undefined) {
+            return a.order - b.order;
+        }
+        if (a.order !== undefined) return -1;
+        if (b.order !== undefined) return 1;
+        return a.name.localeCompare(b.name);
+    });
+
+    return sortedProducts.map(product => {
+        const stock = allStockEntries
+            .filter(e => e.productId === product.id)
+            .reduce((sum, e) => sum + (Number(e.quantity) || 0), 0);
+        return { ...product, stock };
+    });
+  }, [allProducts, allStockEntries]);
 
   const filteredProducts = useMemo(() => {
     if (!searchQuery) {
-        return products;
+        return productsWithStock;
     }
-    return products.filter(product => 
+    return productsWithStock.filter(product => 
         product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         product.category.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [products, searchQuery]);
+  }, [productsWithStock, searchQuery]);
 
 
   const handleSave = async (productData: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => {
     if (!currentBranch || !user?.organizationId) {
-        toast({ title: 'Nenhuma filial selecionada', description: 'Selecione uma filial para salvar o produto.', variant: 'destructive' });
+        toast({ title: 'Nenhuma filial selecionada', variant: 'destructive' });
         return;
     }
+    const action = editingProduct?.id ? 'product_updated' : 'product_created';
     try {
       if (editingProduct?.id) {
         const productRef = doc(db, "products", editingProduct.id);
         await updateDoc(productRef, productData);
-        toast({ title: 'Produto atualizado com sucesso!' });
+        toast({ title: 'Produto atualizado!' });
       } else {
         await addDoc(collection(db, "products"), { 
             ...productData, 
             branchId: currentBranch.id, 
-            organizationId: user.organizationId
+            organizationId: user.organizationId,
+            isDeleted: false,
         });
-        toast({ title: 'Produto adicionado com sucesso!' });
+        toast({ title: 'Produto adicionado!' });
       }
+      logUserActivity({
+        userId: user.id,
+        userName: user.name,
+        organizationId: user.organizationId,
+        branchId: currentBranch.id,
+        action,
+        details: { productId: editingProduct?.id || 'new', productName: productData.name }
+      });
     } catch (error) {
       console.error("Error saving product: ", error);
-      toast({ title: 'Erro ao salvar produto', description: 'Ocorreu um erro, por favor tente novamente.', variant: 'destructive' });
+      toast({ title: 'Erro ao salvar produto', variant: 'destructive' });
     }
   };
 
-  const handleDelete = async (productId: string) => {
+  const handleDelete = async (product: Product) => {
+    if(!user || !currentBranch) return;
     try {
-      await deleteDoc(doc(db, "products", productId));
-      toast({ title: 'Produto excluído com sucesso!', variant: 'destructive' });
+      await updateDoc(doc(db, "products", product.id), { isDeleted: true });
+      toast({ title: 'Produto excluído!', variant: 'destructive' });
+      logUserActivity({
+        userId: user.id,
+        userName: user.name,
+        organizationId: user.organizationId,
+        branchId: currentBranch.id,
+        action: 'product_deleted',
+        details: { productId: product.id, productName: product.name }
+      });
     } catch (error) {
        console.error("Error deleting product: ", error);
-       toast({ title: 'Erro ao excluir produto', description: 'Ocorreu um erro, por favor tente novamente.', variant: 'destructive' });
+       toast({ title: 'Erro ao excluir produto', variant: 'destructive' });
     }
   };
 
@@ -570,27 +582,46 @@ export default function ProductsPage() {
     await handleSave(newProductData);
   }
 
-  const handleImport = async (importedProducts: Omit<Product, 'id' | 'branchId' | 'organizationId'>[]) => {
+  const handleImport = async (importedData: { product: Omit<Product, 'id' | 'branchId' | 'organizationId'>, stock: number }[]) => {
       if (!currentBranch || !user?.organizationId) {
-          toast({ title: 'Nenhuma filial selecionada', description: 'Selecione uma filial para importar os produtos.', variant: 'destructive' });
+          toast({ title: 'Nenhuma filial selecionada', variant: 'destructive' });
           return;
       }
       const batch = writeBatch(db);
-      importedProducts.forEach(productData => {
+      
+      importedData.forEach(({ product, stock }) => {
           const productRef = doc(collection(db, "products"));
           batch.set(productRef, {
-              ...productData,
+              ...product,
               branchId: currentBranch.id,
-              organizationId: user.organizationId
+              organizationId: user.organizationId,
+              isDeleted: false,
           });
+
+          if (stock > 0) {
+              const stockEntryRef = doc(collection(db, 'stockEntries'));
+              const stockEntry: Omit<StockEntry, 'id'> = {
+                  productId: productRef.id,
+                  productName: product.name,
+                  quantity: stock,
+                  type: 'entry',
+                  date: serverTimestamp(),
+                  userId: user!.id,
+                  userName: user!.name,
+                  branchId: currentBranch.id,
+                  organizationId: user!.organizationId,
+                  notes: 'Entrada inicial via importação'
+              };
+              batch.set(stockEntryRef, stockEntry);
+          }
       });
       try {
           await batch.commit();
-          toast({ title: `${importedProducts.length} produtos importados com sucesso!` });
+          toast({ title: `${importedData.length} produtos importados com sucesso!` });
           setIsImportOpen(false);
       } catch (error) {
           console.error("Error importing products:", error);
-          toast({ title: 'Erro ao importar produtos', description: 'Não foi possível salvar os produtos. Verifique o arquivo e tente novamente.', variant: 'destructive' });
+          toast({ title: 'Erro ao importar produtos', variant: 'destructive' });
       }
   };
   
@@ -619,11 +650,22 @@ export default function ProductsPage() {
   };
   
     const handleBulkDelete = async () => {
-        if (selectedProductIds.length === 0) return;
+        if (selectedProductIds.length === 0 || !user || !currentBranch) return;
         setIsProcessingBulkAction(true);
         const batch = writeBatch(db);
         selectedProductIds.forEach(id => {
-            batch.delete(doc(db, 'products', id));
+            const product = products.find(p => p.id === id);
+            if (product) {
+                batch.update(doc(db, 'products', id), { isDeleted: true });
+                logUserActivity({
+                    userId: user.id,
+                    userName: user.name,
+                    organizationId: user.organizationId,
+                    branchId: currentBranch.id,
+                    action: 'product_deleted_bulk',
+                    details: { productId: product.id, productName: product.name }
+                });
+            }
         });
         try {
             await batch.commit();
@@ -750,7 +792,7 @@ export default function ProductsPage() {
         selectedProductIds.forEach(id => {
             const productRef = doc(db, 'products', id);
             batch.update(productRef, { 
-                supplierId: newSupplierId === 'none' ? '' : newSupplierId,
+                supplierId: newSupplierId === 'none' ? undefined : newSupplierId,
                 supplierName: newSupplierId === 'none' ? '' : (newSupplier?.name || '')
              });
         });
@@ -984,7 +1026,7 @@ export default function ProductsPage() {
                         <Copy className="mr-2 h-4 w-4" />
                         Copiar
                       </DropdownMenuItem>}
-                      {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(product.id)}>Excluir</DropdownMenuItem>}
+                      {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(product)}>Excluir</DropdownMenuItem>}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>

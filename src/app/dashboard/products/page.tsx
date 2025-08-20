@@ -463,33 +463,61 @@ export default function ProductsPage() {
 
   useEffect(() => {
     if (authLoading || !currentBranch || !user?.organizationId) {
-        setLoading(true);
-        return;
+      setLoading(true);
+      return;
     }
-    
+
     const unsubs: (()=>void)[] = [];
 
-    const productsRef = collection(db, 'products');
-    const qProducts = query(productsRef, where("branchId", "==", currentBranch.id), where("isDeleted", "!=", true));
-    unsubs.push(onSnapshot(qProducts, (productsSnapshot) => {
-        setAllProducts(productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
-        setLoading(false);
+    // Initial data fetch
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            const productsQuery = query(collection(db, 'products'), where("branchId", "==", currentBranch.id), where("isDeleted", "!=", true));
+            const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
+            const suppliersQuery = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId), where("isDeleted", "!=", true));
+            
+            const [productsSnap, stockEntriesSnap, suppliersSnap] = await Promise.all([
+                getDocs(productsQuery),
+                getDocs(stockEntriesQuery),
+                getDocs(suppliersQuery),
+            ]);
+
+            setAllProducts(productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+            setAllStockEntries(stockEntriesSnap.docs.map(doc => doc.data() as StockEntry));
+            setSuppliers(suppliersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
+
+        } catch (error) {
+            console.error("Error fetching initial product data:", error);
+            toast({ title: "Erro ao carregar dados", variant: "destructive" });
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    fetchData();
+
+    // Set up real-time listeners after initial fetch
+    const productsQuery = query(collection(db, 'products'), where("branchId", "==", currentBranch.id), where("isDeleted", "!=", true));
+    unsubs.push(onSnapshot(productsQuery, (snapshot) => {
+        setAllProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
     }));
 
     const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
-    unsubs.push(onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
-        setAllStockEntries(entriesSnapshot.docs.map(doc => doc.data() as StockEntry));
+    unsubs.push(onSnapshot(stockEntriesQuery, (snapshot) => {
+        setAllStockEntries(snapshot.docs.map(doc => doc.data() as StockEntry));
     }));
 
-    const qSuppliers = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId), where("isDeleted", "!=", true));
-    unsubs.push(onSnapshot(qSuppliers, (snapshot) => {
+    const suppliersQuery = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId), where("isDeleted", "!=", true));
+    unsubs.push(onSnapshot(suppliersQuery, (snapshot) => {
         setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
     }));
 
     return () => {
-        unsubs.forEach(unsub => unsub());
+      unsubs.forEach(unsub => unsub());
     };
-  }, [currentBranch, authLoading, user]);
+  }, [currentBranch, authLoading, user, toast]);
+
 
   const productsWithStock = useMemo(() => {
      const sortedProducts = [...allProducts].sort((a,b) => {
@@ -654,7 +682,7 @@ export default function ProductsPage() {
         setIsProcessingBulkAction(true);
         const batch = writeBatch(db);
         selectedProductIds.forEach(id => {
-            const product = products.find(p => p.id === id);
+            const product = allProducts.find(p => p.id === id);
             if (product) {
                 batch.update(doc(db, 'products', id), { isDeleted: true });
                 logUserActivity({
@@ -707,12 +735,12 @@ export default function ProductsPage() {
             return;
         }
         setIsProcessingBulkAction(true);
-        const productsToCopy = products.filter(p => selectedProductIds.includes(p.id));
+        const productsToCopy = allProducts.filter(p => selectedProductIds.includes(p.id));
 
         const batch = writeBatch(db);
         branchesToCopyTo.forEach(branchId => {
             productsToCopy.forEach(p => {
-                const { id, stock, branchId: sourceBranchId, ...productData } = p;
+                const { id, branchId: sourceBranchId, ...productData } = p;
                 const newProductRef = doc(collection(db, 'products'));
                 batch.set(newProductRef, {
                     ...productData,
@@ -902,7 +930,7 @@ export default function ProductsPage() {
 
             {can.edit && <Dialog open={isStockFormOpen} onOpenChange={setIsStockFormOpen}>
                 <DialogTrigger asChild>
-                    <Button variant="outline" disabled={products.length === 0}>
+                    <Button variant="outline" disabled={allProducts.length === 0}>
                         <PlusCircle className="mr-2 h-4 w-4" />
                         Adicionar Estoque
                     </Button>
@@ -913,7 +941,7 @@ export default function ProductsPage() {
                     </DialogHeader>
                      <StockMovementForm 
                         type="entry"
-                        products={products}
+                        products={allProducts}
                         onDone={() => setIsStockFormOpen(false)}
                     />
                 </DialogContent>
@@ -1170,3 +1198,4 @@ export default function ProductsPage() {
     </div>
   );
 }
+

@@ -633,13 +633,13 @@ export default function AppointmentsPage() {
 
         const unsubscribers: (() => void)[] = [];
 
-        const customerQuery = query(collection(db, 'customers'), where('organizationId', '==', user.organizationId));
+        const customerQuery = query(collection(db, 'customers'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
         unsubscribers.push(onSnapshot(customerQuery, snap => setCustomers(snap.docs.map(d => ({id: d.id, ...d.data()}) as Customer))));
 
-        const serviceQuery = query(collection(db, 'services'), where('organizationId', '==', user.organizationId));
+        const serviceQuery = query(collection(db, 'services'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
         unsubscribers.push(onSnapshot(serviceQuery, snap => setServices(snap.docs.map(d => ({id: d.id, ...d.data()}) as Service))));
 
-        const appointmentQuery = query(collection(db, 'appointments'), where('branchId', '==', currentBranch.id));
+        const appointmentQuery = query(collection(db, 'appointments'), where('branchId', '==', currentBranch.id), where('isDeleted', '!=', true));
         unsubscribers.push(onSnapshot(appointmentQuery, snap => setAppointments(snap.docs.map(d => convertAppointmentDate({id: d.id, ...d.data()})))));
 
         const fetchProfessionals = async () => {
@@ -711,7 +711,7 @@ export default function AppointmentsPage() {
     
     const handleDelete = async (id: string) => {
         try {
-            await deleteDoc(doc(db, "appointments", id));
+            await updateDoc(doc(db, "appointments", id), { isDeleted: true });
             toast({ title: 'Agendamento excluído!', variant: 'destructive' });
         } catch (error) {
             toast({ title: 'Erro ao excluir', variant: 'destructive' });

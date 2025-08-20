@@ -305,7 +305,7 @@ export default function CombosPage() {
     }
     
     const combosRef = collection(db, 'combos');
-    const qCombos = query(combosRef, where("branchId", "==", currentBranch.id));
+    const qCombos = query(combosRef, where("branchId", "==", currentBranch.id), where("isDeleted", "!=", true));
 
     const productsRef = collection(db, 'products');
     const qProducts = query(productsRef, where("branchId", "==", currentBranch.id));
@@ -351,6 +351,7 @@ export default function CombosPage() {
             ...comboData, 
             branchId: currentBranch.id,
             organizationId: user.organizationId,
+            isDeleted: false,
         });
         toast({ title: 'Combo adicionado com sucesso!' });
       }
@@ -362,7 +363,7 @@ export default function CombosPage() {
 
   const handleDelete = async (comboId: string) => {
     try {
-      await deleteDoc(doc(db, "combos", comboId));
+      await updateDoc(doc(db, "combos", comboId), { isDeleted: true });
       toast({ title: 'Combo excluído com sucesso!', variant: 'destructive' });
     } catch (error) {
        console.error("Error deleting combo: ", error);
@@ -498,5 +499,4 @@ export default function CombosPage() {
     </div>
   );
 }
-
     

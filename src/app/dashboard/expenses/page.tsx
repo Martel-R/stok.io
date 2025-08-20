@@ -155,7 +155,7 @@ export default function ExpensesPage() {
             return;
         }
 
-        const expensesQuery = query(collection(db, 'expenses'), where("branchId", "==", currentBranch.id));
+        const expensesQuery = query(collection(db, 'expenses'), where("branchId", "==", currentBranch.id), where('isDeleted', '!=', true));
         const expensesUnsub = onSnapshot(expensesQuery, (snapshot) => {
             const data = snapshot.docs.map(doc => {
                 const expenseData = doc.data();
@@ -169,7 +169,7 @@ export default function ExpensesPage() {
             setLoading(false);
         });
 
-        const suppliersQuery = query(collection(db, 'suppliers'), where("organizationId", "==", user.organizationId));
+        const suppliersQuery = query(collection(db, 'suppliers'), where("organizationId", "==", user.organizationId), where('isDeleted', '!=', true));
         const suppliersUnsub = onSnapshot(suppliersQuery, snapshot => {
             setSuppliers(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as Supplier)))
         });
@@ -194,6 +194,7 @@ export default function ExpensesPage() {
                     branchId: currentBranch.id,
                     userId: user.id,
                     userName: user.name,
+                    isDeleted: false,
                 });
                 toast({ title: 'Despesa adicionada com sucesso!' });
             }
@@ -206,7 +207,7 @@ export default function ExpensesPage() {
 
     const handleDelete = async (id: string) => {
         try {
-            await deleteDoc(doc(db, "expenses", id));
+            await updateDoc(doc(db, "expenses", id), { isDeleted: true });
             toast({ title: 'Despesa excluída com sucesso!', variant: 'destructive' });
         } catch (error) {
             toast({ title: 'Erro ao excluir despesa', variant: 'destructive' });

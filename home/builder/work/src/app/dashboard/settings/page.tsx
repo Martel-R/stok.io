@@ -28,7 +28,6 @@ import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSearchParams } from 'next/navigation';
 import { Separator } from '@/components/ui/separator';
-import { MOCK_PRODUCTS } from '@/lib/mock-data';
 import { ImportAnamnesisQuestionsDialog } from '@/components/import-anamnesis-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import Image from 'next/image';
@@ -323,33 +322,10 @@ function BranchesSettings() {
                 await updateDoc(doc(db, "branches", editingBranch.id), branchData);
                 toast({ title: 'Filial atualizada com sucesso!' });
             } else {
-                const batch = writeBatch(db);
-                const branchDocRef = doc(collection(db, "branches"));
-                const newBranchData = { ...branchData, organizationId: currentUser.organizationId };
-                batch.set(branchDocRef, newBranchData);
-
-                // Seed products for the new branch
-                MOCK_PRODUCTS.forEach(product => {
-                    const productDocRef = doc(collection(db, 'products'));
-                    const { ...productData } = product; // Remove stock from mock
-                    const productWithBranchInfo: Omit<Product, 'id'> = {
-                        ...(productData as any),
-                        branchId: branchDocRef.id,
-                        organizationId: currentUser.organizationId,
-                        isSalable: true,
-                        purchasePrice: product.price * 0.6,
-                        marginType: 'percentage',
-                        marginValue: 66.67,
-                        supplierId: '',
-                        supplierName: ''
-                    };
-                    batch.set(productDocRef, productWithBranchInfo);
-                });
-
-                await batch.commit();
-
-                toast({ title: 'Filial adicionada com sucesso!', description: 'Adicionamos alguns produtos de exemplo para você começar.' });
-                // If this is the first branch, set it as active
+                const newBranchData = { ...branchData, organizationId: currentUser.organizationId, isDeleted: false };
+                const branchDocRef = await addDoc(collection(db, "branches"), newBranchData);
+                toast({ title: 'Filial adicionada com sucesso!' });
+                
                 if(branches.length === 0) {
                     setCurrentBranch({id: branchDocRef.id, ...newBranchData});
                 }
@@ -363,7 +339,7 @@ function BranchesSettings() {
 
     const handleDelete = async (id: string) => {
         try {
-            await deleteDoc(doc(db, 'branches', id));
+            await updateDoc(doc(db, 'branches', id), { isDeleted: true });
             toast({ title: 'Filial removida!', variant: 'destructive' });
         } catch (error) {
             toast({ title: 'Erro ao remover filial', variant: 'destructive' });
@@ -657,7 +633,7 @@ function PaymentConditions() {
 
     useEffect(() => {
         if (!user?.organizationId) return;
-        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId));
+        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition));
             setConditions(data);
@@ -680,7 +656,8 @@ function PaymentConditions() {
             } else {
                  await addDoc(collection(db, 'paymentConditions'), {
                     ...data,
-                    organizationId: user.organizationId
+                    organizationId: user.organizationId,
+                    isDeleted: false,
                 });
                 toast({ title: 'Condição de pagamento adicionada!' });
             }
@@ -692,7 +669,7 @@ function PaymentConditions() {
 
     const handleDelete = async (id: string) => {
         try {
-            await deleteDoc(doc(db, 'paymentConditions', id));
+            await updateDoc(doc(db, 'paymentConditions', id), { isDeleted: true });
             toast({ title: 'Condição de pagamento removida!', variant: 'destructive' });
         } catch (error) {
             toast({ title: 'Erro ao remover condição', variant: 'destructive' });
@@ -870,7 +847,8 @@ function AnamnesisSettings() {
         };
         const q = query(
             collection(db, 'anamnesisQuestions'), 
-            where('organizationId', '==', user.organizationId)
+            where('organizationId', '==', user.organizationId),
+            where('isDeleted', '!=', true)
         );
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AnamnesisQuestion));
@@ -896,6 +874,7 @@ function AnamnesisSettings() {
                     ...data,
                     organizationId: user.organizationId,
                     order: questions.length, // Simple ordering
+                    isDeleted: false,
                 });
                 toast({ title: 'Pergunta adicionada!' });
             }
@@ -907,7 +886,7 @@ function AnamnesisSettings() {
 
     const handleDelete = async (id: string) => {
         try {
-            await deleteDoc(doc(db, 'anamnesisQuestions', id));
+            await updateDoc(doc(db, 'anamnesisQuestions', id), { isDeleted: true });
             toast({ title: 'Pergunta excluída!', variant: 'destructive' });
         } catch (error) {
             toast({ title: 'Erro ao excluir pergunta', variant: 'destructive' });
@@ -1185,7 +1164,7 @@ function RolesSettings() {
             setLoading(false);
             return;
         }
-        const q = query(collection(db, 'permissionProfiles'), where('organizationId', '==', user.organizationId));
+        const q = query(collection(db, 'permissionProfiles'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
             setProfiles(data);
@@ -1202,7 +1181,7 @@ function RolesSettings() {
                 await updateDoc(doc(db, 'permissionProfiles', editingProfile.id), profileData);
                 toast({ title: 'Perfil atualizado com sucesso!' });
             } else {
-                await addDoc(collection(db, 'permissionProfiles'), { ...profileData, organizationId: user.organizationId });
+                await addDoc(collection(db, 'permissionProfiles'), { ...profileData, organizationId: user.organizationId, isDeleted: false });
                 toast({ title: 'Novo perfil criado com sucesso!' });
             }
             setIsFormOpen(false);
@@ -1214,7 +1193,7 @@ function RolesSettings() {
 
     const handleDelete = async (id: string) => {
         try {
-            await deleteDoc(doc(db, 'permissionProfiles', id));
+            await updateDoc(doc(db, 'permissionProfiles', id), { isDeleted: true });
             toast({ title: 'Perfil excluído!', variant: 'destructive' });
         } catch (error) {
             toast({ title: 'Erro ao excluir perfil', variant: 'destructive' });
@@ -1288,75 +1267,6 @@ function RolesSettings() {
     );
 }
 
-function TestDataSettings() {
-    const { deleteTestData, user } = useAuth();
-    const { toast } = useToast();
-    const [isDeleted, setIsDeleted] = useState(() => {
-        if (typeof window === "undefined") return true;
-        return localStorage.getItem('testDataDeleted') === 'true';
-    });
-    const [isDeleting, setIsDeleting] = useState(false);
-
-    if (isDeleted) {
-        return null;
-    }
-
-    const handleDelete = async () => {
-        setIsDeleting(true);
-        try {
-            if (!user?.organizationId) {
-                toast({ title: "Erro", description: "Organização não encontrada.", variant: "destructive" });
-                return;
-            }
-            await deleteTestData(user.organizationId);
-            toast({ title: "Sucesso!", description: "Todos os dados de teste foram excluídos." });
-            localStorage.setItem('testDataDeleted', 'true');
-            setIsDeleted(true);
-        } catch (error) {
-            console.error("Failed to delete test data", error);
-            toast({ title: "Erro", description: "Não foi possível excluir os dados de teste.", variant: "destructive" });
-        } finally {
-            setIsDeleting(false);
-        }
-    };
-
-    return (
-        <Card className="border-destructive">
-            <CardHeader>
-                <CardTitle>Dados de Teste</CardTitle>
-                <CardDescription>
-                    Esta ação excluirá permanentemente todos os produtos, combos, kits, vendas e entradas de estoque da sua organização.
-                    Use para limpar o ambiente de teste. Esta ação é irreversível e só pode ser executada uma vez.
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                         <Button variant="destructive" disabled={isDeleting}>
-                            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Excluir Dados de Teste
-                         </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle>Você tem certeza absoluta?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                Esta ação não pode ser desfeita. Todos os dados transacionais (produtos, vendas, combos, kits) serão removidos permanentemente.
-                            </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleDelete} className={buttonVariants({ variant: "destructive" })}>
-                                Sim, excluir tudo
-                            </AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-            </CardContent>
-        </Card>
-    );
-}
-
 function SettingsPageContent() {
     const searchParams = useSearchParams();
     const tab = searchParams.get('tab') || 'users';
@@ -1419,8 +1329,6 @@ function SettingsPageContent() {
                     </TabsContent>
                  )}
             </Tabs>
-             <Separator />
-            <TestDataSettings />
         </div>
     )
 }
@@ -1437,7 +1345,7 @@ function SuppliersSettings() {
     useEffect(() => {
         if (!user?.organizationId) return;
 
-        const qSuppliers = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId));
+        const qSuppliers = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
         const unsubSuppliers = onSnapshot(qSuppliers, (snapshot) => {
             setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
             setLoading(false);
@@ -1470,7 +1378,7 @@ function SuppliersSettings() {
         if (isEditing) {
             batch.update(supplierRef, data);
         } else {
-            batch.set(supplierRef, { ...data, id: supplierId, organizationId: user.organizationId });
+            batch.set(supplierRef, { ...data, id: supplierId, organizationId: user.organizationId, isDeleted: false });
         }
         
         // 2. Link products
@@ -1496,7 +1404,7 @@ function SuppliersSettings() {
     
     const handleDelete = async (id: string) => {
         try {
-            await deleteDoc(doc(db, "suppliers", id));
+            await updateDoc(doc(db, "suppliers", id), { isDeleted: true });
             toast({ title: 'Fornecedor excluído!', variant: 'destructive' });
         } catch (error) {
             toast({ title: 'Erro ao excluir fornecedor', variant: 'destructive' });

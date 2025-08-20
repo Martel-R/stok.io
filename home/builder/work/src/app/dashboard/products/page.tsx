@@ -144,7 +144,7 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
   const [formData, setFormData] = useState<Partial<Product>>(
     product || { 
         name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
-        purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: '', supplierName: ''
+        purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: ''
     }
   );
   const [isUploading, setIsUploading] = useState(false);
@@ -158,7 +158,7 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
     useEffect(() => {
         setFormData(product || { 
             name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
-            purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: '', supplierName: ''
+            purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: ''
         });
     }, [product]);
 
@@ -466,7 +466,7 @@ export default function ProductsPage() {
     }
     
     const productsRef = collection(db, 'products');
-    const qProducts = query(productsRef, where("branchId", "==", currentBranch.id));
+    const qProducts = query(productsRef, where("branchId", "==", currentBranch.id), where("isDeleted", "!=", true));
 
     const unsubscribeProducts = onSnapshot(qProducts, (productsSnapshot) => {
       const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
@@ -505,7 +505,7 @@ export default function ProductsPage() {
         setLoading(false);
     });
 
-    const qSuppliers = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId));
+    const qSuppliers = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId), where("isDeleted", "!=", true));
     const unsubscribeSuppliers = onSnapshot(qSuppliers, (snapshot) => {
         setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
     });
@@ -541,7 +541,8 @@ export default function ProductsPage() {
         await addDoc(collection(db, "products"), { 
             ...productData, 
             branchId: currentBranch.id, 
-            organizationId: user.organizationId
+            organizationId: user.organizationId,
+            isDeleted: false,
         });
         toast({ title: 'Produto adicionado com sucesso!' });
       }
@@ -553,7 +554,7 @@ export default function ProductsPage() {
 
   const handleDelete = async (productId: string) => {
     try {
-      await deleteDoc(doc(db, "products", productId));
+      await updateDoc(doc(db, "products", productId), { isDeleted: true });
       toast({ title: 'Produto excluído com sucesso!', variant: 'destructive' });
     } catch (error) {
        console.error("Error deleting product: ", error);
@@ -623,7 +624,7 @@ export default function ProductsPage() {
         setIsProcessingBulkAction(true);
         const batch = writeBatch(db);
         selectedProductIds.forEach(id => {
-            batch.delete(doc(db, 'products', id));
+            batch.update(doc(db, 'products', id), { isDeleted: true });
         });
         try {
             await batch.commit();
@@ -750,7 +751,7 @@ export default function ProductsPage() {
         selectedProductIds.forEach(id => {
             const productRef = doc(db, 'products', id);
             batch.update(productRef, { 
-                supplierId: newSupplierId === 'none' ? '' : newSupplierId,
+                supplierId: newSupplierId === 'none' ? undefined : newSupplierId,
                 supplierName: newSupplierId === 'none' ? '' : (newSupplier?.name || '')
              });
         });
@@ -1128,3 +1129,4 @@ export default function ProductsPage() {
     </div>
   );
 }
+

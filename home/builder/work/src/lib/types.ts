@@ -22,6 +22,7 @@ export interface EnabledModules {
     customers: ModulePermissions;
     appointments: ModulePermissions;
     services: ModulePermissions;
+    expenses: ModulePermissions;
 }
 
 export interface PermissionProfile {
@@ -29,6 +30,7 @@ export interface PermissionProfile {
     name: string;
     organizationId: string;
     permissions: EnabledModules;
+    isDeleted?: boolean;
 }
 
 export interface TimeSlot {
@@ -75,6 +77,7 @@ export interface AnamnesisQuestion {
     label: string;
     type: AnamnesisQuestionType;
     order: number;
+    isDeleted?: boolean;
 }
 
 export interface AnamnesisAnswer {
@@ -95,6 +98,7 @@ export interface Customer {
     isActive: boolean;
     organizationId: string;
     anamnesisAnswers?: AnamnesisAnswer[];
+    isDeleted?: boolean;
 }
 
 export interface ServiceProduct {
@@ -114,9 +118,10 @@ export interface Service {
     isActive: boolean;
     organizationId: string;
     linkedProducts: ServiceProduct[];
+    isDeleted?: boolean;
 }
 
-export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no-show' | 'rescheduled' | 'pending-confirmation';
+export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no-show' | 'rescheduled' | 'pending-confirmation' | 'in-progress-payment-pending';
 
 export interface Appointment {
     id: string;
@@ -133,6 +138,7 @@ export interface Appointment {
     organizationId: string;
     branchId: string;
     attendanceId?: string;
+    isDeleted?: boolean;
 }
 
 export interface AttendanceItem {
@@ -165,6 +171,16 @@ export interface Attendance {
     total: number;
 }
 
+export interface Supplier {
+    id: string;
+    name: string;
+    contactName?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    organizationId: string;
+    isDeleted?: boolean;
+}
 
 export interface Product {
   id: string;
@@ -181,6 +197,10 @@ export interface Product {
   purchasePrice: number;
   marginValue: number;
   marginType: 'percentage' | 'fixed';
+  supplierId?: string;
+  supplierName?: string;
+  code?: string;
+  isDeleted?: boolean;
 }
 
 export type PaymentConditionType = 'credit' | 'debit' | 'cash' | 'pix';
@@ -193,6 +213,7 @@ export interface PaymentCondition {
     feeType: 'percentage' | 'fixed';
     organizationId: string;
     maxInstallments?: number;
+    isDeleted?: boolean;
 }
 
 export interface PaymentDetail {
@@ -228,6 +249,7 @@ export interface Branch {
     userIds: string[];
     taxRate: number; // Stored as a percentage, e.g., 8 for 8%
     organizationId: string;
+    isDeleted?: boolean;
 }
 
 export type StockEntryType = 'entry' | 'adjustment' | 'sale' | 'transfer' | 'cancellation';
@@ -277,6 +299,7 @@ export interface Combo {
   imageUrl: string;
   branchId: string;
   organizationId: string;
+  isDeleted?: boolean;
 }
 
 export interface Kit {
@@ -289,6 +312,7 @@ export interface Kit {
   imageUrl: string;
   branchId: string;
   organizationId: string;
+  isDeleted?: boolean;
 }
 
 export interface BrandingSettings {
@@ -327,4 +351,20 @@ export interface Organization {
     enabledModules: EnabledModules;
     branding?: BrandingSettings;
     subscription?: Subscription;
+}
+
+export interface Expense {
+    id: string;
+    organizationId: string;
+    branchId: string;
+    description: string;
+    amount: number;
+    category: string;
+    date: any; // Timestamp
+    notes?: string;
+    supplierId?: string;
+    supplierName?: string;
+    userId: string;
+    userName: string;
+    isDeleted?: boolean;
 }

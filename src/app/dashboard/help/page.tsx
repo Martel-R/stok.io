@@ -1,12 +1,21 @@
+
 // src/app/dashboard/help/page.tsx
 'use client';
+import { useState } from 'react';
 import { useAuth } from "@/lib/auth";
+import { db } from '@/lib/firebase';
+import { collection, getDocs, writeBatch } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { LifeBuoy, Home, Package, ShoppingCart, BarChart, Gift, Component, Bot, FileText, Settings, Users, Building, CreditCard } from "lucide-react";
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { LifeBuoy, Home, Package, ShoppingCart, BarChart, Gift, Component, Bot, FileText, Settings, Users, Building, CreditCard, AlertTriangle, Loader2 } from "lucide-react";
 
 export default function HelpPage() {
     const { user } = useAuth();
+    const { toast } = useToast();
+    const [isRepairing, setIsRepairing] = useState(false);
     
     const allFeatures = [
         {
@@ -69,6 +78,36 @@ export default function HelpPage() {
         user?.enabledModules?.[feature.module as keyof typeof user.enabledModules] ?? true
     );
 
+    const handleFixSoftDelete = async () => {
+        setIsRepairing(true);
+        toast({ title: 'Iniciando reparo...', description: 'Este processo pode demorar alguns minutos.' });
+        
+        const collectionsToFix = [
+            'products', 'combos', 'kits', 'services', 'customers', 
+            'anamnesisQuestions', 'suppliers', 'branches', 'expenses', 'appointments'
+        ];
+        
+        let totalUpdated = 0;
+
+        try {
+            for (const collectionName of collectionsToFix) {
+                const querySnapshot = await getDocs(collection(db, collectionName));
+                const batch = writeBatch(db);
+                querySnapshot.forEach((doc) => {
+                    batch.update(doc.ref, { isDeleted: false });
+                });
+                await batch.commit();
+                totalUpdated += querySnapshot.size;
+            }
+            toast({ title: 'Reparo Concluído!', description: `${totalUpdated} registros em ${collectionsToFix.length} módulos foram verificados e restaurados.` });
+        } catch (error) {
+            console.error("Error repairing soft delete flags:", error);
+            toast({ title: 'Erro no Reparo', description: 'Não foi possível concluir a operação.', variant: 'destructive' });
+        } finally {
+            setIsRepairing(false);
+        }
+    };
+
     return (
         <div className="space-y-8">
             <div className="flex items-center gap-4">
@@ -98,6 +137,36 @@ export default function HelpPage() {
                     </AccordionItem>
                 ))}
             </Accordion>
+            
+            <Card className="border-destructive">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-destructive"><AlertTriangle /> Ferramentas de Reparo</CardTitle>
+                    <CardDescription>Use estas ferramentas com cuidado. Elas servem para corrigir inconsistências nos dados do sistema.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="destructive" disabled={isRepairing}>
+                                {isRepairing && <Loader2 className="mr-2 animate-spin" />}
+                                Restaurar Todos os Registros Excluídos
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Você tem certeza absoluta?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    Esta ação irá percorrer todo o banco de dados e restaurar QUALQUER item que tenha sido excluído (produtos, vendas, clientes, etc.), independentemente de qual organização ou filial ele pertença. Esta ação é irreversível.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction onClick={handleFixSoftDelete}>Sim, eu entendo, restaurar tudo.</AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                </CardContent>
+            </Card>
+
         </div>
     );
 }

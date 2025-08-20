@@ -1,5 +1,4 @@
 
-
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -466,17 +465,17 @@ export default function ProductsPage() {
       setLoading(true);
       return;
     }
+    
+    let unsubs: (() => void)[] = [];
 
-    const unsubs: (()=>void)[] = [];
-
-    // Initial data fetch
     const fetchData = async () => {
         setLoading(true);
         try {
-            const productsQuery = query(collection(db, 'products'), where("branchId", "==", currentBranch.id), where("isDeleted", "!=", true));
+            // Initial data fetch
+            const productsQuery = query(collection(db, 'products'), where("branchId", "==", currentBranch.id));
             const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
             const suppliersQuery = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId), where("isDeleted", "!=", true));
-            
+
             const [productsSnap, stockEntriesSnap, suppliersSnap] = await Promise.all([
                 getDocs(productsQuery),
                 getDocs(stockEntriesQuery),
@@ -493,25 +492,25 @@ export default function ProductsPage() {
         } finally {
             setLoading(false);
         }
+        
+        // Setup listeners
+        const productsQuery = query(collection(db, 'products'), where("branchId", "==", currentBranch.id));
+        unsubs.push(onSnapshot(productsQuery, (snapshot) => {
+            setAllProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+        }));
+
+        const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
+        unsubs.push(onSnapshot(stockEntriesQuery, (snapshot) => {
+            setAllStockEntries(snapshot.docs.map(doc => doc.data() as StockEntry));
+        }));
+
+        const suppliersQuery = query(collection(db, 'suppliers'), where('organizationId', '==', user!.organizationId), where("isDeleted", "!=", true));
+        unsubs.push(onSnapshot(suppliersQuery, (snapshot) => {
+            setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
+        }));
     };
     
     fetchData();
-
-    // Set up real-time listeners after initial fetch
-    const productsQuery = query(collection(db, 'products'), where("branchId", "==", currentBranch.id), where("isDeleted", "!=", true));
-    unsubs.push(onSnapshot(productsQuery, (snapshot) => {
-        setAllProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
-    }));
-
-    const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
-    unsubs.push(onSnapshot(stockEntriesQuery, (snapshot) => {
-        setAllStockEntries(snapshot.docs.map(doc => doc.data() as StockEntry));
-    }));
-
-    const suppliersQuery = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId), where("isDeleted", "!=", true));
-    unsubs.push(onSnapshot(suppliersQuery, (snapshot) => {
-        setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
-    }));
 
     return () => {
       unsubs.forEach(unsub => unsub());
@@ -520,7 +519,8 @@ export default function ProductsPage() {
 
 
   const productsWithStock = useMemo(() => {
-     const sortedProducts = [...allProducts].sort((a,b) => {
+     const productsToDisplay = allProducts.filter(p => !p.isDeleted);
+     const sortedProducts = [...productsToDisplay].sort((a,b) => {
         if (a.order !== undefined && b.order !== undefined) {
             return a.order - b.order;
         }
@@ -740,7 +740,7 @@ export default function ProductsPage() {
         const batch = writeBatch(db);
         branchesToCopyTo.forEach(branchId => {
             productsToCopy.forEach(p => {
-                const { id, branchId: sourceBranchId, ...productData } = p;
+                const { id, ...productData } = p;
                 const newProductRef = doc(collection(db, 'products'));
                 batch.set(newProductRef, {
                     ...productData,

@@ -15,7 +15,7 @@ import type { User, Branch, PaymentCondition, PaymentConditionType, Product, Ena
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash, Lock, Truck, ArrowDownCircle } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash, Lock, Truck, ArrowDownCircle, Archive } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -322,7 +322,7 @@ function BranchesSettings() {
                 await updateDoc(doc(db, "branches", editingBranch.id), branchData);
                 toast({ title: 'Filial atualizada com sucesso!' });
             } else {
-                const newBranchData = { ...branchData, organizationId: currentUser.organizationId };
+                const newBranchData = { ...branchData, organizationId: currentUser.organizationId, isDeleted: false };
                 const branchDocRef = await addDoc(collection(db, "branches"), newBranchData);
                 toast({ title: 'Filial adicionada com sucesso!' });
                 
@@ -339,7 +339,7 @@ function BranchesSettings() {
 
     const handleDelete = async (id: string) => {
         try {
-            await deleteDoc(doc(db, 'branches', id));
+            await updateDoc(doc(db, 'branches', id), { isDeleted: true });
             toast({ title: 'Filial removida!', variant: 'destructive' });
         } catch (error) {
             toast({ title: 'Erro ao remover filial', variant: 'destructive' });
@@ -633,7 +633,7 @@ function PaymentConditions() {
 
     useEffect(() => {
         if (!user?.organizationId) return;
-        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId));
+        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition));
             setConditions(data);
@@ -656,7 +656,8 @@ function PaymentConditions() {
             } else {
                  await addDoc(collection(db, 'paymentConditions'), {
                     ...data,
-                    organizationId: user.organizationId
+                    organizationId: user.organizationId,
+                    isDeleted: false,
                 });
                 toast({ title: 'Condição de pagamento adicionada!' });
             }
@@ -668,7 +669,7 @@ function PaymentConditions() {
 
     const handleDelete = async (id: string) => {
         try {
-            await deleteDoc(doc(db, 'paymentConditions', id));
+            await updateDoc(doc(db, 'paymentConditions', id), { isDeleted: true });
             toast({ title: 'Condição de pagamento removida!', variant: 'destructive' });
         } catch (error) {
             toast({ title: 'Erro ao remover condição', variant: 'destructive' });
@@ -846,7 +847,8 @@ function AnamnesisSettings() {
         };
         const q = query(
             collection(db, 'anamnesisQuestions'), 
-            where('organizationId', '==', user.organizationId)
+            where('organizationId', '==', user.organizationId),
+            where('isDeleted', '!=', true)
         );
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AnamnesisQuestion));
@@ -872,6 +874,7 @@ function AnamnesisSettings() {
                     ...data,
                     organizationId: user.organizationId,
                     order: questions.length, // Simple ordering
+                    isDeleted: false,
                 });
                 toast({ title: 'Pergunta adicionada!' });
             }
@@ -883,7 +886,7 @@ function AnamnesisSettings() {
 
     const handleDelete = async (id: string) => {
         try {
-            await deleteDoc(doc(db, 'anamnesisQuestions', id));
+            await updateDoc(doc(db, 'anamnesisQuestions', id), { isDeleted: true });
             toast({ title: 'Pergunta excluída!', variant: 'destructive' });
         } catch (error) {
             toast({ title: 'Erro ao excluir pergunta', variant: 'destructive' });
@@ -1161,7 +1164,7 @@ function RolesSettings() {
             setLoading(false);
             return;
         }
-        const q = query(collection(db, 'permissionProfiles'), where('organizationId', '==', user.organizationId));
+        const q = query(collection(db, 'permissionProfiles'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
             setProfiles(data);
@@ -1178,7 +1181,7 @@ function RolesSettings() {
                 await updateDoc(doc(db, 'permissionProfiles', editingProfile.id), profileData);
                 toast({ title: 'Perfil atualizado com sucesso!' });
             } else {
-                await addDoc(collection(db, 'permissionProfiles'), { ...profileData, organizationId: user.organizationId });
+                await addDoc(collection(db, 'permissionProfiles'), { ...profileData, organizationId: user.organizationId, isDeleted: false });
                 toast({ title: 'Novo perfil criado com sucesso!' });
             }
             setIsFormOpen(false);
@@ -1190,7 +1193,7 @@ function RolesSettings() {
 
     const handleDelete = async (id: string) => {
         try {
-            await deleteDoc(doc(db, 'permissionProfiles', id));
+            await updateDoc(doc(db, 'permissionProfiles', id), { isDeleted: true });
             toast({ title: 'Perfil excluído!', variant: 'destructive' });
         } catch (error) {
             toast({ title: 'Erro ao excluir perfil', variant: 'destructive' });
@@ -1342,7 +1345,7 @@ function SuppliersSettings() {
     useEffect(() => {
         if (!user?.organizationId) return;
 
-        const qSuppliers = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId));
+        const qSuppliers = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
         const unsubSuppliers = onSnapshot(qSuppliers, (snapshot) => {
             setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
             setLoading(false);
@@ -1375,7 +1378,7 @@ function SuppliersSettings() {
         if (isEditing) {
             batch.update(supplierRef, data);
         } else {
-            batch.set(supplierRef, { ...data, id: supplierId, organizationId: user.organizationId });
+            batch.set(supplierRef, { ...data, id: supplierId, organizationId: user.organizationId, isDeleted: false });
         }
         
         // 2. Link products
@@ -1401,7 +1404,7 @@ function SuppliersSettings() {
     
     const handleDelete = async (id: string) => {
         try {
-            await deleteDoc(doc(db, "suppliers", id));
+            await updateDoc(doc(db, "suppliers", id), { isDeleted: true });
             toast({ title: 'Fornecedor excluído!', variant: 'destructive' });
         } catch (error) {
             toast({ title: 'Erro ao excluir fornecedor', variant: 'destructive' });

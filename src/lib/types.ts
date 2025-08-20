@@ -23,6 +23,7 @@ export interface EnabledModules {
     appointments: ModulePermissions;
     services: ModulePermissions;
     expenses: ModulePermissions;
+    backup: ModulePermissions;
 }
 
 export interface PermissionProfile {
@@ -30,6 +31,7 @@ export interface PermissionProfile {
     name: string;
     organizationId: string;
     permissions: EnabledModules;
+    isDeleted?: boolean;
 }
 
 export interface TimeSlot {

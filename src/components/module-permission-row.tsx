@@ -1,10 +1,11 @@
 
+
 'use client';
 import * as React from 'react';
 import { TableRow, TableCell } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { ModulePermissions, EnabledModules } from '@/lib/types';
-import { Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, ArrowDownCircle } from 'lucide-react';
+import { Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, ArrowDownCircle, Archive } from 'lucide-react';
 
 export const allModuleConfig = [
     { key: 'dashboard', label: 'Início', icon: Home },
@@ -19,6 +20,7 @@ export const allModuleConfig = [
     { key: 'expenses', label: 'Despesas', icon: ArrowDownCircle },
     { key: 'assistant', label: 'Oráculo AI', icon: Bot },
     { key: 'reports', label: 'Relatórios', icon: FileText },
+    { key: 'backup', label: 'Backup', icon: Archive },
     { key: 'settings', label: 'Configurações', icon: Settings },
 ] as const;
 

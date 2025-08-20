@@ -38,7 +38,7 @@ function DashboardNav() {
         { href: '/dashboard/assistant', label: 'Oráculo AI', icon: Bot, module: 'assistant' },
         { href: '/dashboard/reports', label: 'Relatórios', icon: FileText, module: 'reports' },
         { href: '/dashboard/settings', label: 'Configurações', icon: Settings, module: 'settings' },
-        { href: '/dashboard/backup', label: 'Backup', icon: Archive, module: 'settings' },
+        { href: '/dashboard/backup', label: 'Backup', icon: Archive, module: 'backup' },
         { href: '/dashboard/help', label: 'Ajuda & Tutorial', icon: LifeBuoy, module: 'dashboard' },
     ];
 
@@ -335,4 +335,3 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </SidebarProvider>
     );
 }
-

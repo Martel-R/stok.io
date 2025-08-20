@@ -64,6 +64,7 @@ const defaultPermissions: EnabledModules = {
     appointments: { view: true, edit: true, delete: true },
     services: { view: true, edit: true, delete: true },
     expenses: { view: true, edit: true, delete: true },
+    backup: { view: true, edit: true, delete: true },
 };
 
 const professionalPermissions: EnabledModules = {
@@ -173,7 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setUser(userData);
                 
                 // Fetch branches for the organization
-                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId));
+                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
                 const unsubBranches = onSnapshot(branchesQuery, (branchSnap) => {
                     const orgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
                     const userBranches = isImpersonating || baseUser.role === 'admin' ? orgBranches : orgBranches.filter(b => b.userIds.includes(baseUser.id));
@@ -267,14 +268,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const adminProfile: Omit<PermissionProfile, 'id'> = {
           name: 'Admin',
           organizationId: organizationId,
-          permissions: defaultPermissions
+          permissions: defaultPermissions,
+          isDeleted: false,
       };
       batch.set(adminProfileRef, adminProfile);
 
       const professionalProfile: Omit<PermissionProfile, 'id'> = {
           name: 'Profissional',
           organizationId: organizationId,
-          permissions: professionalPermissions
+          permissions: professionalPermissions,
+          isDeleted: false,
       };
       batch.set(professionalProfileRef, professionalProfile);
 

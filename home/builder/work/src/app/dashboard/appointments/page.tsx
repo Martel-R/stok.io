@@ -4,15 +4,15 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, Timestamp, writeBatch, serverTimestamp, getDocs } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, onSnapshot, query, where, Timestamp, writeBatch, serverTimestamp, getDocs } from 'firebase/firestore';
 import type { Appointment, Customer, Service, User, AppointmentStatus, Attendance, AnamnesisAnswer, PermissionProfile, AttendanceItem, Product } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Calendar, Users, Briefcase, Check, ChevronsUpDown, Clock, RefreshCw, PlayCircle, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Calendar, Users, Briefcase, Check, ChevronsUpDown, Clock, RefreshCw, PlayCircle, AlertTriangle, ChevronLeft, ChevronRight, GripVertical } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -28,6 +28,7 @@ import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { DndContext, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { logUserActivity } from '@/lib/logging';
 
 
 function AppointmentForm({ 
@@ -193,6 +194,7 @@ function AppointmentForm({
                         <SelectItem value="cancelled">Cancelado</SelectItem>
                         <SelectItem value="rescheduled">Reagendado</SelectItem>
                         <SelectItem value="no-show">Não Compareceu</SelectItem>
+                        <SelectItem value="in-progress-payment-pending">Em Atendimento</SelectItem>
                      </SelectContent>
                  </Select>
             </div>
@@ -219,6 +221,7 @@ const getStatusBadge = (status: AppointmentStatus) => {
         case 'rescheduled': return <Badge className="bg-purple-100 text-purple-800">Reagendado</Badge>;
         case 'no-show': return <Badge variant="destructive">Não Compareceu</Badge>;
         case 'pending-confirmation': return <Badge className="bg-orange-100 text-orange-800">Pendente</Badge>;
+        case 'in-progress-payment-pending': return <Badge className="bg-yellow-100 text-yellow-800">Em Atendimento</Badge>;
         default: return <Badge>{status}</Badge>;
     }
 };
@@ -256,8 +259,8 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
     const draggableStyle = transform ? {
         ...style,
         transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-        zIndex: 10,
-    } : style;
+        zIndex: isDragging ? 50 : 10,
+    } : { ...style, zIndex: 10 };
     
     const customer = customers.find(c => c.id === appointment.customerId);
     const anamnesisDone = isAnamnesisComplete(customer);
@@ -271,18 +274,21 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
         <Card
             ref={setNodeRef}
             style={draggableStyle}
-            {...listeners}
-            {...attributes}
-            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden cursor-grab", isDragging && "opacity-50")}
+            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden", isDragging && "opacity-50")}
         >
-            <div className="flex justify-between items-start gap-2 h-full" onClick={() => onEdit(appointment)}>
-                <div className="space-y-1 flex-grow overflow-hidden">
+             <div className="flex justify-between items-start gap-2 h-full">
+                <div 
+                    {...listeners}
+                    {...attributes}
+                    className="flex-grow space-y-1 overflow-hidden cursor-grab"
+                    onClick={() => onEdit(appointment)}
+                >
                     <CardTitle className="text-sm truncate">{appointment.serviceName}</CardTitle>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground"><Users className="h-3 w-3" /><span className="truncate">{appointment.customerName}</span></div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground"><Briefcase className="h-3 w-3" /><span className="truncate">{appointment.professionalName}</span></div>
                     {!anamnesisDone && <div className="flex items-center gap-1 text-yellow-600 text-xs"><AlertTriangle className="h-3 w-3"/><span>Anamnese pendente</span></div>}
                 </div>
-                <div className="flex flex-col items-end gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                <div className="flex flex-col items-end gap-1 shrink-0">
                     {getStatusBadge(appointment.status)}
                     <div className="flex items-center gap-1">
                         {appointment.status === 'pending-confirmation' && can.edit ? (
@@ -315,7 +321,7 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
     onUpdateAppointmentTime: (id: string, newStart: Date) => void;
     customers: Customer[];
 }) {
-    const hourHeight = 60; // 60px per hour
+    const hourHeight = 80;
     const startHour = 0;
     const endHour = 23;
     const hours = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i);
@@ -370,7 +376,7 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                         <div className="relative flex">
                             <div className="w-16 flex-shrink-0 text-right pr-2">
                                {hours.map(hour => (
-                                    <div key={hour} className="relative h-[60px] border-t border-muted first:border-t-0">
+                                    <div key={hour} className="relative h-[80px] border-t border-muted first:border-t-0">
                                         <span className="text-xs text-muted-foreground absolute -top-[9px] right-2 bg-background px-1">{format(setMinutes(setHours(new Date(), hour), 0), 'HH:mm')}</span>
                                     </div>
                                 ))}
@@ -379,13 +385,13 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                             <div className="relative flex-grow">
                                 <div className="grid absolute inset-0">
                                     {hours.map(hour => (
-                                        <div key={hour} className="h-[60px] border-t border-muted first:border-t-0"></div>
+                                        <div key={hour} className="h-[80px] border-t border-muted first:border-t-0"></div>
                                     ))}
                                 </div>
                                 <div className="absolute inset-0">
                                     {appointmentsForDay.map(app => {
                                         const top = getPosition(app.start);
-                                        const height = Math.max(getPosition(app.end) - top, 40);
+                                        const height = Math.max(getPosition(app.end) - top, 80);
                                         return (
                                             <DraggableAppointment
                                                 key={app.id}
@@ -395,7 +401,7 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                                                 onStartAttendance={onStartAttendance}
                                                 onReschedule={onReschedule}
                                                 onDelete={onDelete}
-                                                style={{ top: `${top}px`, minHeight: '40px', height: `${height}px` }}
+                                                style={{ top: `${top}px`, minHeight: '5rem', height: `${height}px` }}
                                                 isDragging={activeAppointment?.id === app.id}
                                             />
                                         )
@@ -628,13 +634,13 @@ export default function AppointmentsPage() {
 
         const unsubscribers: (() => void)[] = [];
 
-        const customerQuery = query(collection(db, 'customers'), where('organizationId', '==', user.organizationId));
+        const customerQuery = query(collection(db, 'customers'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
         unsubscribers.push(onSnapshot(customerQuery, snap => setCustomers(snap.docs.map(d => ({id: d.id, ...d.data()}) as Customer))));
 
-        const serviceQuery = query(collection(db, 'services'), where('organizationId', '==', user.organizationId));
+        const serviceQuery = query(collection(db, 'services'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
         unsubscribers.push(onSnapshot(serviceQuery, snap => setServices(snap.docs.map(d => ({id: d.id, ...d.data()}) as Service))));
 
-        const appointmentQuery = query(collection(db, 'appointments'), where('branchId', '==', currentBranch.id));
+        const appointmentQuery = query(collection(db, 'appointments'), where('branchId', '==', currentBranch.id), where('isDeleted', '!=', true));
         unsubscribers.push(onSnapshot(appointmentQuery, snap => setAppointments(snap.docs.map(d => convertAppointmentDate({id: d.id, ...d.data()})))));
 
         const fetchProfessionals = async () => {
@@ -660,19 +666,36 @@ export default function AppointmentsPage() {
     }, [user, currentBranch]);
 
     const handleSave = async (data: Partial<Appointment>) => {
-        if (!user?.organizationId) {
-            toast({ title: 'Organização não encontrada.', variant: 'destructive' });
+        if (!user?.organizationId || !currentBranch?.id) {
+            toast({ title: 'Organização ou filial não encontrada.', variant: 'destructive' });
             return;
         }
         
+        const isEditing = !!editingAppointment?.id;
+        const action = isEditing ? 'appointment_updated' : 'appointment_created';
+
         try {
-            if (editingAppointment?.id) {
-                await updateDoc(doc(db, "appointments", editingAppointment.id), data);
+            if (isEditing) {
+                await updateDoc(doc(db, "appointments", editingAppointment.id!), data);
                 toast({ title: 'Agendamento atualizado!' });
             } else {
-                await addDoc(collection(db, "appointments"), { ...data, organizationId: user.organizationId });
+                await addDoc(collection(db, "appointments"), { ...data, organizationId: user.organizationId, branchId: currentBranch.id });
                 toast({ title: 'Agendamento criado!' });
             }
+            
+            logUserActivity({
+                userId: user.id,
+                userName: user.name,
+                organizationId: user.organizationId,
+                branchId: currentBranch.id,
+                action,
+                details: {
+                    appointmentId: editingAppointment?.id || 'new',
+                    customerName: data.customerName,
+                    serviceName: data.serviceName,
+                    date: format(data.start!, 'dd/MM/yyyy HH:mm'),
+                },
+            });
             setIsFormOpen(false);
         } catch (error) {
             console.error("Error saving appointment: ", error);
@@ -681,15 +704,25 @@ export default function AppointmentsPage() {
     };
     
     const handleStatusChange = async (appointmentId: string, status: AppointmentStatus) => {
+        if (!user || !currentBranch) return;
         try {
             await updateDoc(doc(db, "appointments", appointmentId), { status });
             toast({ title: 'Status atualizado!' });
+            logUserActivity({
+                userId: user.id,
+                userName: user.name,
+                organizationId: user.organizationId,
+                branchId: currentBranch.id,
+                action: 'appointment_status_changed',
+                details: { appointmentId, newStatus: status }
+            });
         } catch (error) {
             toast({ title: 'Erro ao atualizar status', variant: 'destructive' });
         }
     };
 
     const handleUpdateAppointmentTime = async (id: string, newStart: Date) => {
+        if (!user || !currentBranch) return;
         const appointment = appointments.find(a => a.id === id);
         if (!appointment) return;
 
@@ -699,15 +732,32 @@ export default function AppointmentsPage() {
         try {
             await updateDoc(doc(db, "appointments", id), { start: newStart, end: newEnd });
             toast({ title: 'Agendamento reagendado!' });
+            logUserActivity({
+                userId: user.id,
+                userName: user.name,
+                organizationId: user.organizationId,
+                branchId: currentBranch.id,
+                action: 'appointment_rescheduled',
+                details: { appointmentId: id, newStartDate: format(newStart, 'dd/MM/yyyy HH:mm') }
+            });
         } catch (error) {
             toast({ title: 'Erro ao reagendar', variant: 'destructive' });
         }
     }
     
     const handleDelete = async (id: string) => {
+        if (!user || !currentBranch) return;
         try {
-            await deleteDoc(doc(db, "appointments", id));
+            await updateDoc(doc(db, "appointments", id), { isDeleted: true });
             toast({ title: 'Agendamento excluído!', variant: 'destructive' });
+            logUserActivity({
+                userId: user.id,
+                userName: user.name,
+                organizationId: user.organizationId,
+                branchId: currentBranch.id,
+                action: 'appointment_deleted',
+                details: { appointmentId: id }
+            });
         } catch (error) {
             toast({ title: 'Erro ao excluir', variant: 'destructive' });
         }
@@ -765,10 +815,22 @@ export default function AppointmentsPage() {
             total,
         };
         batch.set(attendanceRef, newAttendance);
-        batch.update(appointmentRef, { attendanceId: attendanceRef.id, status: 'completed' });
+        batch.update(appointmentRef, { attendanceId: attendanceRef.id, status: 'in-progress-payment-pending' });
         
         try {
             await batch.commit();
+            logUserActivity({
+                userId: user.id,
+                userName: user.name,
+                organizationId: user.organizationId,
+                branchId: currentBranch.id,
+                action: 'attendance_started',
+                details: {
+                    appointmentId: app.id,
+                    attendanceId: attendanceRef.id,
+                    customerName: app.customerName
+                },
+            });
             router.push(`/dashboard/attendance/${attendanceRef.id}`);
         } catch (error) {
             console.error("Failed to start attendance:", error);
@@ -883,4 +945,3 @@ export default function AppointmentsPage() {
         </div>
     )
 }
-

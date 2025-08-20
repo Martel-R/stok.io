@@ -571,27 +571,46 @@ export default function ProductsPage() {
     await handleSave(newProductData);
   }
 
-  const handleImport = async (importedProducts: Omit<Product, 'id' | 'branchId' | 'organizationId'>[]) => {
+  const handleImport = async (importedData: { product: Omit<Product, 'id' | 'branchId' | 'organizationId'>, stock: number }[]) => {
       if (!currentBranch || !user?.organizationId) {
-          toast({ title: 'Nenhuma filial selecionada', description: 'Selecione uma filial para importar os produtos.', variant: 'destructive' });
+          toast({ title: 'Nenhuma filial selecionada', variant: 'destructive' });
           return;
       }
       const batch = writeBatch(db);
-      importedProducts.forEach(productData => {
+      
+      importedData.forEach(({ product, stock }) => {
           const productRef = doc(collection(db, "products"));
           batch.set(productRef, {
-              ...productData,
+              ...product,
               branchId: currentBranch.id,
-              organizationId: user.organizationId
+              organizationId: user.organizationId,
+              isDeleted: false,
           });
+
+          if (stock > 0) {
+              const stockEntryRef = doc(collection(db, 'stockEntries'));
+              const stockEntry: Omit<StockEntry, 'id'> = {
+                  productId: productRef.id,
+                  productName: product.name,
+                  quantity: stock,
+                  type: 'entry',
+                  date: serverTimestamp(),
+                  userId: user!.id,
+                  userName: user!.name,
+                  branchId: currentBranch.id,
+                  organizationId: user!.organizationId,
+                  notes: 'Entrada inicial via importação'
+              };
+              batch.set(stockEntryRef, stockEntry);
+          }
       });
       try {
           await batch.commit();
-          toast({ title: `${importedProducts.length} produtos importados com sucesso!` });
+          toast({ title: `${importedData.length} produtos importados com sucesso!` });
           setIsImportOpen(false);
       } catch (error) {
           console.error("Error importing products:", error);
-          toast({ title: 'Erro ao importar produtos', description: 'Não foi possível salvar os produtos. Verifique o arquivo e tente novamente.', variant: 'destructive' });
+          toast({ title: 'Erro ao importar produtos', variant: 'destructive' });
       }
   };
   
@@ -853,11 +872,11 @@ export default function ProductsPage() {
                 </AlertDialog>
             )}
 
-            {can.edit && <ImportProductsDialog
+            <ImportProductsDialog
                 isOpen={isImportOpen}
                 onOpenChange={setIsImportOpen}
                 onImport={handleImport}
-            />}
+            />
 
             {can.edit && <Dialog open={isStockFormOpen} onOpenChange={setIsStockFormOpen}>
                 <DialogTrigger asChild>
@@ -1129,4 +1148,3 @@ export default function ProductsPage() {
     </div>
   );
 }
-

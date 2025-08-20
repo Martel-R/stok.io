@@ -10,7 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, updateDoc, doc, onSnapshot, query, where, Timestamp, writeBatch, serverTimestamp, getDocs } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, Timestamp, writeBatch, serverTimestamp, getDocs } from 'firebase/firestore';
 import type { Appointment, Customer, Service, User, AppointmentStatus, Attendance, AnamnesisAnswer, PermissionProfile, AttendanceItem, Product } from '@/lib/types';
 import { MoreHorizontal, PlusCircle, Calendar, Users, Briefcase, Check, ChevronsUpDown, Clock, RefreshCw, PlayCircle, AlertTriangle, ChevronLeft, ChevronRight, GripVertical } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -28,7 +28,6 @@ import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { DndContext, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
-import { logUserActivity } from '@/lib/logging';
 
 
 function AppointmentForm({ 
@@ -666,36 +665,19 @@ export default function AppointmentsPage() {
     }, [user, currentBranch]);
 
     const handleSave = async (data: Partial<Appointment>) => {
-        if (!user?.organizationId || !currentBranch?.id) {
-            toast({ title: 'Organização ou filial não encontrada.', variant: 'destructive' });
+        if (!user?.organizationId) {
+            toast({ title: 'Organização não encontrada.', variant: 'destructive' });
             return;
         }
         
-        const isEditing = !!editingAppointment?.id;
-        const action = isEditing ? 'appointment_updated' : 'appointment_created';
-
         try {
-            if (isEditing) {
+            if (editingAppointment?.id) {
                 await updateDoc(doc(db, "appointments", editingAppointment.id!), data);
                 toast({ title: 'Agendamento atualizado!' });
             } else {
-                await addDoc(collection(db, "appointments"), { ...data, organizationId: user.organizationId, branchId: currentBranch.id });
+                await addDoc(collection(db, "appointments"), { ...data, organizationId: user.organizationId });
                 toast({ title: 'Agendamento criado!' });
             }
-            
-            logUserActivity({
-                userId: user.id,
-                userName: user.name,
-                organizationId: user.organizationId,
-                branchId: currentBranch.id,
-                action,
-                details: {
-                    appointmentId: editingAppointment?.id || 'new',
-                    customerName: data.customerName,
-                    serviceName: data.serviceName,
-                    date: format(data.start!, 'dd/MM/yyyy HH:mm'),
-                },
-            });
             setIsFormOpen(false);
         } catch (error) {
             console.error("Error saving appointment: ", error);
@@ -704,25 +686,15 @@ export default function AppointmentsPage() {
     };
     
     const handleStatusChange = async (appointmentId: string, status: AppointmentStatus) => {
-        if (!user || !currentBranch) return;
         try {
             await updateDoc(doc(db, "appointments", appointmentId), { status });
             toast({ title: 'Status atualizado!' });
-            logUserActivity({
-                userId: user.id,
-                userName: user.name,
-                organizationId: user.organizationId,
-                branchId: currentBranch.id,
-                action: 'appointment_status_changed',
-                details: { appointmentId, newStatus: status }
-            });
         } catch (error) {
             toast({ title: 'Erro ao atualizar status', variant: 'destructive' });
         }
     };
 
     const handleUpdateAppointmentTime = async (id: string, newStart: Date) => {
-        if (!user || !currentBranch) return;
         const appointment = appointments.find(a => a.id === id);
         if (!appointment) return;
 
@@ -732,32 +704,15 @@ export default function AppointmentsPage() {
         try {
             await updateDoc(doc(db, "appointments", id), { start: newStart, end: newEnd });
             toast({ title: 'Agendamento reagendado!' });
-            logUserActivity({
-                userId: user.id,
-                userName: user.name,
-                organizationId: user.organizationId,
-                branchId: currentBranch.id,
-                action: 'appointment_rescheduled',
-                details: { appointmentId: id, newStartDate: format(newStart, 'dd/MM/yyyy HH:mm') }
-            });
         } catch (error) {
             toast({ title: 'Erro ao reagendar', variant: 'destructive' });
         }
     }
     
     const handleDelete = async (id: string) => {
-        if (!user || !currentBranch) return;
         try {
             await updateDoc(doc(db, "appointments", id), { isDeleted: true });
             toast({ title: 'Agendamento excluído!', variant: 'destructive' });
-            logUserActivity({
-                userId: user.id,
-                userName: user.name,
-                organizationId: user.organizationId,
-                branchId: currentBranch.id,
-                action: 'appointment_deleted',
-                details: { appointmentId: id }
-            });
         } catch (error) {
             toast({ title: 'Erro ao excluir', variant: 'destructive' });
         }
@@ -819,18 +774,6 @@ export default function AppointmentsPage() {
         
         try {
             await batch.commit();
-            logUserActivity({
-                userId: user.id,
-                userName: user.name,
-                organizationId: user.organizationId,
-                branchId: currentBranch.id,
-                action: 'attendance_started',
-                details: {
-                    appointmentId: app.id,
-                    attendanceId: attendanceRef.id,
-                    customerName: app.customerName
-                },
-            });
             router.push(`/dashboard/attendance/${attendanceRef.id}`);
         } catch (error) {
             console.error("Failed to start attendance:", error);

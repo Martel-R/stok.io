@@ -8,8 +8,8 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, creat
 import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import type { User, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile, Subscription } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
-import { MOCK_PRODUCTS } from '@/lib/mock-data';
 import { addMonths } from 'date-fns';
+import { logUserActivity } from './logging';
 
 const availableAvatars = [
     'https://placehold.co/100x100.png?text=🦊',
@@ -39,7 +39,6 @@ interface AuthContextType {
   updateUserProfile: (data: Partial<User>) => Promise<{ success: boolean; error?: string }>;
   changeUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean, error?: string }>;
   sendPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
-  deleteTestData: (organizationId: string) => Promise<void>;
   updateOrganizationModules: (modules: EnabledModules) => Promise<void>;
   updateOrganizationBranding: (branding: BrandingSettings) => Promise<void>;
   logout: () => void;
@@ -65,6 +64,7 @@ const defaultPermissions: EnabledModules = {
     appointments: { view: true, edit: true, delete: true },
     services: { view: true, edit: true, delete: true },
     expenses: { view: true, edit: true, delete: true },
+    backup: { view: true, edit: true, delete: true },
 };
 
 const professionalPermissions: EnabledModules = {
@@ -174,7 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setUser(userData);
                 
                 // Fetch branches for the organization
-                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId));
+                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
                 const unsubBranches = onSnapshot(branchesQuery, (branchSnap) => {
                     const orgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
                     const userBranches = isImpersonating || baseUser.role === 'admin' ? orgBranches : orgBranches.filter(b => b.userIds.includes(baseUser.id));
@@ -268,14 +268,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const adminProfile: Omit<PermissionProfile, 'id'> = {
           name: 'Admin',
           organizationId: organizationId,
-          permissions: defaultPermissions
+          permissions: defaultPermissions,
+          isDeleted: false,
       };
       batch.set(adminProfileRef, adminProfile);
 
       const professionalProfile: Omit<PermissionProfile, 'id'> = {
           name: 'Profissional',
           organizationId: organizationId,
-          permissions: professionalPermissions
+          permissions: professionalPermissions,
+          isDeleted: false,
       };
       batch.set(professionalProfileRef, professionalProfile);
 
@@ -343,7 +345,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     loginCancelledRef.current = false;
     try {
-        await signInWithEmailAndPassword(auth, email, pass);
+        const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+        const loggedInUser = await getDoc(doc(db, 'users', userCredential.user.uid));
+        if (loggedInUser.exists()) {
+             logUserActivity({
+                userId: loggedInUser.id,
+                userName: loggedInUser.data().name,
+                organizationId: loggedInUser.data().organizationId,
+                action: 'login_success'
+            });
+        }
         return true;
     } catch (error) {
         console.error("Firebase Login Error:", error);
@@ -360,7 +371,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loginCancelledRef.current = false;
     try {
         const provider = new GoogleAuthProvider();
-        await signInWithPopup(auth, provider);
+        const result = await signInWithPopup(auth, provider);
+        const userDocRef = doc(db, 'users', result.user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+
+        if (!userDocSnap.exists()) {
+            // This is a new Google user, need to create a profile
+            const organizationId = doc(collection(db, 'organizations')).id;
+            const newUser: User = {
+                id: result.user.uid,
+                name: result.user.displayName || 'Usuário Google',
+                email: result.user.email!,
+                role: 'admin',
+                avatar: result.user.photoURL || getRandomAvatar(),
+                organizationId: organizationId,
+            };
+            
+            const batch = writeBatch(db);
+            batch.set(userDocRef, newUser);
+            batch.set(doc(db, 'organizations', organizationId), {
+                ownerId: newUser.id,
+                name: `${newUser.name}'s Organization`,
+                paymentStatus: 'active',
+                enabledModules: defaultPermissions,
+            });
+            await batch.commit();
+        }
+
+        const loggedInUser = (await getDoc(userDocRef)).data() as User;
+         logUserActivity({
+            userId: loggedInUser.id,
+            userName: loggedInUser.name,
+            organizationId: loggedInUser.organizationId,
+            action: 'login_success_google'
+        });
+
         return true;
     } catch (error) {
         console.error("Google Login Error:", error);
@@ -380,6 +425,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     setLoading(true);
     try {
+        if(user) {
+            logUserActivity({
+                userId: user.id,
+                userName: user.name,
+                organizationId: user.organizationId,
+                action: 'logout',
+            });
+        }
         await signOut(auth);
         setUser(null);
         localStorage.removeItem('currentBranchId');
@@ -432,7 +485,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error('Error updating profile:', error);
         return { success: false, error: 'Falha ao atualizar o perfil.' };
     }
-  }
+  };
 
   const changeUserPassword = async (currentPass: string, newPass: string) => {
     if (!auth.currentUser || !auth.currentUser.email) {
@@ -470,21 +523,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
         setLoading(false);
     }
-  };
-
-  const deleteTestData = async (organizationId: string) => {
-    const collectionsToDelete = ['products', 'combos', 'sales', 'stockEntries', 'kits'];
-    const batch = writeBatch(db);
-
-    for (const collectionName of collectionsToDelete) {
-        const q = query(collection(db, collectionName), where("organizationId", "==", organizationId));
-        const snapshot = await getDocs(q);
-        snapshot.forEach(doc => {
-            batch.delete(doc.ref);
-        });
-    }
-
-    await batch.commit();
   };
 
   const updateOrganizationModules = async (modules: EnabledModules) => {
@@ -542,7 +580,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, deleteTestData, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations }}>
       {children}
     </AuthContext.Provider>
   );
@@ -555,4 +593,3 @@ export const useAuth = () => {
   }
   return context;
 };
-

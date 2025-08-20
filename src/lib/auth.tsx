@@ -9,6 +9,7 @@ import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Uns
 import type { User, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile, Subscription } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
 import { addMonths } from 'date-fns';
+import { logUserActivity } from './logging';
 
 const availableAvatars = [
     'https://placehold.co/100x100.png?text=🦊',
@@ -341,7 +342,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     loginCancelledRef.current = false;
     try {
-        await signInWithEmailAndPassword(auth, email, pass);
+        const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+        const loggedInUser = await getDoc(doc(db, 'users', userCredential.user.uid));
+        if (loggedInUser.exists()) {
+             logUserActivity({
+                userId: loggedInUser.id,
+                userName: loggedInUser.data().name,
+                organizationId: loggedInUser.data().organizationId,
+                action: 'login_success'
+            });
+        }
         return true;
     } catch (error) {
         console.error("Firebase Login Error:", error);
@@ -358,7 +368,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loginCancelledRef.current = false;
     try {
         const provider = new GoogleAuthProvider();
-        await signInWithPopup(auth, provider);
+        const result = await signInWithPopup(auth, provider);
+        const userDocRef = doc(db, 'users', result.user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+
+        if (!userDocSnap.exists()) {
+            // This is a new Google user, need to create a profile
+            const organizationId = doc(collection(db, 'organizations')).id;
+            const newUser: User = {
+                id: result.user.uid,
+                name: result.user.displayName || 'Usuário Google',
+                email: result.user.email!,
+                role: 'admin',
+                avatar: result.user.photoURL || getRandomAvatar(),
+                organizationId: organizationId,
+            };
+            
+            const batch = writeBatch(db);
+            batch.set(userDocRef, newUser);
+            batch.set(doc(db, 'organizations', organizationId), {
+                ownerId: newUser.id,
+                name: `${newUser.name}'s Organization`,
+                paymentStatus: 'active',
+                enabledModules: defaultPermissions,
+            });
+            await batch.commit();
+        }
+
+        const loggedInUser = (await getDoc(userDocRef)).data() as User;
+         logUserActivity({
+            userId: loggedInUser.id,
+            userName: loggedInUser.name,
+            organizationId: loggedInUser.organizationId,
+            action: 'login_success_google'
+        });
+
         return true;
     } catch (error) {
         console.error("Google Login Error:", error);
@@ -378,6 +422,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     setLoading(true);
     try {
+        if(user) {
+            logUserActivity({
+                userId: user.id,
+                userName: user.name,
+                organizationId: user.organizationId,
+                action: 'logout',
+            });
+        }
         await signOut(auth);
         setUser(null);
         localStorage.removeItem('currentBranchId');

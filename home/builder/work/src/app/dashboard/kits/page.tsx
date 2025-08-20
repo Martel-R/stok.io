@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from '@/components/ui/checkbox';
+import { logUserActivity } from '@/lib/logging';
 
 function KitForm({ kit, branchProducts, onSave, onDone }: { kit?: Kit; branchProducts: Product[]; onSave: (kit: Omit<Kit, 'id' | 'branchId' | 'organizationId'>) => void; onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<Kit>>(
@@ -73,7 +74,7 @@ function KitForm({ kit, branchProducts, onSave, onDone }: { kit?: Kit; branchPro
     };
 
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = (e: React.Event<HTMLFormElement>) => {
         e.preventDefault();
         if (!formData.name || !formData.eligibleProductIds || formData.eligibleProductIds.length < (formData.numberOfItems || 0)) {
             toast({
@@ -93,7 +94,7 @@ function KitForm({ kit, branchProducts, onSave, onDone }: { kit?: Kit; branchPro
         <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-4">
             <div>
                 <Label htmlFor="name">Nome do Kit</Label>
-                <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
+                <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} required />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -167,7 +168,7 @@ function KitForm({ kit, branchProducts, onSave, onDone }: { kit?: Kit; branchPro
               <TabsContent value="url">
                 <div className="space-y-2 mt-4">
                   <Label htmlFor="imageUrl">URL da Imagem</Label>
-                  <Input id="imageUrl" name="imageUrl" value={formData.imageUrl} onChange={handleChange} placeholder="https://exemplo.com/imagem.png" />
+                  <Input id="imageUrl" name="imageUrl" value={formData.imageUrl || ''} onChange={handleChange} placeholder="https://exemplo.com/imagem.png" />
                 </div>
               </TabsContent>
             </Tabs>
@@ -209,7 +210,7 @@ export default function KitsPage() {
             return;
         }
         
-        const qKits = query(collection(db, 'kits'), where("branchId", "==", currentBranch.id));
+        const qKits = query(collection(db, 'kits'), where("branchId", "==", currentBranch.id), where('isDeleted', '!=', true));
         const qProducts = query(collection(db, 'products'), where("branchId", "==", currentBranch.id));
         
         const unsubscribeKits = onSnapshot(qKits, (snapshot) => {
@@ -233,6 +234,8 @@ export default function KitsPage() {
             toast({ title: 'Filial ou organização não encontrada.', variant: 'destructive' });
             return;
         }
+        const isEditing = !!editingKit?.id;
+        const action = isEditing ? 'kit_updated' : 'kit_created';
         try {
             if (editingKit?.id) {
                 await updateDoc(doc(db, "kits", editingKit.id), kitData);
@@ -242,19 +245,37 @@ export default function KitsPage() {
                     ...kitData,
                     branchId: currentBranch.id,
                     organizationId: user.organizationId,
+                    isDeleted: false,
                 });
                 toast({ title: 'Kit adicionado com sucesso!' });
             }
+            logUserActivity({
+                userId: user.id,
+                userName: user.name,
+                organizationId: user.organizationId,
+                branchId: currentBranch.id,
+                action,
+                details: { kitId: editingKit?.id || 'new', kitName: kitData.name }
+            });
         } catch (error) {
             console.error("Error saving kit: ", error);
             toast({ title: 'Erro ao salvar kit.', variant: 'destructive' });
         }
     };
 
-    const handleDelete = async (kitId: string) => {
+    const handleDelete = async (kit: Kit) => {
+        if (!user || !currentBranch) return;
         try {
-            await deleteDoc(doc(db, "kits", kitId));
+            await updateDoc(doc(db, "kits", kit.id), { isDeleted: true });
             toast({ title: 'Kit excluído com sucesso!', variant: 'destructive' });
+            logUserActivity({
+                userId: user.id,
+                userName: user.name,
+                organizationId: user.organizationId,
+                branchId: currentBranch.id,
+                action: 'kit_deleted',
+                details: { kitId: kit.id, kitName: kit.name }
+            });
         } catch (error) {
             toast({ title: 'Erro ao excluir kit.', variant: 'destructive' });
         }
@@ -366,7 +387,7 @@ export default function KitsPage() {
                                                 <Copy className="mr-2 h-4 w-4" />
                                                 Copiar
                                             </DropdownMenuItem>}
-                                            {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(kit.id)}>Excluir</DropdownMenuItem>}
+                                            {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(kit)}>Excluir</DropdownMenuItem>}
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </TableCell>
@@ -384,5 +405,5 @@ export default function KitsPage() {
         </div>
     );
 }
-
     
+

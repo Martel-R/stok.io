@@ -1,5 +1,4 @@
 
-
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -462,12 +461,21 @@ export default function ProductsPage() {
   }), [user]);
 
   useEffect(() => {
-    if (authLoading || !currentBranch || !user?.organizationId) {
+    if (authLoading) {
       setLoading(true);
       return;
     }
+    if (!currentBranch || !user?.organizationId) {
+      setLoading(false);
+      setAllProducts([]);
+      setAllStockEntries([]);
+      setSuppliers([]);
+      return;
+    }
 
-    const productsQuery = query(collection(db, 'products'), where("branchId", "==", currentBranch.id), where("isDeleted", "!=", true));
+    setLoading(true);
+    
+    const productsQuery = query(collection(db, 'products'), where("branchId", "==", currentBranch.id));
     const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
     const suppliersQuery = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId), where("isDeleted", "!=", true));
 
@@ -477,26 +485,17 @@ export default function ProductsPage() {
       onSnapshot(suppliersQuery, snap => setSuppliers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)))),
     ];
     
-    // Check if all initial data has been loaded
-    Promise.all([
-        getDocs(productsQuery),
-        getDocs(stockEntriesQuery),
-        getDocs(suppliersQuery)
-    ]).then(() => {
-        setLoading(false);
-    }).catch(error => {
-        console.error("Error fetching initial data:", error);
-        toast({title: "Erro ao carregar dados", variant: "destructive"});
-        setLoading(false);
-    });
+    setLoading(false);
 
     return () => {
       unsubs.forEach(unsub => unsub());
     };
-  }, [currentBranch, authLoading, user, toast]);
+  }, [currentBranch, authLoading, user]);
+
 
   const productsWithStock = useMemo(() => {
-     const sortedProducts = [...allProducts].sort((a,b) => {
+     const productsToDisplay = allProducts.filter(p => !p.isDeleted);
+     const sortedProducts = [...productsToDisplay].sort((a,b) => {
         if (a.order !== undefined && b.order !== undefined) {
             return a.order - b.order;
         }
@@ -658,7 +657,7 @@ export default function ProductsPage() {
         setIsProcessingBulkAction(true);
         const batch = writeBatch(db);
         selectedProductIds.forEach(id => {
-            const product = products.find(p => p.id === id);
+            const product = allProducts.find(p => p.id === id);
             if (product) {
                 batch.update(doc(db, 'products', id), { isDeleted: true });
                 logUserActivity({
@@ -711,12 +710,12 @@ export default function ProductsPage() {
             return;
         }
         setIsProcessingBulkAction(true);
-        const productsToCopy = products.filter(p => selectedProductIds.includes(p.id));
+        const productsToCopy = allProducts.filter(p => selectedProductIds.includes(p.id));
 
         const batch = writeBatch(db);
         branchesToCopyTo.forEach(branchId => {
             productsToCopy.forEach(p => {
-                const { id, stock, branchId: sourceBranchId, ...productData } = p;
+                const { id, ...productData } = p;
                 const newProductRef = doc(collection(db, 'products'));
                 batch.set(newProductRef, {
                     ...productData,
@@ -906,7 +905,7 @@ export default function ProductsPage() {
 
             {can.edit && <Dialog open={isStockFormOpen} onOpenChange={setIsStockFormOpen}>
                 <DialogTrigger asChild>
-                    <Button variant="outline" disabled={productsWithStock.length === 0}>
+                    <Button variant="outline" disabled={allProducts.length === 0}>
                         <PlusCircle className="mr-2 h-4 w-4" />
                         Adicionar Estoque
                     </Button>
@@ -1174,4 +1173,3 @@ export default function ProductsPage() {
     </div>
   );
 }
-

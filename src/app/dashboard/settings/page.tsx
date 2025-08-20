@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,7 +28,6 @@ import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSearchParams } from 'next/navigation';
 import { Separator } from '@/components/ui/separator';
-import { MOCK_PRODUCTS } from '@/lib/mock-data';
 import { ImportAnamnesisQuestionsDialog } from '@/components/import-anamnesis-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import Image from 'next/image';
@@ -323,33 +322,10 @@ function BranchesSettings() {
                 await updateDoc(doc(db, "branches", editingBranch.id), branchData);
                 toast({ title: 'Filial atualizada com sucesso!' });
             } else {
-                const batch = writeBatch(db);
-                const branchDocRef = doc(collection(db, "branches"));
                 const newBranchData = { ...branchData, organizationId: currentUser.organizationId };
-                batch.set(branchDocRef, newBranchData);
-
-                // Seed products for the new branch
-                MOCK_PRODUCTS.forEach(product => {
-                    const productDocRef = doc(collection(db, 'products'));
-                    const { stock, ...productData } = product; // Remove stock from mock
-                    const productWithBranchInfo: Omit<Product, 'id'> = {
-                        ...(productData as any),
-                        branchId: branchDocRef.id,
-                        organizationId: currentUser.organizationId,
-                        isSalable: true,
-                        purchasePrice: product.price * 0.6,
-                        marginType: 'percentage',
-                        marginValue: 66.67,
-                        supplierId: '',
-                        supplierName: ''
-                    };
-                    batch.set(productDocRef, productWithBranchInfo);
-                });
-
-                await batch.commit();
-
-                toast({ title: 'Filial adicionada com sucesso!', description: 'Adicionamos alguns produtos de exemplo para você começar.' });
-                // If this is the first branch, set it as active
+                const branchDocRef = await addDoc(collection(db, "branches"), newBranchData);
+                toast({ title: 'Filial adicionada com sucesso!' });
+                
                 if(branches.length === 0) {
                     setCurrentBranch({id: branchDocRef.id, ...newBranchData});
                 }
@@ -1288,75 +1264,6 @@ function RolesSettings() {
     );
 }
 
-function TestDataSettings() {
-    const { deleteTestData, user } = useAuth();
-    const { toast } = useToast();
-    const [isDeleted, setIsDeleted] = useState(() => {
-        if (typeof window === "undefined") return true;
-        return localStorage.getItem('testDataDeleted') === 'true';
-    });
-    const [isDeleting, setIsDeleting] = useState(false);
-
-    if (isDeleted) {
-        return null;
-    }
-
-    const handleDelete = async () => {
-        setIsDeleting(true);
-        try {
-            if (!user?.organizationId) {
-                toast({ title: "Erro", description: "Organização não encontrada.", variant: "destructive" });
-                return;
-            }
-            await deleteTestData(user.organizationId);
-            toast({ title: "Sucesso!", description: "Todos os dados de teste foram excluídos." });
-            localStorage.setItem('testDataDeleted', 'true');
-            setIsDeleted(true);
-        } catch (error) {
-            console.error("Failed to delete test data", error);
-            toast({ title: "Erro", description: "Não foi possível excluir os dados de teste.", variant: "destructive" });
-        } finally {
-            setIsDeleting(false);
-        }
-    };
-
-    return (
-        <Card className="border-destructive">
-            <CardHeader>
-                <CardTitle>Dados de Teste</CardTitle>
-                <CardDescription>
-                    Esta ação excluirá permanentemente todos os produtos, combos, kits, vendas e entradas de estoque da sua organização.
-                    Use para limpar o ambiente de teste. Esta ação é irreversível e só pode ser executada uma vez.
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                         <Button variant="destructive" disabled={isDeleting}>
-                            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Excluir Dados de Teste
-                         </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle>Você tem certeza absoluta?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                Esta ação não pode ser desfeita. Todos os dados transacionais (produtos, vendas, combos, kits) serão removidos permanentemente.
-                            </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleDelete} className={buttonVariants({ variant: "destructive" })}>
-                                Sim, excluir tudo
-                            </AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-            </CardContent>
-        </Card>
-    );
-}
-
 function SettingsPageContent() {
     const searchParams = useSearchParams();
     const tab = searchParams.get('tab') || 'users';
@@ -1419,8 +1326,6 @@ function SettingsPageContent() {
                     </TabsContent>
                  )}
             </Tabs>
-             <Separator />
-            <TestDataSettings />
         </div>
     )
 }

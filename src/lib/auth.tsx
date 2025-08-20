@@ -8,7 +8,6 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, creat
 import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import type { User, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile, Subscription } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
-import { MOCK_PRODUCTS } from '@/lib/mock-data';
 import { addMonths } from 'date-fns';
 
 const availableAvatars = [
@@ -39,7 +38,6 @@ interface AuthContextType {
   updateUserProfile: (data: Partial<User>) => Promise<{ success: boolean; error?: string }>;
   changeUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean, error?: string }>;
   sendPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
-  deleteTestData: (organizationId: string) => Promise<void>;
   updateOrganizationModules: (modules: EnabledModules) => Promise<void>;
   updateOrganizationBranding: (branding: BrandingSettings) => Promise<void>;
   logout: () => void;
@@ -472,21 +470,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const deleteTestData = async (organizationId: string) => {
-    const collectionsToDelete = ['products', 'combos', 'sales', 'stockEntries', 'kits'];
-    const batch = writeBatch(db);
-
-    for (const collectionName of collectionsToDelete) {
-        const q = query(collection(db, collectionName), where("organizationId", "==", organizationId));
-        const snapshot = await getDocs(q);
-        snapshot.forEach(doc => {
-            batch.delete(doc.ref);
-        });
-    }
-
-    await batch.commit();
-  };
-
   const updateOrganizationModules = async (modules: EnabledModules) => {
     if (!user?.organizationId) {
         throw new Error("Organização não encontrada.");
@@ -542,7 +525,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, deleteTestData, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations }}>
       {children}
     </AuthContext.Provider>
   );

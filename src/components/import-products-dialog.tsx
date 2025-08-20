@@ -11,7 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { FileUp, FileDown, Loader2 } from 'lucide-react';
 import type { Product } from '@/lib/types';
 
-type ParsedProduct = Omit<Product, 'id' | 'branchId' | 'organizationId' | 'imageUrl'>;
+type ParsedProduct = Omit<Product, 'id' | 'branchId' | 'organizationId'> & { stock: number };
 
 export function ImportProductsDialog({
     isOpen,
@@ -20,7 +20,7 @@ export function ImportProductsDialog({
 }: {
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
-    onImport: (products: Omit<Product, 'id' | 'branchId' | 'organizationId'>[]) => void;
+    onImport: (products: { product: Omit<Product, 'id' | 'branchId' | 'organizationId'>, stock: number }[]) => void;
 }) {
     const [parsedData, setParsedData] = useState<ParsedProduct[]>([]);
     const [fileName, setFileName] = useState('');
@@ -48,10 +48,23 @@ export function ImportProductsDialog({
     const parseCSV = (csvText: string) => {
         const lines = csvText.split(/\r\n|\n/).filter(line => line.trim() !== ''); // Ignore empty lines
         const headers = lines[0].split(',').map(h => h.trim());
-        const expectedHeaders = ['name', 'category', 'price', 'lowStockThreshold', 'isSalable'];
         
-        if (JSON.stringify(headers) !== JSON.stringify(expectedHeaders)) {
-            toast({ title: 'Cabeçalhos inválidos', description: `O cabeçalho do CSV deve ser: ${expectedHeaders.join(',')}`, variant: 'destructive' });
+        const headerMap: { [key: string]: keyof ParsedProduct } = {
+            'nome': 'name',
+            'categoria': 'category',
+            'preco_compra': 'purchasePrice',
+            'preco_venda': 'price',
+            'alerta_estoque_baixo': 'lowStockThreshold',
+            'comerciavel': 'isSalable',
+            'codigo_barras': 'barcode',
+            'url_imagem': 'imageUrl',
+            'codigo_interno': 'code',
+            'estoque_inicial': 'stock'
+        };
+
+        const requiredHeaders = ['nome', 'categoria', 'preco_venda', 'preco_compra'];
+        if (!requiredHeaders.every(h => headers.includes(h))) {
+            toast({ title: 'Cabeçalhos obrigatórios faltando', description: `O CSV deve conter pelo menos: ${requiredHeaders.join(', ')}.`, variant: 'destructive' });
             return;
         }
 
@@ -61,31 +74,49 @@ export function ImportProductsDialog({
             const values = lines[i].split(',');
             const entry: any = {};
             headers.forEach((header, index) => {
-                const value = values[index]?.trim() || '';
-                if (header === 'price' || header === 'lowStockThreshold') {
-                    entry[header] = parseFloat(value) || 0;
-                } else if (header === 'isSalable') {
-                    // Default to true if blank or invalid
-                    entry[header] = value.toLowerCase() === 'false' ? false : true;
-                } else {
-                    entry[header] = value;
+                const mappedHeader = headerMap[header];
+                if(mappedHeader) {
+                    const value = values[index]?.trim() || '';
+                    entry[mappedHeader] = value;
                 }
             });
-            if (entry.name && entry.category && entry.price > 0) {
-                 data.push(entry as ParsedProduct);
+
+            const name = entry.name || '';
+            const category = entry.category || 'Geral';
+            const purchasePrice = parseFloat(entry.purchasePrice) || 0;
+            const price = parseFloat(entry.price) || 0;
+            const lowStockThreshold = parseInt(entry.lowStockThreshold, 10) || 10;
+            const isSalable = entry.isSalable?.toLowerCase() !== 'false'; // Defaults to true
+            const stock = parseInt(entry.stock, 10) || 0;
+
+            if (name && category && price > 0) {
+                 data.push({
+                    name,
+                    category,
+                    price,
+                    purchasePrice,
+                    lowStockThreshold,
+                    isSalable,
+                    stock,
+                    barcode: entry.barcode || '',
+                    imageUrl: entry.imageUrl || 'https://placehold.co/400x400.png',
+                    code: entry.code || '',
+                    marginValue: purchasePrice > 0 ? ((price - purchasePrice) / purchasePrice) * 100 : 0,
+                    marginType: 'percentage',
+                 });
             }
         }
         setParsedData(data);
     };
     
     const downloadTemplate = () => {
-        const headers = "name,category,price,lowStockThreshold,isSalable";
-        const example = "Laptop Gamer,Eletrônicos,7500.50,5,TRUE\nSacola Plástica,Insumos,0.50,100,FALSE";
+        const headers = "nome,categoria,preco_compra,preco_venda,alerta_estoque_baixo,comerciavel,codigo_barras,url_imagem,codigo_interno,estoque_inicial";
+        const example = "Laptop Gamer,Eletrônicos,6000.00,7500.50,5,TRUE,7890123456789,https://placehold.co/400x400.png,LP-GAMER-01,15\nSacola Plástica,Insumos,0.10,0.50,100,FALSE,,,,500";
         const csvContent = `data:text/csv;charset=utf-8,${headers}\n${example}`;
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);
-        link.setAttribute("download", "template_produtos.csv");
+        link.setAttribute("download", "template_produtos_completo.csv");
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -93,10 +124,7 @@ export function ImportProductsDialog({
 
     const handleConfirmImport = async () => {
         setIsLoading(true);
-        const productsToImport = parsedData.map(p => ({
-            ...p,
-            imageUrl: 'https://placehold.co/400x400.png' // Add default placeholder
-        }));
+        const productsToImport = parsedData.map(({ stock, ...product }) => ({ product, stock }));
         await onImport(productsToImport);
         setIsLoading(false);
         setParsedData([]);
@@ -116,7 +144,7 @@ export function ImportProductsDialog({
                 <DialogHeader>
                     <DialogTitle>Importar Produtos em Lote</DialogTitle>
                     <DialogDescription>
-                        Envie um arquivo CSV para adicionar múltiplos produtos de uma vez.
+                        Envie um arquivo CSV para adicionar múltiplos produtos e seu estoque inicial de uma vez.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
@@ -142,8 +170,8 @@ export function ImportProductsDialog({
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Nome</TableHead>
-                                        <TableHead>Categoria</TableHead>
                                         <TableHead className="text-right">Preço</TableHead>
+                                        <TableHead className="text-right">Estoque Inicial</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -151,8 +179,8 @@ export function ImportProductsDialog({
                                         parsedData.map((product, index) => (
                                             <TableRow key={index}>
                                                 <TableCell>{product.name}</TableCell>
-                                                <TableCell>{product.category}</TableCell>
                                                 <TableCell className="text-right">R$ {product.price.toFixed(2)}</TableCell>
+                                                <TableCell className="text-right">{product.stock}</TableCell>
                                             </TableRow>
                                         ))
                                     ) : (

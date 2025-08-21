@@ -10,12 +10,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, query, where, writeBatch, orderBy } from 'firebase/firestore';
-import type { User, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType, BrandingSettings, PermissionProfile, ModulePermissions, Organization, Supplier } from '@/lib/types';
+import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, query, where, writeBatch, orderBy, Timestamp } from 'firebase/firestore';
+import type { User, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType, BrandingSettings, PermissionProfile, ModulePermissions, Organization, Supplier, Subscription, PaymentRecord } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash, Lock, Truck, ArrowDownCircle, Archive } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash, Lock, Truck, ArrowDownCircle, Archive, DollarSign } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -34,6 +34,7 @@ import Image from 'next/image';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { PermissionProfileForm } from '@/components/permission-profile-form';
+import { format } from 'date-fns';
 
 
 const availableAvatars = [
@@ -633,10 +634,10 @@ function PaymentConditions() {
 
     useEffect(() => {
         if (!user?.organizationId) return;
-        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
+        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition));
-            setConditions(data);
+            setConditions(data.filter(c => !c.isDeleted));
             setLoading(false);
         });
         return () => unsubscribe();
@@ -1267,6 +1268,100 @@ function RolesSettings() {
     );
 }
 
+function SubscriptionSettings() {
+    const { user } = useAuth();
+    const subscription = user?.organization?.subscription;
+
+    const toDate = (date: any): Date | null => {
+        if (!date) return null;
+        if (date instanceof Date) return date;
+        if (date instanceof Timestamp) return date.toDate();
+        return null;
+    }
+
+    if (!subscription) {
+        return (
+            <Card>
+                <CardHeader>
+                    <CardTitle>Assinatura</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <p className="text-muted-foreground">Não há informações de assinatura para esta organização.</p>
+                </CardContent>
+            </Card>
+        );
+    }
+    
+    const sortedRecords = [...(subscription.paymentRecords || [])].sort((a,b) => (toDate(b.date)?.getTime() || 0) - (toDate(a.date)?.getTime() || 0));
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Minha Assinatura</CardTitle>
+                <CardDescription>Veja os detalhes do seu plano e histórico de pagamentos.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardDescription>Plano Atual</CardDescription>
+                            <CardTitle>{subscription.planName || 'N/A'}</CardTitle>
+                        </CardHeader>
+                    </Card>
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardDescription>Valor Mensal</CardDescription>
+                            <CardTitle>R$ {subscription.price?.toLocaleString('pt-BR', {minimumFractionDigits: 2}) || '0,00'}</CardTitle>
+                        </CardHeader>
+                    </Card>
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardDescription>Vigência</CardDescription>
+                            <CardTitle className="text-base">
+                                {toDate(subscription.startDate) ? format(toDate(subscription.startDate)!, 'dd/MM/yy') : 'N/A'} - {toDate(subscription.endDate) ? format(toDate(subscription.endDate)!, 'dd/MM/yy') : 'N/A'}
+                            </CardTitle>
+                        </CardHeader>
+                    </Card>
+                </div>
+                <div>
+                    <h3 className="text-lg font-semibold mb-2">Histórico de Pagamentos</h3>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Vencimento</TableHead>
+                                <TableHead>Valor</TableHead>
+                                <TableHead>Data Pag.</TableHead>
+                                <TableHead>Status</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {sortedRecords.length > 0 ? sortedRecords.map(record => (
+                                <TableRow key={record.id}>
+                                    <TableCell>{toDate(record.date) ? format(toDate(record.date)!, 'dd/MM/yyyy') : 'N/A'}</TableCell>
+                                    <TableCell>R$ {record.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
+                                    <TableCell>{toDate(record.paidDate) ? format(toDate(record.paidDate)!, 'dd/MM/yyyy') : '-'}</TableCell>
+                                    <TableCell>
+                                        <Badge variant={record.status === 'paid' ? 'secondary' : 'destructive'} className={cn(record.status === 'paid' && 'bg-green-100 text-green-800')}>
+                                            {record.status === 'paid' ? 'Pago' : 'Pendente'}
+                                        </Badge>
+                                    </TableCell>
+                                </TableRow>
+                            )) : (
+                                <TableRow>
+                                    <TableCell colSpan={4} className="text-center h-24">
+                                        Nenhum registro de pagamento encontrado.
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
+            </CardContent>
+        </Card>
+    )
+}
+
+
 function SettingsPageContent() {
     const searchParams = useSearchParams();
     const tab = searchParams.get('tab') || 'users';
@@ -1299,6 +1394,7 @@ function SettingsPageContent() {
                     <TabsTrigger value="branches">Filiais</TabsTrigger>
                     <TabsTrigger value="suppliers"><Truck className="mr-2 h-4 w-4"/>Fornecedores</TabsTrigger>
                     <TabsTrigger value="payments">Pagamentos</TabsTrigger>
+                    <TabsTrigger value="subscription">Assinatura</TabsTrigger>
                     <TabsTrigger value="branding">Branding</TabsTrigger>
                     <TabsTrigger value="roles">Perfis &amp; Permissões</TabsTrigger>
                     {user?.enabledModules?.customers?.view && (
@@ -1316,6 +1412,9 @@ function SettingsPageContent() {
                 </TabsContent>
                 <TabsContent value="payments">
                     <PaymentConditions />
+                </TabsContent>
+                 <TabsContent value="subscription">
+                    <SubscriptionSettings />
                 </TabsContent>
                 <TabsContent value="branding">
                     <BrandingSettings />

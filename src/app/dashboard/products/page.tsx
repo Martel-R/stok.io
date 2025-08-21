@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -461,61 +462,35 @@ export default function ProductsPage() {
   }), [user]);
 
   useEffect(() => {
-    if (authLoading || !currentBranch || !user?.organizationId) {
-      setLoading(true);
-      return;
+    if (authLoading || !currentBranch) {
+        setLoading(true);
+        return;
     }
     
-    let unsubs: (() => void)[] = [];
+    const productsQuery = query(collection(db, 'products'), where("branchId", "==", currentBranch.id));
+    const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
+    const suppliersQuery = query(collection(db, 'suppliers'), where('organizationId', '==', user?.organizationId), where("isDeleted", "!=", true));
 
-    const fetchData = async () => {
-        setLoading(true);
-        try {
-            // Initial data fetch
-            const productsQuery = query(collection(db, 'products'), where("branchId", "==", currentBranch.id));
-            const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
-            const suppliersQuery = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId), where("isDeleted", "!=", true));
-
-            const [productsSnap, stockEntriesSnap, suppliersSnap] = await Promise.all([
-                getDocs(productsQuery),
-                getDocs(stockEntriesQuery),
-                getDocs(suppliersQuery),
-            ]);
-
-            setAllProducts(productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
-            setAllStockEntries(stockEntriesSnap.docs.map(doc => doc.data() as StockEntry));
-            setSuppliers(suppliersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
-
-        } catch (error) {
-            console.error("Error fetching initial product data:", error);
-            toast({ title: "Erro ao carregar dados", variant: "destructive" });
-        } finally {
+    const unsubs = [
+        onSnapshot(productsQuery, snap => {
+            setAllProducts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
             setLoading(false);
-        }
-        
-        // Setup listeners
-        const productsQuery = query(collection(db, 'products'), where("branchId", "==", currentBranch.id));
-        unsubs.push(onSnapshot(productsQuery, (snapshot) => {
-            setAllProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
-        }));
-
-        const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
-        unsubs.push(onSnapshot(stockEntriesQuery, (snapshot) => {
-            setAllStockEntries(snapshot.docs.map(doc => doc.data() as StockEntry));
-        }));
-
-        const suppliersQuery = query(collection(db, 'suppliers'), where('organizationId', '==', user!.organizationId), where("isDeleted", "!=", true));
-        unsubs.push(onSnapshot(suppliersQuery, (snapshot) => {
-            setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
-        }));
-    };
-    
-    fetchData();
+        }, err => {
+            console.error("Error fetching products:", err);
+            setLoading(false);
+        }),
+        onSnapshot(stockEntriesQuery, snap => {
+            setAllStockEntries(snap.docs.map(doc => doc.data() as StockEntry));
+        }),
+        onSnapshot(suppliersQuery, snap => {
+            setSuppliers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
+        }),
+    ];
 
     return () => {
       unsubs.forEach(unsub => unsub());
     };
-  }, [currentBranch, authLoading, user, toast]);
+  }, [currentBranch, authLoading, user]);
 
 
   const productsWithStock = useMemo(() => {

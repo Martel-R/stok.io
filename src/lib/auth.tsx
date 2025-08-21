@@ -240,7 +240,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    unsubscribers.push(authUnsubscribe);
     return () => unsubscribers.forEach(unsub => unsub());
   }, []);
   
@@ -621,3 +620,4 @@ export const useAuth = () => {
   }
   return context;
 };
+

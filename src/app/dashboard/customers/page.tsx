@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -9,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, writeBatch, getDocs, orderBy } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, onSnapshot, query, where, writeBatch, getDocs, orderBy } from 'firebase/firestore';
 import type { Customer, AnamnesisQuestion, AnamnesisAnswer } from '@/lib/types';
 import { MoreHorizontal, PlusCircle, Search, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -22,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { logUserActivity } from '@/lib/logging';
 
 function CustomerForm({ 
     customer, 
@@ -262,8 +264,9 @@ export default function CustomersPage() {
     }, [user, toast]);
 
     const filteredCustomers = useMemo(() => {
-        if (!searchQuery) return customers;
-        return customers.filter(c => 
+        const activeCustomers = customers.filter(c => !c.isDeleted);
+        if (!searchQuery) return activeCustomers;
+        return activeCustomers.filter(c => 
             c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             (c.email && c.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
             c.cpfCnpj.includes(searchQuery)
@@ -276,12 +279,20 @@ export default function CustomersPage() {
             return;
         }
         
+        const isEditing = !!editingCustomer?.id;
+        
         try {
-            if (editingCustomer?.id) {
+            if (isEditing) {
                 await updateDoc(doc(db, "customers", editingCustomer.id), data);
                 toast({ title: 'Cliente atualizado com sucesso!' });
+                logUserActivity({
+                    userId: user.id,
+                    userName: user.name,
+                    organizationId: user.organizationId,
+                    action: 'customer_updated',
+                    details: { customerId: editingCustomer.id, customerName: data.name }
+                });
             } else {
-                 // Check if user account with this email already exists
                 const usersRef = collection(db, 'users');
                 const userQuery = query(usersRef, where("email", "==", data.email));
                 const userSnapshot = await getDocs(userQuery);
@@ -290,17 +301,14 @@ export default function CustomersPage() {
                 const customerRef = doc(collection(db, 'customers'));
 
                 if(userSnapshot.empty) {
-                     // No user account, create one
                     const { success, error, userId } = await createUser(data.email!, data.name!, 'customer', user.organizationId, customerRef.id);
                     if (!success) {
                         toast({ title: "Erro ao criar conta de acesso", description: error, variant: "destructive" });
-                        return; // Stop if user creation fails
+                        return;
                     }
                     batch.set(customerRef, { ...data, organizationId: user.organizationId, userId: userId });
                     toast({ title: 'Cliente adicionado!', description: 'Uma conta de acesso foi criada com uma senha temporária.' });
-
                 } else {
-                     // User account exists, just link it
                     const existingUser = userSnapshot.docs[0];
                     batch.set(customerRef, { ...data, organizationId: user.organizationId, userId: existingUser.id });
                     batch.update(existingUser.ref, { customerId: customerRef.id });
@@ -308,6 +316,13 @@ export default function CustomersPage() {
                 }
 
                 await batch.commit();
+                 logUserActivity({
+                    userId: user.id,
+                    userName: user.name,
+                    organizationId: user.organizationId,
+                    action: 'customer_created',
+                    details: { customerId: customerRef.id, customerName: data.name }
+                });
             }
              setIsFormOpen(false);
         } catch (error) {
@@ -316,11 +331,18 @@ export default function CustomersPage() {
         }
     };
 
-    const handleDelete = async (id: string) => {
+    const handleDelete = async (customer: Customer) => {
+        if(!user) return;
         try {
-            // This is a soft delete, we just inactivate the customer
-            await updateDoc(doc(db, "customers", id), { isActive: false });
+            await updateDoc(doc(db, "customers", customer.id), { isDeleted: true });
             toast({ title: 'Cliente inativado com sucesso!', variant: 'destructive' });
+             logUserActivity({
+                userId: user.id,
+                userName: user.name,
+                organizationId: user.organizationId,
+                action: 'customer_inactivated',
+                details: { customerId: customer.id, customerName: customer.name }
+            });
         } catch (error) {
             toast({ title: 'Erro ao inativar cliente', variant: 'destructive' });
         }
@@ -361,24 +383,22 @@ export default function CustomersPage() {
                         </p>
                     </div>
                 </div>
-                {can.edit && (
-                    <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                        <DialogTrigger asChild>
-                            <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" />Adicionar Cliente</Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-2xl">
-                            <DialogHeader>
-                                <DialogTitle>{editingCustomer ? 'Editar Cliente' : 'Adicionar Novo Cliente'}</DialogTitle>
-                            </DialogHeader>
-                            <CustomerForm
-                                customer={editingCustomer}
-                                anamnesisQuestions={anamnesisQuestions}
-                                onSave={handleSave}
-                                onDone={() => setIsFormOpen(false)}
-                            />
-                        </DialogContent>
-                    </Dialog>
-                )}
+                {can.edit && <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                    <DialogTrigger asChild>
+                        <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" />Adicionar Cliente</Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>{editingCustomer ? 'Editar Cliente' : 'Adicionar Novo Cliente'}</DialogTitle>
+                        </DialogHeader>
+                        <CustomerForm
+                            customer={editingCustomer}
+                            anamnesisQuestions={anamnesisQuestions}
+                            onSave={handleSave}
+                            onDone={() => setIsFormOpen(false)}
+                        />
+                    </DialogContent>
+                </Dialog>}
             </div>
             
             <div className="relative">
@@ -434,7 +454,7 @@ export default function CustomersPage() {
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
                                             {can.edit && <DropdownMenuItem onClick={() => openEditDialog(customer)}>Editar</DropdownMenuItem>}
-                                            {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(customer.id)}>Inativar</DropdownMenuItem>}
+                                            {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(customer)}>Inativar</DropdownMenuItem>}
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </TableCell>

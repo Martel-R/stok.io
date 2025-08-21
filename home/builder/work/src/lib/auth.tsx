@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       // Clean up previous listeners
       unsubscribers.forEach(unsub => unsub());
-      unsubscribers.length = 0;
+      unsubscribers = [];
       
       setLoading(true);
 
@@ -174,10 +174,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setUser(userData);
                 
                 // Fetch branches for the organization
-                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
+                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId));
                 const unsubBranches = onSnapshot(branchesQuery, (branchSnap) => {
-                    const orgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
-                    const userBranches = isImpersonating || baseUser.role === 'admin' ? orgBranches : orgBranches.filter(b => b.userIds.includes(baseUser.id));
+                    const allOrgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
+                    const activeBranches = allOrgBranches.filter(b => !b.isDeleted);
+                    const userBranches = isImpersonating || baseUser.role === 'admin' ? activeBranches : activeBranches.filter(b => b.userIds.includes(baseUser.id));
                     
                     setBranches(userBranches);
                     
@@ -212,7 +213,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    unsubscribers.push(authUnsubscribe);
     return () => unsubscribers.forEach(unsub => unsub());
   }, []);
   
@@ -593,3 +593,5 @@ export const useAuth = () => {
   }
   return context;
 };
+
+    

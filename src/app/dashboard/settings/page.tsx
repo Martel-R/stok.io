@@ -633,10 +633,10 @@ function PaymentConditions() {
 
     useEffect(() => {
         if (!user?.organizationId) return;
-        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
+        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition));
-            setConditions(data);
+            setConditions(data.filter(c => !c.isDeleted));
             setLoading(false);
         });
         return () => unsubscribe();

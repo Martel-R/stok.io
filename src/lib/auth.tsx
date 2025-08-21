@@ -78,6 +78,10 @@ const professionalPermissions: EnabledModules = {
     settings: { view: false, edit: false, delete: false },
     kits: { view: false, edit: false, delete: false },
     customers: { view: true, edit: false, delete: false },
+    appointments: { view: true, edit: false, delete: false },
+    services: { view: true, edit: false, delete: false },
+    expenses: { view: true, edit: false, delete: false },
+    backup: { view: true, edit: false, delete: false },
 };
 
 const runDataIntegrityCheck = async (organizationId: string) => {
@@ -205,10 +209,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             userData = { ...userData, organization: orgData, enabledModules: finalPermissions as EnabledModules, paymentStatus: orgData.paymentStatus };
             setUser(userData);
 
-            const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
+            const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId));
             const unsubBranches = onSnapshot(branchesQuery, (branchSnap) => {
-                const orgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
-                const userBranches = isImpersonating || baseUser.role === 'admin' ? orgBranches : orgBranches.filter(b => b.userIds.includes(baseUser.id));
+                const allOrgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
+                const activeBranches = allOrgBranches.filter(b => !b.isDeleted);
+                const userBranches = isImpersonating || baseUser.role === 'admin' ? activeBranches : activeBranches.filter(b => b.userIds.includes(baseUser.id));
                 
                 setBranches(userBranches);
                 
@@ -327,7 +332,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { getApp, initializeApp, deleteApp } = await import('firebase/app');
         const { getAuth: getAuth_local, createUserWithEmailAndPassword: createUserWithEmailAndPassword_local, sendPasswordResetEmail: sendPasswordResetEmail_local, signOut: signOut_local } = await import('firebase/auth');
 
-        const tempAppName = `temp-auth-app-${'\'\'\''}${Date.now()}${'\'\'\''}`;
+        const tempAppName = `temp-auth-app-${Date.now()}-${Math.random()}`;
         const tempAppConfig = { ...getApp().options, appName: tempAppName };
         const tempApp = initializeApp(tempAppConfig, tempAppName);
         const tempAuthInstance = getAuth_local(tempApp);

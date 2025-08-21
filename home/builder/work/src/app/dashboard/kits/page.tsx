@@ -74,7 +74,7 @@ function KitForm({ kit, branchProducts, onSave, onDone }: { kit?: Kit; branchPro
     };
 
 
-    const handleSubmit = (e: React.Event<HTMLFormElement>) => {
+    const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (!formData.name || !formData.eligibleProductIds || formData.eligibleProductIds.length < (formData.numberOfItems || 0)) {
             toast({
@@ -100,7 +100,7 @@ function KitForm({ kit, branchProducts, onSave, onDone }: { kit?: Kit; branchPro
             <div className="grid grid-cols-2 gap-4">
                 <div>
                     <Label htmlFor="numberOfItems">Nº de Itens no Kit</Label>
-                    <Input id="numberOfItems" name="numberOfItems" type="number" value={formData.numberOfItems} onChange={handleChange} required />
+                    <Input id="numberOfItems" name="numberOfItems" type="number" value={formData.numberOfItems || 0} onChange={handleChange} required />
                 </div>
             </div>
 
@@ -139,7 +139,7 @@ function KitForm({ kit, branchProducts, onSave, onDone }: { kit?: Kit; branchPro
                     <div className="grid grid-cols-2 gap-4 items-end">
                         <div className="space-y-2">
                             <Label>Valor do Desconto</Label>
-                            <Input name="discountValue" type="number" value={formData.discountValue} onChange={handleDiscountChange} />
+                            <Input name="discountValue" type="number" value={formData.discountValue || 0} onChange={handleDiscountChange} />
                         </div>
                         <RadioGroup
                             value={formData.discountType}
@@ -406,4 +406,3 @@ export default function KitsPage() {
     );
 }
     
-

@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp, serverTimestamp, updateDoc } from 'firebase/firestore';
@@ -1168,10 +1169,10 @@ export default function POSPage() {
           <CardContent className="flex-grow flex flex-col">
             <Tabs defaultValue="products" className="flex-grow flex flex-col" onValueChange={() => setSearchQuery('')}>
                  <TabsList className="grid w-full grid-flow-col auto-cols-fr">
-                    {user?.enabledModules?.appointments && <TabsTrigger value="pending"><UserCheck className="mr-2 h-4 w-4"/> Atendimentos</TabsTrigger>}
+                    {user?.enabledModules?.appointments?.view && <TabsTrigger value="pending"><UserCheck className="mr-2 h-4 w-4"/> Atendimentos</TabsTrigger>}
                     <TabsTrigger value="products"><Package className="mr-2 h-4 w-4"/> Produtos</TabsTrigger>
-                    {user?.enabledModules?.combos && <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Combos</TabsTrigger>}
-                    {user?.enabledModules?.kits && <TabsTrigger value="kits"><Component className="mr-2 h-4 w-4"/> Kits</TabsTrigger>}
+                    {user?.enabledModules?.combos?.view && <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Combos</TabsTrigger>}
+                    {user?.enabledModules?.kits?.view && <TabsTrigger value="kits"><Component className="mr-2 h-4 w-4"/> Kits</TabsTrigger>}
                     <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/> Histórico</TabsTrigger>
                 </TabsList>
                 <div className="relative pt-4 flex gap-2">
@@ -1304,7 +1305,7 @@ export default function POSPage() {
                 {cart.length === 0 ? (
                     <div className="text-muted-foreground text-center space-y-4">
                         <p>O carrinho está vazio</p>
-                        {!currentAttendanceId && user?.enabledModules?.customers && <CustomerSelector onSelect={setSelectedCustomer} />}
+                        {!currentAttendanceId && user?.enabledModules?.customers?.view && <CustomerSelector onSelect={setSelectedCustomer} />}
                     </div>
                 ) : (
                     <div className="space-y-4">

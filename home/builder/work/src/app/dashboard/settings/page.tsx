@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,7 +15,7 @@ import type { User, Branch, PaymentCondition, PaymentConditionType, Product, Ena
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash, Lock, Truck, ArrowDownCircle } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash, Lock, Truck, ArrowDownCircle, Archive } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -81,11 +81,11 @@ function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: P
         <form onSubmit={handleSubmit} className="space-y-4">
             <div>
                 <Label htmlFor="name">Nome do Usuário</Label>
-                <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
+                <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} required />
             </div>
             <div>
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required disabled={isEditing}/>
+                <Input id="email" name="email" type="email" value={formData.email || ''} onChange={handleChange} required disabled={isEditing}/>
             </div>
             <div>
                 <Label htmlFor="role">Perfil</Label>
@@ -568,7 +568,7 @@ function PaymentConditionForm({ condition, onSave, onDone }: { condition?: Payme
                 <Input 
                     id="name"
                     name="name"
-                    value={formData.name} 
+                    value={formData.name || ''} 
                     onChange={handleInputChange}
                     placeholder="Ex: Cartão de Crédito"
                     required
@@ -596,7 +596,7 @@ function PaymentConditionForm({ condition, onSave, onDone }: { condition?: Payme
                     name="fee"
                     type="number"
                     step="0.01"
-                    value={formData.fee} 
+                    value={formData.fee || 0} 
                     onChange={handleInputChange}
                     placeholder="Ex: 2.5"
                     disabled={formData.type === 'cash'}
@@ -610,7 +610,7 @@ function PaymentConditionForm({ condition, onSave, onDone }: { condition?: Payme
                         id="maxInstallments"
                         name="maxInstallments"
                         type="number"
-                        value={formData.maxInstallments} 
+                        value={formData.maxInstallments || 0} 
                         onChange={handleInputChange}
                     />
                 </div>

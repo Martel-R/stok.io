@@ -70,17 +70,11 @@ export default function LoginPage() {
           "absolute inset-0 bg-gradient-to-br from-primary via-primary/70 to-secondary",
           "animate-animated-gradient bg-[length:200%_200%]"
         )} />
-        <div className="relative z-20 flex items-center text-lg font-medium">
-          <Icons.logo className="mr-2 h-8 w-8" />
-          Stokio
-        </div>
-        <div className="relative z-20 mt-auto">
-          <blockquote className="space-y-2">
-            <p className="text-lg">
-              &ldquo;Este sistema de estoque transformou nosso negócio, nos dando insights que nunca pensamos ser possíveis.&rdquo;
-            </p>
-            <footer className="text-sm">Sofia Davis, CEO</footer>
-          </blockquote>
+        <div className="relative z-20 flex flex-col items-center justify-center h-full">
+            <div className="flex items-center text-lg font-medium">
+                <Icons.logo className="mr-2 h-12 w-12" />
+                <span className="text-4xl font-bold">Stokio</span>
+            </div>
         </div>
       </div>
       <div className="flex items-center justify-center py-12">

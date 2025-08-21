@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -23,6 +24,7 @@ import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { logUserActivity } from '@/lib/logging';
 
 
 function ServiceForm({ service, professionals, products, onSave, onDone }: { 
@@ -84,7 +86,7 @@ function ServiceForm({ service, professionals, products, onSave, onDone }: {
         }));
     };
     
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = (e: React.Event<HTMLFormElement>) => {
         e.preventDefault();
         onSave(formData);
         onDone();
@@ -236,7 +238,7 @@ export default function ServicesPage() {
             return;
         }
 
-        const servicesQuery = query(collection(db, 'services'), where("organizationId", "==", user.organizationId));
+        const servicesQuery = query(collection(db, 'services'), where("organizationId", "==", user.organizationId), where("isDeleted", "!=", true));
         const servicesUnsub = onSnapshot(servicesQuery, (snapshot) => {
             setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Service)));
             setLoading(false);
@@ -247,7 +249,6 @@ export default function ServicesPage() {
             setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
         });
 
-        // Fetch the "Professional" profile ID first
         const profilesQuery = query(collection(db, 'permissionProfiles'), where("organizationId", "==", user.organizationId), where("name", "==", "Profissional"));
         
         const fetchProfessionals = async () => {
@@ -255,11 +256,10 @@ export default function ServicesPage() {
             if (profileSnap.empty) {
                 console.warn("Perfil 'Profissional' não encontrado.");
                 setProfessionals([]);
-                return () => {}; // Return an empty unsubscribe function
+                return () => {};
             }
             const professionalProfileId = profileSnap.docs[0].id;
             
-            // Now fetch users with that profile ID
             const professionalsQuery = query(collection(db, 'users'), where("organizationId", "==", user.organizationId), where("role", "==", professionalProfileId));
             return onSnapshot(professionalsQuery, (snapshot) => {
                 setProfessionals(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
@@ -286,14 +286,24 @@ export default function ServicesPage() {
             return;
         }
         
+        const isEditing = !!editingService?.id;
+        const action = isEditing ? 'service_updated' : 'service_created';
+
         try {
-            if (editingService?.id) {
-                await updateDoc(doc(db, "services", editingService.id), data);
+            if (isEditing) {
+                await updateDoc(doc(db, "services", editingService.id!), data);
                 toast({ title: 'Serviço atualizado com sucesso!' });
             } else {
-                await addDoc(collection(db, "services"), { ...data, organizationId: user.organizationId });
+                await addDoc(collection(db, "services"), { ...data, organizationId: user.organizationId, isDeleted: false });
                 toast({ title: 'Serviço adicionado com sucesso!' });
             }
+            logUserActivity({
+                userId: user.id,
+                userName: user.name,
+                organizationId: user.organizationId,
+                action,
+                details: { serviceId: editingService?.id || 'new', serviceName: data.name }
+            });
             setIsFormOpen(false);
         } catch (error) {
             console.error("Error saving service: ", error);
@@ -301,10 +311,18 @@ export default function ServicesPage() {
         }
     };
 
-    const handleDelete = async (id: string) => {
+    const handleDelete = async (service: Service) => {
+        if (!user || !currentBranch) return;
         try {
-            await deleteDoc(doc(db, "services", id));
+            await deleteDoc(doc(db, "services", service.id));
             toast({ title: 'Serviço excluído com sucesso!', variant: 'destructive' });
+            logUserActivity({
+                userId: user.id,
+                userName: user.name,
+                organizationId: user.organizationId,
+                action: 'service_deleted',
+                details: { serviceId: service.id, serviceName: service.name }
+            });
         } catch (error) {
             toast({ title: 'Erro ao excluir serviço', variant: 'destructive' });
         }
@@ -416,7 +434,7 @@ export default function ServicesPage() {
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
                                             {can.edit && <DropdownMenuItem onClick={() => openEditDialog(service)}>Editar</DropdownMenuItem>}
-                                            {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(service.id)}>Excluir</DropdownMenuItem>}
+                                            {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(service)}>Excluir</DropdownMenuItem>}
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </TableCell>
@@ -434,3 +452,4 @@ export default function ServicesPage() {
         </div>
     );
 }
+

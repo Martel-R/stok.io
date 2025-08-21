@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Icons } from '@/components/icons';
+import { Icons } from '@/components/ui/icons';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -128,17 +128,11 @@ export default function SignupPage() {
           "absolute inset-0 bg-gradient-to-br from-primary via-primary/70 to-secondary",
           "animate-animated-gradient bg-[length:200%_200%]"
         )} />
-        <div className="relative z-20 flex items-center text-lg font-medium">
-          <Icons.logo className="mr-2 h-8 w-8" />
-          Stokio
-        </div>
-        <div className="relative z-20 mt-auto">
-          <blockquote className="space-y-2">
-            <p className="text-lg">
-              &ldquo;Este sistema de estoque transformou nosso negócio, nos dando insights que nunca pensamos ser possíveis.&rdquo;
-            </p>
-            <footer className="text-sm">Sofia Davis, CEO</footer>
-          </blockquote>
+        <div className="relative z-20 flex flex-col items-center justify-center h-full">
+            <div className="flex items-center text-lg font-medium">
+                <Icons.logo className="mr-2 h-12 w-12" />
+                <span className="text-4xl font-bold">Stokio</span>
+            </div>
         </div>
       </div>
     </div>

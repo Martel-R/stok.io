@@ -26,6 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { logUserActivity } from '@/lib/logging';
 
 
 const calculatePrices = (products: ComboProduct[], rules: ComboDiscountRule[]): { originalPrice: number, finalPrice: number } => {
@@ -136,7 +137,7 @@ function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }:
     <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-4">
       <div>
         <Label htmlFor="name">Nome do Combo</Label>
-        <Input id="name" name="name" value={formData.name} onChange={handleChange} required />
+        <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} required />
       </div>
 
        <div>
@@ -225,7 +226,7 @@ function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }:
                         <div className="grid grid-cols-2 gap-4 items-end">
                             <div className="space-y-2">
                                 <Label>Valor do Desconto</Label>
-                                <Input type="number" value={rule.discountValue} onChange={(e) => updateDiscountRule(index, 'discountValue', parseFloat(e.target.value) || 0)} />
+                                <Input type="number" value={rule.discountValue || 0} onChange={(e) => updateDiscountRule(index, 'discountValue', parseFloat(e.target.value) || 0)} />
                             </div>
                             <RadioGroup 
                                 value={rule.discountType} 
@@ -261,7 +262,7 @@ function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }:
           <TabsContent value="url">
             <div className="space-y-2 mt-4">
               <Label htmlFor="imageUrl">URL da Imagem</Label>
-              <Input id="imageUrl" name="imageUrl" value={formData.imageUrl} onChange={handleChange} placeholder="https://exemplo.com/imagem.png" />
+              <Input id="imageUrl" name="imageUrl" value={formData.imageUrl || ''} onChange={handleChange} placeholder="https://exemplo.com/imagem.png" />
             </div>
           </TabsContent>
         </Tabs>
@@ -341,9 +342,12 @@ export default function CombosPage() {
         toast({ title: 'Nenhuma filial ou organização selecionada', description: 'Selecione uma filial para salvar o combo.', variant: 'destructive' });
         return;
     }
+    const isEditing = !!editingCombo?.id;
+    const action = isEditing ? 'combo_updated' : 'combo_created';
+
     try {
-      if (editingCombo?.id) {
-        const comboRef = doc(db, "combos", editingCombo.id);
+      if (isEditing) {
+        const comboRef = doc(db, "combos", editingCombo.id!);
         await updateDoc(comboRef, comboData);
         toast({ title: 'Combo atualizado com sucesso!' });
       } else {
@@ -355,16 +359,33 @@ export default function CombosPage() {
         });
         toast({ title: 'Combo adicionado com sucesso!' });
       }
+      logUserActivity({
+        userId: user.id,
+        userName: user.name,
+        organizationId: user.organizationId,
+        branchId: currentBranch.id,
+        action,
+        details: { comboId: editingCombo?.id || 'new', comboName: comboData.name }
+      });
     } catch (error) {
       console.error("Error saving combo: ", error);
       toast({ title: 'Erro ao salvar combo', description: 'Ocorreu um erro, por favor tente novamente.', variant: 'destructive' });
     }
   };
 
-  const handleDelete = async (comboId: string) => {
+  const handleDelete = async (combo: Combo) => {
+    if(!user || !currentBranch) return;
     try {
-      await updateDoc(doc(db, "combos", comboId), { isDeleted: true });
+      await deleteDoc(doc(db, "combos", combo.id));
       toast({ title: 'Combo excluído com sucesso!', variant: 'destructive' });
+       logUserActivity({
+          userId: user.id,
+          userName: user.name,
+          organizationId: user.organizationId,
+          branchId: currentBranch.id,
+          action: 'combo_deleted',
+          details: { comboId: combo.id, comboName: combo.name }
+      });
     } catch (error) {
        console.error("Error deleting combo: ", error);
        toast({ title: 'Erro ao excluir combo', description: 'Ocorreu um erro, por favor tente novamente.', variant: 'destructive' });
@@ -481,7 +502,7 @@ export default function CombosPage() {
                         <Copy className="mr-2 h-4 w-4" />
                         Copiar
                       </DropdownMenuItem>}
-                      {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(combo.id)}>Excluir</DropdownMenuItem>}
+                      {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(combo)}>Excluir</DropdownMenuItem>}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>
@@ -500,3 +521,4 @@ export default function CombosPage() {
   );
 }
     
+

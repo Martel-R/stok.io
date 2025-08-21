@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React from 'react';
@@ -65,6 +64,7 @@ const defaultPermissions: EnabledModules = {
     services: { view: true, edit: true, delete: true },
     expenses: { view: true, edit: true, delete: true },
     backup: { view: true, edit: true, delete: true },
+    subscription: { view: true, edit: true, delete: true },
 };
 
 const professionalPermissions: EnabledModules = {
@@ -82,6 +82,7 @@ const professionalPermissions: EnabledModules = {
     services: { view: true, edit: false, delete: false },
     expenses: { view: true, edit: false, delete: false },
     backup: { view: true, edit: false, delete: false },
+    subscription: { view: false, edit: false, delete: false },
 };
 
 const runDataIntegrityCheck = async (organizationId: string) => {
@@ -620,4 +621,3 @@ export const useAuth = () => {
   }
   return context;
 };
-

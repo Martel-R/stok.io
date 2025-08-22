@@ -128,6 +128,7 @@ function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }:
       ...formData,
       originalPrice: prices.originalPrice,
       finalPrice: prices.finalPrice,
+      isDeleted: formData.isDeleted || false,
       imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png'
     } as Omit<Combo, 'id' | 'branchId' | 'organizationId'>);
     onDone();
@@ -348,14 +349,13 @@ export default function CombosPage() {
     try {
       if (isEditing) {
         const comboRef = doc(db, "combos", editingCombo.id!);
-        await updateDoc(comboRef, { ...comboData, isDeleted: false });
+        await updateDoc(comboRef, comboData);
         toast({ title: 'Combo atualizado com sucesso!' });
       } else {
         await addDoc(collection(db, "combos"), { 
             ...comboData, 
             branchId: currentBranch.id,
             organizationId: user.organizationId,
-            isDeleted: false,
         });
         toast({ title: 'Combo adicionado com sucesso!' });
       }

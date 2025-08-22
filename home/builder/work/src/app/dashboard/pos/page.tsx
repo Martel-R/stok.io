@@ -706,7 +706,7 @@ export default function POSPage() {
     const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id), where('isDeleted', '==', false));
     const combosQuery = query(collection(db, 'combos'), where('branchId', '==', currentBranch.id), where('isDeleted', '==', false));
     const kitsQuery = query(collection(db, 'kits'), where('branchId', '==', currentBranch.id), where('isDeleted', '==', false));
-    const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId), where('isDeleted', '==', false));
+    const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId), where('isDeleted', '!=', true));
     const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
     const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
 
@@ -1392,4 +1392,3 @@ export default function POSPage() {
     </>
   );
 }
-

@@ -1,5 +1,4 @@
 
-
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
@@ -128,7 +127,7 @@ function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }:
       ...formData,
       originalPrice: prices.originalPrice,
       finalPrice: prices.finalPrice,
-      isDeleted: formData.isDeleted || false,
+      isDeleted: false,
       imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png'
     } as Omit<Combo, 'id' | 'branchId' | 'organizationId'>);
     onDone();
@@ -312,7 +311,7 @@ export default function CombosPage() {
     const productsRef = collection(db, 'products');
     const qProducts = query(productsRef, where("branchId", "==", currentBranch.id), where("isDeleted", "==", false));
     
-    const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId), where('isDeleted', '!=', true));
+    const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId));
 
     const unsubscribeCombos = onSnapshot(qCombos, (snapshot) => {
       const combosData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Combo[];
@@ -355,7 +354,7 @@ export default function CombosPage() {
         await addDoc(collection(db, "combos"), { 
             ...comboData, 
             branchId: currentBranch.id,
-            organizationId: user.organizationId,
+            organizationId: user.organizationId
         });
         toast({ title: 'Combo adicionado com sucesso!' });
       }

@@ -309,7 +309,7 @@ export default function CombosPage() {
     const qCombos = query(combosRef, where("branchId", "==", currentBranch.id), where("isDeleted", "!=", true));
 
     const productsRef = collection(db, 'products');
-    const qProducts = query(productsRef, where("branchId", "==", currentBranch.id));
+    const qProducts = query(productsRef, where("branchId", "==", currentBranch.id), where("isDeleted", "!=", true));
     
     const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId));
 
@@ -321,7 +321,7 @@ export default function CombosPage() {
 
     const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
         const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Product);
-        setProducts(productsData.filter(p => !p.isDeleted));
+        setProducts(productsData);
     });
     
     const unsubscribeConditions = onSnapshot(conditionsQuery, (snapshot) => {
@@ -521,3 +521,4 @@ export default function CombosPage() {
   );
 }
     
+

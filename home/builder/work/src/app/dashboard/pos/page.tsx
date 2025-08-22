@@ -704,7 +704,7 @@ export default function POSPage() {
         return;
     }
 
-    const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
+    const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id), where('isDeleted', '!=', true));
     const combosQuery = query(collection(db, 'combos'), where('branchId', '==', currentBranch.id), where('isDeleted', '!=', true));
     const kitsQuery = query(collection(db, 'kits'), where('branchId', '==', currentBranch.id), where('isDeleted', '!=', true));
     const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId), where('isDeleted', '!=', true));
@@ -731,7 +731,7 @@ export default function POSPage() {
                 if (b.order !== undefined) return 1;
                 return a.name.localeCompare(b.name);
             });
-            setProducts(sortedProducts.filter(p => !p.isDeleted));
+            setProducts(sortedProducts);
             setLoading(false);
         });
 

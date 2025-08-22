@@ -311,7 +311,7 @@ export default function CombosPage() {
     const productsRef = collection(db, 'products');
     const qProducts = query(productsRef, where("branchId", "==", currentBranch.id), where("isDeleted", "==", false));
     
-    const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId));
+    const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId), where('isDeleted', '!=', true));
 
     const unsubscribeCombos = onSnapshot(qCombos, (snapshot) => {
       const combosData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Combo[];
@@ -348,7 +348,7 @@ export default function CombosPage() {
     try {
       if (isEditing) {
         const comboRef = doc(db, "combos", editingCombo.id!);
-        await updateDoc(comboRef, comboData);
+        await updateDoc(comboRef, { ...comboData, isDeleted: false });
         toast({ title: 'Combo atualizado com sucesso!' });
       } else {
         await addDoc(collection(db, "combos"), { 

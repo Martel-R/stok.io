@@ -306,10 +306,10 @@ export default function CombosPage() {
     }
     
     const combosRef = collection(db, 'combos');
-    const qCombos = query(combosRef, where("branchId", "==", currentBranch.id), where("isDeleted", "!=", true));
+    const qCombos = query(combosRef, where("branchId", "==", currentBranch.id), where("isDeleted", "==", false));
 
     const productsRef = collection(db, 'products');
-    const qProducts = query(productsRef, where("branchId", "==", currentBranch.id), where("isDeleted", "!=", true));
+    const qProducts = query(productsRef, where("branchId", "==", currentBranch.id), where("isDeleted", "==", false));
     
     const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId));
 
@@ -521,4 +521,3 @@ export default function CombosPage() {
   );
 }
     
-

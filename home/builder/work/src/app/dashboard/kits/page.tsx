@@ -210,8 +210,8 @@ export default function KitsPage() {
             return;
         }
         
-        const qKits = query(collection(db, 'kits'), where("branchId", "==", currentBranch.id), where('isDeleted', '!=', true));
-        const qProducts = query(collection(db, 'products'), where("branchId", "==", currentBranch.id), where('isDeleted', '!=', true));
+        const qKits = query(collection(db, 'kits'), where("branchId", "==", currentBranch.id), where('isDeleted', '==', false));
+        const qProducts = query(collection(db, 'products'), where("branchId", "==", currentBranch.id), where('isDeleted', '==', false));
         
         const unsubscribeKits = onSnapshot(qKits, (snapshot) => {
             setKits(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kit)));
@@ -406,4 +406,3 @@ export default function KitsPage() {
     );
 }
     
-

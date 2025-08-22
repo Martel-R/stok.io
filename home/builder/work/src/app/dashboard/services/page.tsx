@@ -238,7 +238,7 @@ export default function ServicesPage() {
             return;
         }
 
-        const servicesQuery = query(collection(db, 'services'), where("organizationId", "==", user.organizationId), where("isDeleted", "!=", true));
+        const servicesQuery = query(collection(db, 'services'), where("organizationId", "==", user.organizationId), where("isDeleted", "==", false));
         const servicesUnsub = onSnapshot(servicesQuery, (snapshot) => {
             setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Service)));
             setLoading(false);

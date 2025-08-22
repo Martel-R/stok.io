@@ -226,7 +226,7 @@ function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }:
                         <div className="grid grid-cols-2 gap-4 items-end">
                             <div className="space-y-2">
                                 <Label>Valor do Desconto</Label>
-                                <Input type="number" value={rule.discountValue} onChange={(e) => updateDiscountRule(index, 'discountValue', parseFloat(e.target.value) || 0)} />
+                                <Input type="number" value={rule.discountValue || 0} onChange={(e) => updateDiscountRule(index, 'discountValue', parseFloat(e.target.value) || 0)} />
                             </div>
                             <RadioGroup 
                                 value={rule.discountType} 
@@ -320,8 +320,8 @@ export default function CombosPage() {
     });
 
     const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
-        const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
-        setProducts(productsData);
+        const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Product);
+        setProducts(productsData.filter(p => !p.isDeleted));
     });
     
     const unsubscribeConditions = onSnapshot(conditionsQuery, (snapshot) => {

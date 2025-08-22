@@ -220,7 +220,7 @@ export default function KitsPage() {
 
         const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
             const productData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-            setProducts(productData.sort((a,b) => a.name.localeCompare(b.name)));
+            setProducts(productData.filter(p => !p.isDeleted).sort((a,b) => a.name.localeCompare(b.name)));
         });
 
         return () => {

@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
@@ -117,7 +118,9 @@ function KitForm({ kit, branchProducts, onSave, onDone }: { kit?: Kit; branchPro
                     <div className="p-4">
                         {branchProducts.map(product => (
                             <div key={product.id} className="flex items-center justify-between">
-                                <Label htmlFor={`product-${product.id}`} className="font-normal">{product.name}</Label>
+                                <Label htmlFor={`product-${product.id}`} className="font-normal">
+                                    {product.name} - R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </Label>
                                 <Checkbox
                                     id={`product-${product.id}`}
                                     checked={formData.eligibleProductIds?.includes(product.id)}
@@ -236,8 +239,8 @@ export default function KitsPage() {
         const isEditing = !!editingKit?.id;
         const action = isEditing ? 'kit_updated' : 'kit_created';
         try {
-            if (editingKit?.id) {
-                await updateDoc(doc(db, "kits", editingKit.id), kitData);
+            if (isEditing) {
+                await updateDoc(doc(db, "kits", editingKit.id!), kitData);
                 toast({ title: 'Kit atualizado com sucesso!' });
             } else {
                 await addDoc(collection(db, "kits"), {

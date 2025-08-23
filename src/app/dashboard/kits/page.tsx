@@ -1,5 +1,4 @@
 
-
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
@@ -84,7 +83,7 @@ function KitForm({ kit, branchProducts, onSave, onDone }: { kit?: Kit; branchPro
             });
             return;
         }
-        onSave({ ...formData, imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png' } as Omit<Kit, 'id' | 'branchId' | 'organizationId'>);
+        onSave({ ...formData, imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png', isDeleted: false } as Omit<Kit, 'id' | 'branchId' | 'organizationId'>);
         onDone();
     };
     
@@ -210,8 +209,8 @@ export default function KitsPage() {
             return;
         }
         
-        const qKits = query(collection(db, 'kits'), where("branchId", "==", currentBranch.id), where('isDeleted', '!=', true));
-        const qProducts = query(collection(db, 'products'), where("branchId", "==", currentBranch.id));
+        const qKits = query(collection(db, 'kits'), where("branchId", "==", currentBranch.id), where('isDeleted', '==', false));
+        const qProducts = query(collection(db, 'products'), where("branchId", "==", currentBranch.id), where('isDeleted', '==', false));
         
         const unsubscribeKits = onSnapshot(qKits, (snapshot) => {
             setKits(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kit)));
@@ -245,7 +244,6 @@ export default function KitsPage() {
                     ...kitData,
                     branchId: currentBranch.id,
                     organizationId: user.organizationId,
-                    isDeleted: false,
                 });
                 toast({ title: 'Kit adicionado com sucesso!' });
             }
@@ -266,7 +264,7 @@ export default function KitsPage() {
     const handleDelete = async (kit: Kit) => {
         if (!user || !currentBranch) return;
         try {
-            await deleteDoc(doc(db, "kits", kit.id));
+            await updateDoc(doc(db, "kits", kit.id), { isDeleted: true });
             toast({ title: 'Kit excluído com sucesso!', variant: 'destructive' });
             logUserActivity({
                 userId: user.id,
@@ -407,3 +405,4 @@ export default function KitsPage() {
 }
     
 
+    

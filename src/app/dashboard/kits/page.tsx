@@ -90,6 +90,10 @@ function KitForm({ kit, branchProducts, onSave, onDone }: { kit?: Kit; branchPro
     
     const { toast } = useToast();
 
+    const sortedBranchProducts = useMemo(() => {
+        return [...branchProducts].sort((a, b) => a.price - b.price);
+    }, [branchProducts]);
+
     return (
         <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-4">
             <div>
@@ -106,29 +110,41 @@ function KitForm({ kit, branchProducts, onSave, onDone }: { kit?: Kit; branchPro
 
             <div>
                 <Label>Produtos Elegíveis</Label>
-                <div className="flex items-center space-x-2 my-2">
-                    <Checkbox
-                        id="select-all-products"
-                        checked={branchProducts.length > 0 && formData.eligibleProductIds?.length === branchProducts.length}
-                        onCheckedChange={(checked) => toggleAllProducts(checked === true)}
-                    />
-                    <Label htmlFor="select-all-products" className="font-normal">Selecionar todos os produtos</Label>
-                </div>
-                <ScrollArea className="h-40 rounded-md border">
-                    <div className="p-4">
-                        {branchProducts.map(product => (
-                            <div key={product.id} className="flex items-center justify-between">
-                                <Label htmlFor={`product-${product.id}`} className="font-normal">
-                                    {product.name} - R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                </Label>
-                                <Checkbox
-                                    id={`product-${product.id}`}
-                                    checked={formData.eligibleProductIds?.includes(product.id)}
-                                    onCheckedChange={() => toggleProduct(product.id)}
-                                />
-                            </div>
-                        ))}
-                    </div>
+                <ScrollArea className="h-48 rounded-md border">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="w-[50px]">
+                                     <Checkbox
+                                        id="select-all-products"
+                                        checked={sortedBranchProducts.length > 0 && formData.eligibleProductIds?.length === sortedBranchProducts.length}
+                                        onCheckedChange={(checked) => toggleAllProducts(checked === true)}
+                                    />
+                                </TableHead>
+                                <TableHead>Produto</TableHead>
+                                <TableHead className="text-right">Preço</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {sortedBranchProducts.map(product => (
+                                <TableRow key={product.id}>
+                                    <TableCell>
+                                        <Checkbox
+                                            id={`product-${product.id}`}
+                                            checked={formData.eligibleProductIds?.includes(product.id)}
+                                            onCheckedChange={() => toggleProduct(product.id)}
+                                        />
+                                    </TableCell>
+                                    <TableCell>
+                                        <Label htmlFor={`product-${product.id}`} className="font-normal cursor-pointer">{product.name}</Label>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
                 </ScrollArea>
                 <p className="text-sm text-muted-foreground mt-1">
                     {formData.eligibleProductIds?.length || 0} produto(s) selecionado(s).

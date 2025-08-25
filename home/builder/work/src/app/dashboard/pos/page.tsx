@@ -460,6 +460,7 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                         <TableRow>
                             <TableHead>Data</TableHead>
                             <TableHead>Itens</TableHead>
+                            <TableHead>Pagamento</TableHead>
                             <TableHead>Vendedor</TableHead>
                             <TableHead className="text-right">Total</TableHead>
                             <TableHead className="text-center">Ações</TableHead>
@@ -484,10 +485,17 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                                             ))}
                                         </div>
                                     </TableCell>
+                                    <TableCell>
+                                         <div className="flex flex-col gap-1">
+                                            {sale.payments?.map((p, i) => (
+                                                <Badge key={i} variant="outline">{p.conditionName}</Badge>
+                                            ))}
+                                        </div>
+                                    </TableCell>
                                     <TableCell>{sale.cashier}</TableCell>
                                     <TableCell className="text-right">R${sale.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
                                     <TableCell className="text-center">
-                                       {user?.role === 'admin' && sale.status !== 'cancelled' && (
+                                       {user?.enabledModules?.pos?.delete && sale.status !== 'cancelled' && (
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
                                                     <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
@@ -508,7 +516,7 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                             ))
                         ) : (
                             <TableRow>
-                                <TableCell colSpan={5} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
+                                <TableCell colSpan={6} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
                             </TableRow>
                         )}
                     </TableBody>
@@ -1053,32 +1061,25 @@ export default function POSPage() {
   };
 
     const handleCancelSale = async (sale: Sale) => {
-        if (!user || !currentBranch || user.role !== 'admin') {
-            toast({ title: 'Ação não permitida', variant: 'destructive' });
-            return;
-        }
+        if (!user || !currentBranch) return;
 
         const batch = writeBatch(db);
         const saleDate = serverTimestamp();
 
         // Revert stock
         for (const item of sale.items) {
-            let productId = item.id;
-            let quantityToReturn = item.quantity;
-            let notes = `Cancelamento Venda: ${sale.id}`;
-
             if (item.type === 'product') {
                  const entry: Omit<StockEntry, 'id'> = {
-                    productId: productId,
+                    productId: item.id,
                     productName: item.name,
-                    quantity: quantityToReturn,
+                    quantity: item.quantity,
                     type: 'cancellation',
                     date: saleDate,
                     userId: user.id,
                     userName: user.name,
                     branchId: currentBranch.id,
                     organizationId: user.organizationId,
-                    notes: notes,
+                    notes: `Cancelamento Venda: ${sale.id}`,
                 };
                 batch.set(doc(collection(db, "stockEntries")), entry);
             } else if (item.type === 'combo') {
@@ -1095,7 +1096,7 @@ export default function POSPage() {
                             userName: user.name,
                             branchId: currentBranch.id,
                             organizationId: user.organizationId,
-                            notes: `${notes} (Combo: ${item.name})`,
+                            notes: `Cancelamento Venda: ${sale.id} (Combo: ${item.name})`,
                         };
                         batch.set(doc(collection(db, "stockEntries")), entry);
                     }
@@ -1112,7 +1113,7 @@ export default function POSPage() {
                         userName: user.name,
                         branchId: currentBranch.id,
                         organizationId: user.organizationId,
-                        notes: `${notes} (Kit: ${item.name})`,
+                        notes: `Cancelamento Venda: ${sale.id} (Kit: ${item.name})`,
                     };
                     batch.set(doc(collection(db, "stockEntries")), entry);
                 }

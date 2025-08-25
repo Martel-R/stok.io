@@ -706,7 +706,7 @@ export default function POSPage() {
     const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id), where('isDeleted', '==', false));
     const combosQuery = query(collection(db, 'combos'), where('branchId', '==', currentBranch.id), where('isDeleted', '==', false));
     const kitsQuery = query(collection(db, 'kits'), where('branchId', '==', currentBranch.id), where('isDeleted', '==', false));
-    const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId), where('isDeleted', '==', false));
+    const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId), where('isDeleted', '!=', true));
     const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
     const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
 
@@ -1063,22 +1063,18 @@ export default function POSPage() {
 
         // Revert stock
         for (const item of sale.items) {
-            let productId = item.id;
-            let quantityToReturn = item.quantity;
-            let notes = `Cancelamento Venda: ${sale.id}`;
-
             if (item.type === 'product') {
                  const entry: Omit<StockEntry, 'id'> = {
-                    productId: productId,
+                    productId: item.id,
                     productName: item.name,
-                    quantity: quantityToReturn,
+                    quantity: item.quantity,
                     type: 'cancellation',
                     date: saleDate,
                     userId: user.id,
                     userName: user.name,
                     branchId: currentBranch.id,
                     organizationId: user.organizationId,
-                    notes: notes,
+                    notes: `Cancelamento Venda: ${sale.id}`,
                 };
                 batch.set(doc(collection(db, "stockEntries")), entry);
             } else if (item.type === 'combo') {
@@ -1095,7 +1091,7 @@ export default function POSPage() {
                             userName: user.name,
                             branchId: currentBranch.id,
                             organizationId: user.organizationId,
-                            notes: `${notes} (Combo: ${item.name})`,
+                            notes: `Cancelamento Venda: ${sale.id} (Combo: ${item.name})`,
                         };
                         batch.set(doc(collection(db, "stockEntries")), entry);
                     }
@@ -1112,7 +1108,7 @@ export default function POSPage() {
                         userName: user.name,
                         branchId: currentBranch.id,
                         organizationId: user.organizationId,
-                        notes: `${notes} (Kit: ${item.name})`,
+                        notes: `Cancelamento Venda: ${sale.id} (Kit: ${item.name})`,
                     };
                     batch.set(doc(collection(db, "stockEntries")), entry);
                 }
@@ -1392,3 +1388,5 @@ export default function POSPage() {
     </>
   );
 }
+
+    

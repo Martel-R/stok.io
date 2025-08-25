@@ -487,7 +487,7 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                                     <TableCell>{sale.cashier}</TableCell>
                                     <TableCell className="text-right">R${sale.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
                                     <TableCell className="text-center">
-                                       {user?.role === 'admin' && sale.status !== 'cancelled' && (
+                                       {user?.enabledModules?.pos?.delete && sale.status !== 'cancelled' && (
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
                                                     <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
@@ -1053,10 +1053,7 @@ export default function POSPage() {
   };
 
     const handleCancelSale = async (sale: Sale) => {
-        if (!user || !currentBranch || user.role !== 'admin') {
-            toast({ title: 'Ação não permitida', variant: 'destructive' });
-            return;
-        }
+        if (!user || !currentBranch) return;
 
         const batch = writeBatch(db);
         const saleDate = serverTimestamp();
@@ -1389,4 +1386,3 @@ export default function POSPage() {
   );
 }
 
-    

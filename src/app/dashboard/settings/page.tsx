@@ -125,7 +125,7 @@ function UsersTable() {
             return;
         }
         const qUsers = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId));
-        const qProfiles = query(collection(db, 'permissionProfiles'), where('organizationId', '==', adminUser.organizationId));
+        const qProfiles = query(collection(db, 'permissionProfiles'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
         
         const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
             const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as User[];
@@ -634,10 +634,10 @@ function PaymentConditions() {
 
     useEffect(() => {
         if (!user?.organizationId) return;
-        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId), where('isDeleted', '==', false));
+        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition));
-            setConditions(data);
+            setConditions(data.filter(c => !c.isDeleted));
             setLoading(false);
         });
         return () => unsubscribe();

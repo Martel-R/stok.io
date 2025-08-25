@@ -2,9 +2,9 @@
 
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, query, where, Timestamp, orderBy, writeBatch, doc, addDoc, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, Timestamp, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Product, StockEntry, StockEntryType, Branch, Expense } from '@/lib/types';
+import type { Product, StockEntry, StockEntryType, Branch } from '@/lib/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -72,17 +72,17 @@ export default function InventoryPage() {
         }
 
         const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
-        const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
+        const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id), where("isDeleted", "==", false));
 
         const unsubscribeEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
             const entriesData = entriesSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, date: convertDate(doc.data().date) } as StockEntry));
             setAllStockEntries(entriesData);
-            setLoading(false);
         });
 
         const unsubscribeProducts = onSnapshot(productsQuery, (productsSnapshot) => {
             const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
             setProducts(productsData);
+            setLoading(false);
         });
 
         return () => {

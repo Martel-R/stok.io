@@ -463,7 +463,7 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                             <TableHead>Pagamento</TableHead>
                             <TableHead>Vendedor</TableHead>
                             <TableHead className="text-right">Total</TableHead>
-                            <TableHead className="text-center">Ações</TableHead>
+                            <TableHead className="text-center w-[100px]">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -485,7 +485,7 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                                             ))}
                                         </div>
                                     </TableCell>
-                                    <TableCell>
+                                     <TableCell>
                                          <div className="flex flex-col gap-1">
                                             {sale.payments?.map((p, i) => (
                                                 <Badge key={i} variant="outline">{p.conditionName}</Badge>
@@ -1393,3 +1393,4 @@ export default function POSPage() {
     </>
   );
 }
+

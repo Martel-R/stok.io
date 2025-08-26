@@ -213,39 +213,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 userData = { ...userData, organization: orgData, enabledModules: finalPermissions as EnabledModules, paymentStatus: orgData.paymentStatus };
                 setUser(userData);
 
-                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId));
-                const unsubBranches = onSnapshot(branchesQuery, (branchSnap) => {
-                    const allOrgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
-                    const activeBranches = allOrgBranches.filter(b => !b.isDeleted);
-                    const userBranches = isImpersonating || baseUser.role === 'admin' ? activeBranches : activeBranches.filter(b => b.userIds.includes(baseUser.id));
-                    
-                    setBranches(userBranches);
-                    
-                    const storedBranchId = localStorage.getItem('currentBranchId');
-                    const storedBranch = userBranches.find(b => b.id === storedBranchId);
-
-                    if (storedBranch) {
-                        setCurrentBranchState(storedBranch);
-                    } else if (userBranches.length > 0) {
-                        setCurrentBranchState(userBranches[0]);
-                        localStorage.setItem('currentBranchId', userBranches[0].id);
-                    } else {
-                        setCurrentBranchState(null);
-                        localStorage.removeItem('currentBranchId');
-                    }
-                    
-                    // This was the crucial missing piece. Loading is only set to false AFTER branches are determined.
-                    setLoading(false);
-                });
-
+                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
                 const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
-                const unsubConditions = onSnapshot(conditionsQuery, (snapshot) => {
-                    setPaymentConditions(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition));
-                });
 
+                // Await both branches and payment conditions before setting loading to false
+                const [branchSnap, conditionsSnap] = await Promise.all([
+                    getDocs(branchesQuery),
+                    getDocs(conditionsQuery)
+                ]);
 
-                unsubscribers.push(unsubBranches);
-                unsubscribers.push(unsubConditions);
+                const allOrgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
+                const userBranches = isImpersonating || baseUser.role === 'admin' ? allOrgBranches : allOrgBranches.filter(b => b.userIds.includes(baseUser.id));
+                setBranches(userBranches);
+                
+                const storedBranchId = localStorage.getItem('currentBranchId');
+                const storedBranch = userBranches.find(b => b.id === storedBranchId);
+
+                if (storedBranch) {
+                    setCurrentBranchState(storedBranch);
+                } else if (userBranches.length > 0) {
+                    setCurrentBranchState(userBranches[0]);
+                    localStorage.setItem('currentBranchId', userBranches[0].id);
+                } else {
+                    setCurrentBranchState(null);
+                    localStorage.removeItem('currentBranchId');
+                }
+                
+                setPaymentConditions(conditionsSnap.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition));
+
+                // Now set loading to false after all essential data is fetched
+                setLoading(false);
+
+                // Set up listeners for real-time updates
+                const unsubBranches = onSnapshot(branchesQuery, (snap) => setBranches(snap.docs.map(b => ({id: b.id, ...b.data()} as Branch)).filter(b => !b.isDeleted)));
+                const unsubConditions = onSnapshot(conditionsQuery, (snap) => setPaymentConditions(snap.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition)));
+                unsubscribers.push(unsubBranches, unsubConditions);
             });
             unsubscribers.push(unsubOrg);
         } else {
@@ -256,7 +258,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    return () => unsubscribers.forEach(unsub => unsub());
+    return () => {
+      authUnsubscribe();
+      unsubscribers.forEach(unsub => unsub());
+    };
   }, []);
   
   const signup = async (email: string, pass: string, name: string): Promise<{ success: boolean; error?: string, isFirstUser?: boolean }> => {
@@ -636,5 +641,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
-    

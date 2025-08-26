@@ -1,3 +1,4 @@
+
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
@@ -29,10 +30,12 @@ const storage = getStorage(app);
 // Enable offline persistence
 if (typeof window !== 'undefined') {
   try {
-    enableIndexedDbPersistence(db);
+     enableIndexedDbPersistence(db, {
+        forceOwnership: false, // Permite que várias abas compartilhem o mesmo cache
+    });
   } catch (err: any) {
     if (err.code === 'failed-precondition') {
-      console.warn('Firebase persistence failed: multiple tabs open.');
+      console.warn('Firebase persistence failed: multiple tabs open, or other initialization issue.');
     } else if (err.code === 'unimplemented') {
       console.warn('Firebase persistence failed: browser does not support it.');
     }

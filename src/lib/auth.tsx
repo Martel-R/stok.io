@@ -5,7 +5,7 @@ import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc, serverTimestamp, Timestamp } from "firebase/firestore";
-import type { User, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile, Subscription } from '@/lib/types';
+import type { User, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile, Subscription, PaymentCondition } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
 import { addMonths } from 'date-fns';
 import { logUserActivity } from './logging';
@@ -29,6 +29,7 @@ interface AuthContextType {
   user: UserWithOrg | null;
   organizations: Organization[];
   branches: Branch[];
+  paymentConditions: PaymentCondition[];
   currentBranch: Branch | null;
   setCurrentBranch: (branch: Branch) => void;
   login: (email: string, pass: string) => Promise<boolean>;
@@ -132,6 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<UserWithOrg | null>(null);
   const [organizations, setOrganizations] = React.useState<Organization[]>([]);
   const [branches, setBranches] = React.useState<Branch[]>([]);
+  const [paymentConditions, setPaymentConditions] = React.useState<PaymentCondition[]>([]);
   const [currentBranch, setCurrentBranchState] = React.useState<Branch | null>(null);
   const [loading, setLoading] = React.useState(true);
   const loginCancelledRef = React.useRef(false);
@@ -166,6 +168,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setOrganizations(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Organization)));
                 setUser({ ...userData, enabledModules: defaultPermissions });
                 setBranches([]);
+                setPaymentConditions([]);
                 setCurrentBranchState(null);
                 setLoading(false);
             });
@@ -176,68 +179,78 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (effectiveOrgId) {
             await runDataIntegrityCheck(effectiveOrgId);
 
-            const orgDoc = await getDoc(doc(db, 'organizations', effectiveOrgId));
-            if (!orgDoc.exists()) {
-                setUser(null); setLoading(false); return;
-            }
-            
-            const orgData = { id: orgDoc.id, ...orgDoc.data() } as Organization;
-            const profilesSnap = await getDocs(query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId)));
-            const profiles = profilesSnap.docs.map(p => ({ id: p.id, ...p.data() } as PermissionProfile));
-            
-            const orgModules = orgData.enabledModules || {};
-            let finalPermissions: Partial<EnabledModules> = {};
+            const unsubOrg = onSnapshot(doc(db, 'organizations', effectiveOrgId), async (orgDoc) => {
+                if (!orgDoc.exists()) {
+                    setUser(null); setLoading(false); return;
+                }
+                
+                const orgData = { id: orgDoc.id, ...orgDoc.data() } as Organization;
+                const profilesSnap = await getDocs(query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId)));
+                const profiles = profilesSnap.docs.map(p => ({ id: p.id, ...p.data() } as PermissionProfile));
+                
+                const orgModules = orgData.enabledModules || {};
+                let finalPermissions: Partial<EnabledModules> = {};
 
-            if (isImpersonating || baseUser.role === 'admin') {
-                Object.keys(orgModules).forEach(key => {
-                    const moduleKey = key as keyof EnabledModules;
-                    if (orgModules[moduleKey]) {
-                        finalPermissions[moduleKey] = { view: true, edit: true, delete: true };
-                    }
-                });
-            } else {
-                const userProfile = profiles.find(p => p.id === baseUser.role);
-                if (userProfile?.permissions) {
+                if (isImpersonating || baseUser.role === 'admin') {
                     Object.keys(orgModules).forEach(key => {
                         const moduleKey = key as keyof EnabledModules;
                         if (orgModules[moduleKey]) {
-                            finalPermissions[moduleKey] = userProfile.permissions[moduleKey] || { view: false, edit: false, delete: false };
+                            finalPermissions[moduleKey] = { view: true, edit: true, delete: true };
                         }
                     });
-                }
-            }
-            
-            userData = { ...userData, organization: orgData, enabledModules: finalPermissions as EnabledModules, paymentStatus: orgData.paymentStatus };
-            setUser(userData);
-
-            const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId));
-            const unsubBranches = onSnapshot(branchesQuery, (branchSnap) => {
-                const allOrgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
-                const activeBranches = allOrgBranches.filter(b => !b.isDeleted);
-                const userBranches = isImpersonating || baseUser.role === 'admin' ? activeBranches : activeBranches.filter(b => b.userIds.includes(baseUser.id));
-                
-                setBranches(userBranches);
-                
-                const storedBranchId = localStorage.getItem('currentBranchId');
-                const storedBranch = userBranches.find(b => b.id === storedBranchId);
-
-                if (storedBranch) {
-                    setCurrentBranchState(storedBranch);
-                } else if (userBranches.length > 0) {
-                    setCurrentBranchState(userBranches[0]);
-                    localStorage.setItem('currentBranchId', userBranches[0].id);
                 } else {
-                    setCurrentBranchState(null);
-                    localStorage.removeItem('currentBranchId');
+                    const userProfile = profiles.find(p => p.id === baseUser.role);
+                    if (userProfile?.permissions) {
+                        Object.keys(orgModules).forEach(key => {
+                            const moduleKey = key as keyof EnabledModules;
+                            if (orgModules[moduleKey]) {
+                                finalPermissions[moduleKey] = userProfile.permissions[moduleKey] || { view: false, edit: false, delete: false };
+                            }
+                        });
+                    }
                 }
-                setLoading(false);
+                
+                userData = { ...userData, organization: orgData, enabledModules: finalPermissions as EnabledModules, paymentStatus: orgData.paymentStatus };
+                setUser(userData);
+
+                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId));
+                const unsubBranches = onSnapshot(branchesQuery, (branchSnap) => {
+                    const allOrgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
+                    const activeBranches = allOrgBranches.filter(b => !b.isDeleted);
+                    const userBranches = isImpersonating || baseUser.role === 'admin' ? activeBranches : activeBranches.filter(b => b.userIds.includes(baseUser.id));
+                    
+                    setBranches(userBranches);
+                    
+                    const storedBranchId = localStorage.getItem('currentBranchId');
+                    const storedBranch = userBranches.find(b => b.id === storedBranchId);
+
+                    if (storedBranch) {
+                        setCurrentBranchState(storedBranch);
+                    } else if (userBranches.length > 0) {
+                        setCurrentBranchState(userBranches[0]);
+                        localStorage.setItem('currentBranchId', userBranches[0].id);
+                    } else {
+                        setCurrentBranchState(null);
+                        localStorage.removeItem('currentBranchId');
+                    }
+                    setLoading(false);
+                });
+
+                const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
+                const unsubConditions = onSnapshot(conditionsQuery, (snapshot) => {
+                    setPaymentConditions(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition));
+                });
+
+
+                unsubscribers.push(unsubBranches);
+                unsubscribers.push(unsubConditions);
             });
-            unsubscribers.push(unsubBranches);
+            unsubscribers.push(unsubOrg);
         } else {
             setUser(null); setLoading(false);
         }
       } else {
-        setUser(null); setOrganizations([]); setBranches([]); setCurrentBranchState(null); setLoading(false);
+        setUser(null); setOrganizations([]); setBranches([]); setPaymentConditions([]); setCurrentBranchState(null); setLoading(false);
       }
     });
 
@@ -608,7 +621,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations, paymentConditions }}>
       {children}
     </AuthContext.Provider>
   );
@@ -621,3 +634,5 @@ export const useAuth = () => {
   }
   return context;
 };
+
+    

@@ -691,7 +691,6 @@ export default function POSPage() {
   const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [combos, setCombos] = useState<Combo[]>([]);
   const [kits, setKits] = useState<Kit[]>([]);
-  const [paymentConditions, setPaymentConditions] = useState<PaymentCondition[]>([]);
   const [salesHistory, setSalesHistory] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -702,7 +701,7 @@ export default function POSPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const { toast } = useToast();
-  const { user, currentBranch, loading: authLoading } = useAuth();
+  const { user, currentBranch, loading: authLoading, paymentConditions } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -714,7 +713,6 @@ export default function POSPage() {
     const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id), where('isDeleted', '!=', true));
     const combosQuery = query(collection(db, 'combos'), where('branchId', '==', currentBranch.id), where('isDeleted', '!=', true));
     const kitsQuery = query(collection(db, 'kits'), where('branchId', '==', currentBranch.id), where('isDeleted', '!=', true));
-    const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId), where('isDeleted', '!=', true));
     const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
     const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
 
@@ -758,17 +756,11 @@ export default function POSPage() {
     const unsubscribeKits = onSnapshot(kitsQuery, (querySnapshot) => {
       setKits(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kit)));
     });
-    
-    const unsubscribeConditions = onSnapshot(conditionsQuery, (snapshot) => {
-        setPaymentConditions(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition));
-    });
-
 
     return () => {
         unsubscribeProducts();
         unsubscribeCombos();
         unsubscribeKits();
-        unsubscribeConditions();
         unsubscribeSales();
     }
   }, [currentBranch, authLoading, user]);
@@ -1393,3 +1385,5 @@ export default function POSPage() {
     </>
   );
 }
+
+    

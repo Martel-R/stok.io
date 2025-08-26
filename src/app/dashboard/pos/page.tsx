@@ -460,9 +460,10 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                         <TableRow>
                             <TableHead>Data</TableHead>
                             <TableHead>Itens</TableHead>
+                            <TableHead>Pagamento</TableHead>
                             <TableHead>Vendedor</TableHead>
                             <TableHead className="text-right">Total</TableHead>
-                            <TableHead className="text-center">Ações</TableHead>
+                            <TableHead className="text-center w-[100px]">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -481,6 +482,13 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                                                         </span>
                                                     )}
                                                 </div>
+                                            ))}
+                                        </div>
+                                    </TableCell>
+                                     <TableCell>
+                                         <div className="flex flex-col gap-1">
+                                            {sale.payments?.map((p, i) => (
+                                                <Badge key={i} variant="outline">{p.conditionName}</Badge>
                                             ))}
                                         </div>
                                     </TableCell>
@@ -508,7 +516,7 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                             ))
                         ) : (
                             <TableRow>
-                                <TableCell colSpan={5} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
+                                <TableCell colSpan={6} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
                             </TableRow>
                         )}
                     </TableBody>
@@ -703,9 +711,9 @@ export default function POSPage() {
         return;
     }
 
-    const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id), where('isDeleted', '==', false));
-    const combosQuery = query(collection(db, 'combos'), where('branchId', '==', currentBranch.id), where('isDeleted', '==', false));
-    const kitsQuery = query(collection(db, 'kits'), where('branchId', '==', currentBranch.id), where('isDeleted', '==', false));
+    const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id), where('isDeleted', '!=', true));
+    const combosQuery = query(collection(db, 'combos'), where('branchId', '==', currentBranch.id), where('isDeleted', '!=', true));
+    const kitsQuery = query(collection(db, 'kits'), where('branchId', '==', currentBranch.id), where('isDeleted', '!=', true));
     const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId), where('isDeleted', '!=', true));
     const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
     const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
@@ -1385,4 +1393,3 @@ export default function POSPage() {
     </>
   );
 }
-

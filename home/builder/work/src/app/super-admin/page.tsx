@@ -30,6 +30,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { DateRange } from 'react-day-picker';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
+import { allModuleConfig } from '@/components/module-permission-row';
 
 type OrgWithUser = Organization & { owner?: User };
 
@@ -436,18 +437,6 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
         }
     };
 
-    const moduleConfig = [
-        { key: 'customers', label: 'Clientes' },
-        { key: 'services', label: 'Serviços' },
-        { key: 'appointments', label: 'Agendamentos' },
-        { key: 'pos', label: 'Frente de Caixa (PDV)' },
-        { key: 'combos', label: 'Combos Promocionais' },
-        { key: 'kits', label: 'Kits Dinâmicos' },
-        { key: 'assistant', label: 'Oráculo AI' },
-        { key: 'reports', label: 'Relatórios Gerenciais' },
-        { key: 'expenses', label: 'Despesas' },
-    ] as const;
-
     if (!isOpen) return null;
 
     return (
@@ -458,7 +447,7 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
                     <DialogDescription>Habilite ou desabilite funcionalidades para a organização "{organization.name}".</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
-                     {moduleConfig.map(mod => (
+                     {allModuleConfig.map(mod => (
                         <div key={mod.key} className="flex flex-row items-center justify-between rounded-lg border p-4">
                             <Label htmlFor={`module-${mod.key}`} className="text-base">{mod.label}</Label>
                             <Switch
@@ -684,7 +673,7 @@ function SuperAdminPage() {
         if (user && user.email === process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
             const unsubscribeOrgs = onSnapshot(collection(db, 'organizations'), async (orgSnapshot) => {
                 const orgsData = orgSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Organization));
-                const usersSnapshot = await getDocs(collection(db, 'users'));
+                const usersSnapshot = await getDocs(query(collection(db, 'users')), { source: 'server' });
                 const usersData = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
 
                 const orgsWithUsers = orgsData.map(org => ({ ...org, owner: usersData.find(u => u.id === org.ownerId) }));

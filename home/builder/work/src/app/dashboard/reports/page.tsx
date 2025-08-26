@@ -8,10 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart, Book, Activity, Package } from 'lucide-react';
+import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart, Book, Activity, Package, ArrowDownCircle } from 'lucide-react';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Sale, Branch, User, PaymentDetail, Product, StockEntry, PaymentCondition, Combo, Kit, Organization } from '@/lib/types';
+import type { Sale, Branch, User, PaymentDetail, Product, StockEntry, PaymentCondition, Combo, Kit, Organization, Expense } from '@/lib/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -51,6 +51,7 @@ function GeneralReport() {
     const { user } = useAuth();
     const [loading, setLoading] = useState(true);
     const [sales, setSales] = useState<Sale[]>([]);
+    const [expenses, setExpenses] = useState<Expense[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
     const [paymentConditions, setPaymentConditions] = useState<PaymentCondition[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
@@ -70,17 +71,19 @@ function GeneralReport() {
             try {
                 const orgId = user.organizationId;
                 const queries = {
-                    sales: getDocs(query(collection(db, 'sales'), where('organizationId', '==', orgId))),
-                    branches: getDocs(query(collection(db, 'branches'), where('organizationId', '==', orgId))),
-                    paymentConditions: getDocs(query(collection(db, 'paymentConditions'), where('organizationId', '==', orgId))),
-                    products: getDocs(query(collection(db, 'products'), where('organizationId', '==', orgId))),
-                    combos: getDocs(query(collection(db, 'combos'), where('organizationId', '==', orgId))),
-                    kits: getDocs(query(collection(db, 'kits'), where('organizationId', '==', orgId))),
+                    sales: getDocs(query(collection(db, 'sales'), where('organizationId', '==', orgId)), { source: 'server' }),
+                    expenses: getDocs(query(collection(db, 'expenses'), where('organizationId', '==', orgId)), { source: 'server' }),
+                    branches: getDocs(query(collection(db, 'branches'), where('organizationId', '==', orgId)), { source: 'server' }),
+                    paymentConditions: getDocs(query(collection(db, 'paymentConditions'), where('organizationId', '==', orgId)), { source: 'server' }),
+                    products: getDocs(query(collection(db, 'products'), where('organizationId', '==', orgId)), { source: 'server' }),
+                    combos: getDocs(query(collection(db, 'combos'), where('organizationId', '==', orgId)), { source: 'server' }),
+                    kits: getDocs(query(collection(db, 'kits'), where('organizationId', '==', orgId)), { source: 'server' }),
                 };
-                const [salesSnap, branchesSnap, conditionsSnap, productsSnap, combosSnap, kitsSnap] = await Promise.all(Object.values(queries));
+                const [salesSnap, expensesSnap, branchesSnap, conditionsSnap, productsSnap, combosSnap, kitsSnap] = await Promise.all(Object.values(queries));
 
                 const branchesData = branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
                 setSales(salesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Sale)));
+                setExpenses(expensesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Expense)));
                 setBranches(branchesData);
                 setPaymentConditions(conditionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition)));
                 setProducts(productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
@@ -97,25 +100,32 @@ function GeneralReport() {
         fetchData();
     }, [user]);
 
-    const filteredSales = useMemo(() => {
-        return sales.filter(sale => {
-            if (sale.status === 'cancelled') return false;
-            const saleDate = sale.date;
-            const isAfterStart = dateRange?.from ? saleDate >= startOfDay(dateRange.from) : true;
-            const isBeforeEnd = dateRange?.to ? saleDate <= endOfDay(dateRange.to) : true;
-            return isAfterStart && isBeforeEnd && (selectedBranchIds.length === 0 || selectedBranchIds.includes(sale.branchId));
-        }).sort((a, b) => b.date.getTime() - a.date.getTime());
-    }, [sales, dateRange, selectedBranchIds]);
+    const filteredData = useMemo(() => {
+        const branchFilter = (item: { branchId: string }) => selectedBranchIds.length === 0 || selectedBranchIds.includes(item.branchId);
+        const dateFilter = (item: { date: Date }) => {
+            const itemDate = item.date;
+            const isAfterStart = dateRange?.from ? itemDate >= startOfDay(dateRange.from) : true;
+            const isBeforeEnd = dateRange?.to ? itemDate <= endOfDay(dateRange.to) : true;
+            return isAfterStart && isBeforeEnd;
+        };
+
+        const filteredSales = sales.filter(s => s.status !== 'cancelled' && branchFilter(s) && dateFilter(s));
+        const filteredExpenses = expenses.filter(e => branchFilter(e) && dateFilter(e));
+        
+        return { sales: filteredSales.sort((a, b) => b.date.getTime() - a.date.getTime()), expenses: filteredExpenses };
+    }, [sales, expenses, dateRange, selectedBranchIds]);
+
 
     const financialData = useMemo(() => {
         const summary: { [key: string]: any } = {
-            salesCount: filteredSales.length,
+            salesCount: filteredData.sales.length,
             grossRevenue: 0,
             netRevenue: 0,
+            totalExpenses: filteredData.expenses.reduce((sum, e) => sum + e.amount, 0),
             payments: {}
         };
         
-        filteredSales.forEach(sale => {
+        filteredData.sales.forEach(sale => {
             summary.grossRevenue += sale.total;
             let saleFee = 0;
             sale.payments?.forEach(p => {
@@ -131,8 +141,9 @@ function GeneralReport() {
             summary.netRevenue += (sale.total - saleFee);
         });
 
+        summary.netProfit = summary.netRevenue - summary.totalExpenses;
         return summary;
-    }, [filteredSales, paymentConditions]);
+    }, [filteredData, paymentConditions]);
     
      const processProduct = (productMap: Map<string, { id: string; name: string, quantity: number, originalValue: number, finalValue: number }>, productId: string, name: string, quantity: number, originalValue: number, finalValue: number) => {
         const existing = productMap.get(name) || { id: productId, name, quantity: 0, originalValue: 0, finalValue: 0 };
@@ -145,7 +156,7 @@ function GeneralReport() {
     const productsSold = useMemo(() => {
         const productMap = new Map<string, { id: string; name: string, quantity: number, originalValue: number, finalValue: number }>();
 
-        filteredSales.forEach(sale => {
+        filteredData.sales.forEach(sale => {
             (sale.items || []).forEach((item: any) => {
                  if (item.type === 'product') {
                      const product = products.find(p => p.id === item.id);
@@ -189,7 +200,7 @@ function GeneralReport() {
         });
         
         return Array.from(productMap.values()).sort((a,b) => b.quantity - a.quantity);
-    }, [filteredSales, products, combos, kits]);
+    }, [filteredData.sales, products, combos, kits]);
 
      const productTotals = useMemo(() => {
         return productsSold.reduce((acc, p) => {
@@ -208,7 +219,6 @@ function GeneralReport() {
         const doc = new jsPDF();
         const dateStr = `Período: ${format(dateRange?.from || new Date(), 'dd/MM/yy')} a ${format(dateRange?.to || new Date(), 'dd/MM/yy')}`;
         
-        // Add header
         if (user?.organization?.branding?.logoUrl) {
             doc.addImage(user.organization.branding.logoUrl, 'PNG', 14, 10, 20, 20);
             doc.text(user.organization.name || "Relatório Geral", 40, 16);
@@ -226,6 +236,8 @@ function GeneralReport() {
                 ['Vendas', financialData.salesCount],
                 ['Receita Bruta', formatCurrency(financialData.grossRevenue)],
                 ['Receita Líquida', formatCurrency(financialData.netRevenue)],
+                ['Despesas', formatCurrency(financialData.totalExpenses)],
+                ['Lucro Líquido', formatCurrency(financialData.netProfit)],
                 ['Produtos Únicos', productsSold.length],
                 ['Unidades Vendidas', productTotals.quantity.toLocaleString('pt-BR')],
             ],
@@ -271,13 +283,13 @@ function GeneralReport() {
 
     const exportToExcel = () => {
         const wb = XLSX.utils.book_new();
-
-        // Financial Summary
         const ws1_data = [
             ['Métrica', 'Valor'],
             ['Vendas', financialData.salesCount],
             ['Receita Bruta', financialData.grossRevenue],
             ['Receita Líquida', financialData.netRevenue],
+            ['Despesas', financialData.totalExpenses],
+            ['Lucro Líquido', financialData.netProfit],
             ['Produtos Únicos', productsSold.length],
             ['Unidades Vendidas', productTotals.quantity],
             [],
@@ -287,7 +299,6 @@ function GeneralReport() {
         const ws1 = XLSX.utils.aoa_to_sheet(ws1_data);
         XLSX.utils.book_append_sheet(wb, ws1, "Resumo Financeiro");
 
-        // Products Sold
         const ws2_data = productsSold.map(p => ({
             'Produto': p.name,
             'Quantidade': p.quantity,
@@ -327,23 +338,37 @@ function GeneralReport() {
                     <CardTitle>Resumo Financeiro</CardTitle>
                     <CardDescription>Visão geral das finanças no período selecionado.</CardDescription>
                 </CardHeader>
-                <CardContent className="grid gap-4 md:grid-cols-4">
+                <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <Card>
-                        <CardHeader><CardTitle>Receitas</CardTitle></CardHeader>
+                        <CardHeader className="pb-2"><CardTitle>Receitas</CardTitle></CardHeader>
                         <CardContent>
-                            <p>Vendas: {financialData.salesCount}</p>
-                            <p>Receita Bruta: {formatCurrency(financialData.grossRevenue)}</p>
-                            <p className="font-semibold">Receita Líquida: {formatCurrency(financialData.netRevenue)}</p>
+                            <p className="text-sm">Vendas: {financialData.salesCount}</p>
+                            <p className="text-sm">Receita Bruta: {formatCurrency(financialData.grossRevenue)}</p>
+                            <p className="text-sm font-semibold">Receita Líquida: {formatCurrency(financialData.netRevenue)}</p>
+                        </CardContent>
+                    </Card>
+                     <Card>
+                        <CardHeader className="pb-2"><CardTitle>Despesas</CardTitle></CardHeader>
+                        <CardContent>
+                            <p className="text-2xl font-bold text-destructive">{formatCurrency(financialData.totalExpenses)}</p>
+                        </CardContent>
+                    </Card>
+                     <Card>
+                        <CardHeader className="pb-2"><CardTitle>Lucro Líquido</CardTitle></CardHeader>
+                        <CardContent>
+                             <p className={cn("text-2xl font-bold", financialData.netProfit >= 0 ? "text-green-600" : "text-destructive")}>
+                                {formatCurrency(financialData.netProfit)}
+                            </p>
                         </CardContent>
                     </Card>
                     <Card>
-                        <CardHeader><CardTitle>Produtos</CardTitle></CardHeader>
+                        <CardHeader className="pb-2"><CardTitle>Produtos</CardTitle></CardHeader>
                         <CardContent>
-                            <p>Produtos Únicos: {productsSold.length}</p>
-                            <p>Unidades Vendidas: {productTotals.quantity.toLocaleString('pt-BR')}</p>
+                            <p className="text-sm">Produtos Únicos: {productsSold.length}</p>
+                            <p className="text-sm">Unidades Vendidas: {productTotals.quantity.toLocaleString('pt-BR')}</p>
                         </CardContent>
                     </Card>
-                    <Card className="md:col-span-2">
+                    <Card className="md:col-span-2 lg:col-span-4">
                         <CardHeader><CardTitle>Detalhes por Pagamento</CardTitle></CardHeader>
                         <CardContent>
                              <Table>
@@ -392,7 +417,7 @@ function GeneralReport() {
                                 <TableCell>Total</TableCell>
                                 <TableCell className="text-right">{productTotals.quantity.toLocaleString('pt-BR')}</TableCell>
                                 <TableCell className="text-right">{formatCurrency(productTotals.originalValue)}</TableCell>
-                                <TableCell className="text-right text-destructive">-{formatCurrency(productTotals.originalValue - productTotals.finalValue)}</TableCell>
+                                <TableCell className="text-right text-destructive">-{formatCurrency(productTotals.originalValue - p.finalValue)}</TableCell>
                                 <TableCell className="text-right">{formatCurrency(productTotals.finalValue)}</TableCell>
                             </TableRow>
                         </TableFooter>
@@ -413,7 +438,7 @@ function GeneralReport() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {filteredSales.map(sale => (
+                            {filteredData.sales.map(sale => (
                                 <TableRow key={sale.id}>
                                     <TableCell>{format(sale.date, 'dd/MM/yyyy HH:mm')}</TableCell>
                                     <TableCell>{branches.find(b => b.id === sale.branchId)?.name || 'N/A'}</TableCell>
@@ -473,9 +498,9 @@ function SalesReport() {
                 const usersQuery = query(collection(db, 'users'), where('organizationId', '==', orgId));
 
                 const [salesSnap, branchesSnap, usersSnap] = await Promise.all([
-                    getDocs(salesQuery),
-                    getDocs(branchesQuery),
-                    getDocs(usersQuery),
+                    getDocs(salesQuery, { source: 'server' }),
+                    getDocs(branchesQuery, { source: 'server' }),
+                    getDocs(usersQuery, { source: 'server' }),
                 ]);
 
                 const salesData = salesSnap.docs.map(doc => {
@@ -672,8 +697,8 @@ function TopSellingProductsReport() {
                 const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', orgId));
 
                 const [salesSnap, branchesSnap] = await Promise.all([
-                    getDocs(salesQuery),
-                    getDocs(branchesQuery),
+                    getDocs(salesQuery, { source: 'server' }),
+                    getDocs(branchesQuery, { source: 'server' }),
                 ]);
 
                 const salesData = salesSnap.docs.map(doc => {
@@ -830,9 +855,9 @@ function LowStockReport() {
                 const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', orgId));
 
                 const [productsSnap, stockEntriesSnap, branchesSnap] = await Promise.all([
-                    getDocs(productsQuery),
-                    getDocs(stockEntriesQuery),
-                    getDocs(branchesQuery)
+                    getDocs(productsQuery, { source: 'server' }),
+                    getDocs(stockEntriesQuery, { source: 'server' }),
+                    getDocs(branchesQuery, { source: 'server' })
                 ]);
 
                 setAllProducts(productsSnap.docs.map(d => ({id: d.id, ...d.data()}) as Product));
@@ -993,6 +1018,7 @@ function FinancialSummaryReport() {
     const { user } = useAuth();
     const [loading, setLoading] = useState(true);
     const [sales, setSales] = useState<Sale[]>([]);
+    const [expenses, setExpenses] = useState<Expense[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
     const [paymentConditions, setPaymentConditions] = useState<PaymentCondition[]>([]);
 
@@ -1009,16 +1035,19 @@ function FinancialSummaryReport() {
             try {
                 const orgId = user.organizationId;
                 const salesQuery = query(collection(db, 'sales'), where('organizationId', '==', orgId));
+                const expensesQuery = query(collection(db, 'expenses'), where('organizationId', '==', orgId));
                 const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', orgId));
                 const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', orgId));
 
-                const [salesSnap, branchesSnap, conditionsSnap] = await Promise.all([
-                    getDocs(salesQuery),
-                    getDocs(branchesQuery),
-                    getDocs(conditionsQuery),
+                const [salesSnap, expensesSnap, branchesSnap, conditionsSnap] = await Promise.all([
+                    getDocs(salesQuery, { source: 'server' }),
+                    getDocs(expensesQuery, { source: 'server' }),
+                    getDocs(branchesQuery, { source: 'server' }),
+                    getDocs(conditionsQuery, { source: 'server' }),
                 ]);
 
                 setSales(salesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Sale)));
+                setExpenses(expensesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Expense)));
                 setBranches(branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch)));
                 setPaymentConditions(conditionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition)));
             } catch (error) {
@@ -1039,10 +1068,20 @@ function FinancialSummaryReport() {
             const isBeforeEnd = dateRange?.to ? saleDate <= endOfDay(dateRange.to) : true;
             return isAfterStart && isBeforeEnd;
         });
+        
+        const filteredExpenses = expenses.filter(expense => {
+            const expenseDate = expense.date;
+            const isAfterStart = dateRange?.from ? expenseDate >= startOfDay(dateRange.from) : true;
+            const isBeforeEnd = dateRange?.to ? expenseDate <= endOfDay(dateRange.to) : true;
+            return isAfterStart && isBeforeEnd;
+        });
 
         const summary = branches.map(branch => {
             const branchSales = filteredSales.filter(s => s.branchId === branch.id);
+            const branchExpenses = filteredExpenses.filter(e => e.branchId === branch.id);
+
             const grossRevenue = branchSales.reduce((sum, s) => sum + s.total, 0);
+            const totalExpenses = branchExpenses.reduce((sum, e) => sum + e.amount, 0);
             const salesCount = branchSales.length;
 
             const paymentsSummary: { [key: string]: { gross: number, net: number } } = {};
@@ -1060,19 +1099,24 @@ function FinancialSummaryReport() {
                     paymentsSummary[typeName].net += (payment.amount - fee);
                 });
             });
+            
+            const netRevenue = grossRevenue - totalFees;
+            const netProfit = netRevenue - totalExpenses;
 
             return {
                 branchId: branch.id,
                 branchName: branch.name,
                 salesCount,
                 grossRevenue,
-                netRevenue: grossRevenue - totalFees,
+                netRevenue,
+                totalExpenses,
+                netProfit,
                 payments: paymentsSummary
             };
         });
 
         return summary;
-    }, [sales, branches, paymentConditions, dateRange]);
+    }, [sales, expenses, branches, paymentConditions, dateRange]);
 
     const uniquePaymentTypes = useMemo(() => {
         const types = new Set<string>();
@@ -1081,32 +1125,15 @@ function FinancialSummaryReport() {
     }, [financialData]);
 
     const totals = useMemo(() => {
-        const initialTotals = {
-            salesCount: 0,
-            grossRevenue: 0,
-            netRevenue: 0,
-            payments: {} as { [key: string]: { gross: number; net: number } },
-        };
-
-        uniquePaymentTypes.forEach(type => {
-            initialTotals.payments[type] = { gross: 0, net: 0 };
-        });
-
         return financialData.reduce((acc, branchData) => {
             acc.salesCount += branchData.salesCount;
             acc.grossRevenue += branchData.grossRevenue;
             acc.netRevenue += branchData.netRevenue;
-            
-            uniquePaymentTypes.forEach(type => {
-                const payment = branchData.payments[type] || { gross: 0, net: 0 };
-                if (!acc.payments[type]) acc.payments[type] = { gross: 0, net: 0 };
-                acc.payments[type].gross += payment.gross;
-                acc.payments[type].net += payment.net;
-            });
-
+            acc.totalExpenses += branchData.totalExpenses;
+            acc.netProfit += branchData.netProfit;
             return acc;
-        }, initialTotals);
-    }, [financialData, uniquePaymentTypes]);
+        }, { salesCount: 0, grossRevenue: 0, netRevenue: 0, totalExpenses: 0, netProfit: 0 });
+    }, [financialData]);
 
 
     const formatCurrency = (value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -1115,24 +1142,17 @@ function FinancialSummaryReport() {
          const doc = new jsPDF({ orientation: "landscape" });
         doc.text("Relatório de Resumo Financeiro", 14, 16);
         
-        let head = [['Filial', 'Vendas', 'Total Bruto', 'Total Líquido']];
-        uniquePaymentTypes.forEach(p => {
-            head[0].push(`${p} (Bruto)`);
-            head[0].push(`${p} (Líquido)`);
-        });
-
+        let head = [['Filial', 'Vendas', 'Total Bruto', 'Total Líquido', 'Despesas', 'Lucro']];
+        
         const body = financialData.map(d => {
              let row = [
                 d.branchName,
                 d.salesCount.toString(),
                 formatCurrency(d.grossRevenue),
                 formatCurrency(d.netRevenue),
+                formatCurrency(d.totalExpenses),
+                formatCurrency(d.netProfit),
             ];
-             uniquePaymentTypes.forEach(p => {
-                const payment = d.payments[p] || { gross: 0, net: 0 };
-                row.push(formatCurrency(payment.gross));
-                row.push(formatCurrency(payment.net));
-            });
             return row;
         });
 
@@ -1141,20 +1161,14 @@ function FinancialSummaryReport() {
     };
 
      const exportToExcel = () => {
-        const data = financialData.map(d => {
-            const row: { [key: string]: any } = {
-                'Filial': d.branchName,
-                'Vendas': d.salesCount,
-                'Total Bruto': d.grossRevenue,
-                'Total Líquido': d.netRevenue
-            };
-             uniquePaymentTypes.forEach(p => {
-                const payment = d.payments[p] || { gross: 0, net: 0 };
-                row[`${p} (Bruto)`] = payment.gross;
-                row[`${p} (Líquido)`] = payment.net;
-            });
-            return row;
-        });
+        const data = financialData.map(d => ({
+            'Filial': d.branchName,
+            'Vendas': d.salesCount,
+            'Total Bruto': d.grossRevenue,
+            'Total Líquido': d.netRevenue,
+            'Despesas': d.totalExpenses,
+            'Lucro': d.netProfit,
+        }));
 
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
@@ -1188,12 +1202,8 @@ function FinancialSummaryReport() {
                             <TableHead className="text-right">Vendas</TableHead>
                             <TableHead className="text-right">Total Bruto</TableHead>
                             <TableHead className="text-right">Total Líquido</TableHead>
-                            {uniquePaymentTypes.map(p => (
-                                <React.Fragment key={p}>
-                                    <TableHead className="text-right">{p} (Bruto)</TableHead>
-                                    <TableHead className="text-right">{p} (Líquido)</TableHead>
-                                </React.Fragment>
-                            ))}
+                            <TableHead className="text-right text-destructive">Despesas</TableHead>
+                            <TableHead className="text-right text-green-600">Lucro</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1203,15 +1213,8 @@ function FinancialSummaryReport() {
                                 <TableCell className="text-right">{d.salesCount}</TableCell>
                                 <TableCell className="text-right">{formatCurrency(d.grossRevenue)}</TableCell>
                                 <TableCell className="text-right font-semibold">{formatCurrency(d.netRevenue)}</TableCell>
-                                {uniquePaymentTypes.map(p => {
-                                    const payment = d.payments[p] || { gross: 0, net: 0 };
-                                    return (
-                                        <React.Fragment key={p}>
-                                            <TableCell className="text-right">{formatCurrency(payment.gross)}</TableCell>
-                                            <TableCell className="text-right text-green-600">{formatCurrency(payment.net)}</TableCell>
-                                        </React.Fragment>
-                                    )
-                                })}
+                                <TableCell className="text-right text-destructive">{formatCurrency(d.totalExpenses)}</TableCell>
+                                <TableCell className="text-right text-green-600 font-bold">{formatCurrency(d.netProfit)}</TableCell>
                              </TableRow>
                          ))}
                     </TableBody>
@@ -1221,15 +1224,8 @@ function FinancialSummaryReport() {
                             <TableCell className="text-right">{totals.salesCount}</TableCell>
                             <TableCell className="text-right">{formatCurrency(totals.grossRevenue)}</TableCell>
                             <TableCell className="text-right">{formatCurrency(totals.netRevenue)}</TableCell>
-                             {uniquePaymentTypes.map(p => {
-                                const payment = totals.payments[p] || { gross: 0, net: 0 };
-                                return (
-                                    <React.Fragment key={`total-${p}`}>
-                                        <TableCell className="text-right">{formatCurrency(payment.gross)}</TableCell>
-                                        <TableCell className="text-right">{formatCurrency(payment.net)}</TableCell>
-                                    </React.Fragment>
-                                )
-                            })}
+                            <TableCell className="text-right text-destructive">{formatCurrency(totals.totalExpenses)}</TableCell>
+                            <TableCell className="text-right text-green-600">{formatCurrency(totals.netProfit)}</TableCell>
                         </TableRow>
                     </TableFooter>
                 </Table>
@@ -1263,9 +1259,9 @@ function ABCCurveReport() {
                 const productsQuery = query(collection(db, 'products'), where('organizationId', '==', orgId));
                 const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', orgId));
                 const [salesSnap, productsSnap, branchesSnap] = await Promise.all([
-                    getDocs(salesQuery),
-                    getDocs(productsQuery),
-                    getDocs(branchesQuery),
+                    getDocs(salesQuery, { source: 'server' }),
+                    getDocs(productsQuery, { source: 'server' }),
+                    getDocs(branchesQuery, { source: 'server' }),
                 ]);
 
                 const salesData = salesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Sale));

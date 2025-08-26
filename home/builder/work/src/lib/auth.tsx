@@ -1,12 +1,11 @@
 
-
 'use client';
 
 import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc, serverTimestamp, Timestamp } from "firebase/firestore";
-import type { User, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile, Subscription } from '@/lib/types';
+import type { User, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile, Subscription, PaymentCondition } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
 import { addMonths } from 'date-fns';
 import { logUserActivity } from './logging';
@@ -30,6 +29,7 @@ interface AuthContextType {
   user: UserWithOrg | null;
   organizations: Organization[];
   branches: Branch[];
+  paymentConditions: PaymentCondition[];
   currentBranch: Branch | null;
   setCurrentBranch: (branch: Branch) => void;
   login: (email: string, pass: string) => Promise<boolean>;
@@ -65,6 +65,7 @@ const defaultPermissions: EnabledModules = {
     services: { view: true, edit: true, delete: true },
     expenses: { view: true, edit: true, delete: true },
     backup: { view: true, edit: true, delete: true },
+    subscription: { view: true, edit: true, delete: true },
 };
 
 const professionalPermissions: EnabledModules = {
@@ -78,12 +79,61 @@ const professionalPermissions: EnabledModules = {
     settings: { view: false, edit: false, delete: false },
     kits: { view: false, edit: false, delete: false },
     customers: { view: true, edit: false, delete: false },
+    appointments: { view: true, edit: false, delete: false },
+    services: { view: true, edit: false, delete: false },
+    expenses: { view: true, edit: false, delete: false },
+    backup: { view: true, edit: false, delete: false },
+    subscription: { view: false, edit: false, delete: false },
+};
+
+const runDataIntegrityCheck = async (organizationId: string) => {
+    if (sessionStorage.getItem(`integrityCheck_${organizationId}`)) {
+      return;
+    }
+  
+    console.log("Running data integrity check for organization:", organizationId);
+  
+    const collectionsToFix = [
+      'products', 'combos', 'kits', 'services', 'customers',
+      'anamnesisQuestions', 'suppliers', 'branches', 'expenses', 'appointments', 'permissionProfiles'
+    ];
+  
+    try {
+      const batch = writeBatch(db);
+      let updatesMade = 0;
+  
+      for (const collectionName of collectionsToFix) {
+        const q = query(collection(db, collectionName), where("organizationId", "==", organizationId));
+        const snapshot = await getDocs(q);
+        
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          if (data.isDeleted === undefined || data.isDeleted === null) {
+            batch.update(doc.ref, { isDeleted: false });
+            updatesMade++;
+          }
+        });
+      }
+  
+      if (updatesMade > 0) {
+        await batch.commit();
+        console.log(`Data integrity check complete. Updated ${updatesMade} records.`);
+      } else {
+        console.log("Data integrity check complete. No records needed updating.");
+      }
+      
+      sessionStorage.setItem(`integrityCheck_${organizationId}`, 'true');
+  
+    } catch (error) {
+      console.error("Error during data integrity check:", error);
+    }
 };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<UserWithOrg | null>(null);
   const [organizations, setOrganizations] = React.useState<Organization[]>([]);
   const [branches, setBranches] = React.useState<Branch[]>([]);
+  const [paymentConditions, setPaymentConditions] = React.useState<PaymentCondition[]>([]);
   const [currentBranch, setCurrentBranchState] = React.useState<Branch | null>(null);
   const [loading, setLoading] = React.useState(true);
   const loginCancelledRef = React.useRef(false);
@@ -94,20 +144,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let unsubscribers: Unsubscribe[] = [];
 
     const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      // Clean up previous listeners
       unsubscribers.forEach(unsub => unsub());
       unsubscribers = [];
-      
       setLoading(true);
 
       if (firebaseUser) {
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
-
+        const userDocSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
         if (!userDocSnap.exists()) {
           setUser(null); setLoading(false); return;
         }
-        
+
         const baseUser = { id: userDocSnap.id, ...userDocSnap.data() } as User;
         const isSuperAdmin = baseUser.email === process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL;
         const impersonatedOrgId = localStorage.getItem('impersonatedOrgId');
@@ -117,49 +163,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         let userData: UserWithOrg = { ...baseUser, isImpersonating };
 
-        // Super Admin NOT impersonating - special view
         if (isSuperAdmin && !isImpersonating) {
-            const allOrgsQuery = collection(db, 'organizations');
-            const unsub = onSnapshot(allOrgsQuery, (snapshot) => {
-                const orgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Organization));
-                setOrganizations(orgs);
-                // Grant full permissions for the Super Admin panel itself
+            const unsub = onSnapshot(collection(db, 'organizations'), (snapshot) => {
+                setOrganizations(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Organization)));
                 setUser({ ...userData, enabledModules: defaultPermissions });
                 setBranches([]);
+                setPaymentConditions([]);
                 setCurrentBranchState(null);
                 setLoading(false);
             });
             unsubscribers.push(unsub);
-            return; // Exit here for Super Admin view
+            return;
         }
 
-        // Regular user or Impersonating Super Admin
         if (effectiveOrgId) {
-            const orgDocRef = doc(db, 'organizations', effectiveOrgId);
-            const unsubOrg = onSnapshot(orgDocRef, async (orgDoc) => {
+            await runDataIntegrityCheck(effectiveOrgId);
+
+            const unsubOrg = onSnapshot(doc(db, 'organizations', effectiveOrgId), async (orgDoc) => {
                 if (!orgDoc.exists()) {
                     setUser(null); setLoading(false); return;
                 }
-                const orgData = { id: orgDoc.id, ...orgDoc.data() } as Organization;
-                const orgModules = orgData.enabledModules || {};
                 
+                const orgData = { id: orgDoc.id, ...orgDoc.data() } as Organization;
+                const profilesSnap = await getDocs(query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId)));
+                const profiles = profilesSnap.docs.map(p => ({ id: p.id, ...p.data() } as PermissionProfile));
+                
+                const orgModules = orgData.enabledModules || {};
                 let finalPermissions: Partial<EnabledModules> = {};
 
                 if (isImpersonating || baseUser.role === 'admin') {
-                    // Super admin impersonating OR a regular admin: gets all modules enabled by the org
                     Object.keys(orgModules).forEach(key => {
-                      const moduleKey = key as keyof EnabledModules;
-                      if (orgModules[moduleKey]) {
-                        finalPermissions[moduleKey] = { view: true, edit: true, delete: true };
-                      }
+                        const moduleKey = key as keyof EnabledModules;
+                        if (orgModules[moduleKey]) {
+                            finalPermissions[moduleKey] = { view: true, edit: true, delete: true };
+                        }
                     });
                 } else {
-                    // Regular user: permissions based on profile
-                    const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId));
-                    const profilesSnap = await getDocs(profilesQuery);
-                    const profiles = profilesSnap.docs.map(p => ({ id: p.id, ...p.data() } as PermissionProfile));
                     const userProfile = profiles.find(p => p.id === baseUser.role);
-
                     if (userProfile?.permissions) {
                         Object.keys(orgModules).forEach(key => {
                             const moduleKey = key as keyof EnabledModules;
@@ -172,8 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 
                 userData = { ...userData, organization: orgData, enabledModules: finalPermissions as EnabledModules, paymentStatus: orgData.paymentStatus };
                 setUser(userData);
-                
-                // Fetch branches for the organization
+
                 const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId));
                 const unsubBranches = onSnapshot(branchesQuery, (branchSnap) => {
                     const allOrgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
@@ -196,20 +235,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     }
                     setLoading(false);
                 });
+
+                const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
+                const unsubConditions = onSnapshot(conditionsQuery, (snapshot) => {
+                    setPaymentConditions(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition));
+                });
+
+
                 unsubscribers.push(unsubBranches);
+                unsubscribers.push(unsubConditions);
             });
             unsubscribers.push(unsubOrg);
         } else {
-            // User without an org ID
             setUser(null); setLoading(false);
         }
       } else {
-        // No Firebase user
-        setUser(null);
-        setOrganizations([]);
-        setBranches([]);
-        setCurrentBranchState(null);
-        setLoading(false);
+        setUser(null); setOrganizations([]); setBranches([]); setPaymentConditions([]); setCurrentBranchState(null); setLoading(false);
       }
     });
 
@@ -304,7 +345,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { getApp, initializeApp, deleteApp } = await import('firebase/app');
         const { getAuth: getAuth_local, createUserWithEmailAndPassword: createUserWithEmailAndPassword_local, sendPasswordResetEmail: sendPasswordResetEmail_local, signOut: signOut_local } = await import('firebase/auth');
 
-        const tempAppName = `temp-auth-app-${'\'\'\''}${Date.now()}${'\'\'\''}`;
+        const tempAppName = `temp-auth-app-${Date.now()}-${Math.random()}`;
         const tempAppConfig = { ...getApp().options, appName: tempAppName };
         const tempApp = initializeApp(tempAppConfig, tempAppName);
         const tempAuthInstance = getAuth_local(tempApp);
@@ -580,7 +621,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations, paymentConditions }}>
       {children}
     </AuthContext.Provider>
   );

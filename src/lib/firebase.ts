@@ -1,7 +1,8 @@
+
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { initializeFirestore, CACHE_SIZE_UNLIMITED } from "firebase/firestore";
+import { initializeFirestore, CACHE_SIZE_UNLIMITED, enableIndexedDbPersistence } from "firebase/firestore";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 import { getStorage } from "firebase/storage";
 
@@ -25,6 +26,25 @@ const db = initializeFirestore(app, {
   cacheSizeBytes: CACHE_SIZE_UNLIMITED,
 });
 const storage = getStorage(app);
+
+
+// This can sometimes cause issues with data consistency in complex apps.
+// If you face issues with stale data, consider removing this or using clearPersistence().
+if (typeof window !== 'undefined') {
+  enableIndexedDbPersistence(db)
+    .catch((err) => {
+      if (err.code == 'failed-precondition') {
+        // Multiple tabs open, persistence can only be enabled
+        // in one tab at a a time.
+        console.warn('Firestore persistence failed: multiple tabs open.');
+      } else if (err.code == 'unimplemented') {
+        // The current browser does not support all of the
+        // features required to enable persistence
+        console.warn('Firestore persistence not available in this browser.');
+      }
+    });
+}
+
 
 // Initialize App Check
 if (typeof window !== 'undefined') {

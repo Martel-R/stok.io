@@ -233,6 +233,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         setCurrentBranchState(null);
                         localStorage.removeItem('currentBranchId');
                     }
+                    
+                    // This was the crucial missing piece. Loading is only set to false AFTER branches are determined.
                     setLoading(false);
                 });
 

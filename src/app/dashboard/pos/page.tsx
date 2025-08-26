@@ -1386,4 +1386,3 @@ export default function POSPage() {
   );
 }
 
-    

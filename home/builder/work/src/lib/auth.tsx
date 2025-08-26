@@ -86,49 +86,6 @@ const professionalPermissions: EnabledModules = {
     subscription: { view: false, edit: false, delete: false },
 };
 
-const runDataIntegrityCheck = async (organizationId: string) => {
-    if (sessionStorage.getItem(`integrityCheck_${organizationId}`)) {
-      return;
-    }
-  
-    console.log("Running data integrity check for organization:", organizationId);
-  
-    const collectionsToFix = [
-      'products', 'combos', 'kits', 'services', 'customers',
-      'anamnesisQuestions', 'suppliers', 'branches', 'expenses', 'appointments', 'permissionProfiles'
-    ];
-  
-    try {
-      const batch = writeBatch(db);
-      let updatesMade = 0;
-  
-      for (const collectionName of collectionsToFix) {
-        const q = query(collection(db, collectionName), where("organizationId", "==", organizationId));
-        const snapshot = await getDocs(q);
-        
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          if (data.isDeleted === undefined || data.isDeleted === null) {
-            batch.update(doc.ref, { isDeleted: false });
-            updatesMade++;
-          }
-        });
-      }
-  
-      if (updatesMade > 0) {
-        await batch.commit();
-        console.log(`Data integrity check complete. Updated ${updatesMade} records.`);
-      } else {
-        console.log("Data integrity check complete. No records needed updating.");
-      }
-      
-      sessionStorage.setItem(`integrityCheck_${organizationId}`, 'true');
-  
-    } catch (error) {
-      console.error("Error during data integrity check:", error);
-    }
-};
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<UserWithOrg | null>(null);
   const [organizations, setOrganizations] = React.useState<Organization[]>([]);
@@ -181,7 +138,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (effectiveOrgId) {
-          await runDataIntegrityCheck(effectiveOrgId);
           // Organization-specific logic
           const orgDocRef = doc(db, 'organizations', effectiveOrgId);
           const unsubOrg = onSnapshot(orgDocRef, async (orgDoc) => {
@@ -221,7 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(userData);
 
             // Subscribe to branches and payment conditions after user and org are set
-            const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
+            const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '==', false));
             const unsubBranches = onSnapshot(branchesQuery, (branchSnap) => {
                 const userBranches = branchSnap.docs
                     .map(b => ({ id: b.id, ...b.data() } as Branch))
@@ -240,7 +196,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     setCurrentBranchState(null);
                     localStorage.removeItem('currentBranchId');
                 }
-                setLoading(false); // Set loading to false only after everything is loaded
+                setLoading(false);
             });
 
             const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
@@ -650,4 +606,3 @@ export const useAuth = () => {
   }
   return context;
 };
-

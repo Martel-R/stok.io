@@ -445,7 +445,7 @@ function BranchesSettings() {
 function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users: User[]; onSave: (data: Omit<Branch, 'id' | 'organizationId'>) => void; onDone: () => void }) {
     const { user: currentUser } = useAuth();
     const [formData, setFormData] = useState(
-        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], taxRate: 8 }
+        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], taxRate: 8, isDeleted: false }
     );
     const [open, setOpen] = useState(false);
 
@@ -543,7 +543,7 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
 
 function PaymentConditionForm({ condition, onSave, onDone }: { condition?: PaymentCondition, onSave: (data: Partial<PaymentCondition>) => void, onDone: () => void }) {
     const [formData, setFormData] = useState(
-        condition || { name: '', type: 'credit', fee: 0, feeType: 'percentage', maxInstallments: 12 }
+        condition || { name: '', type: 'credit', fee: 0, feeType: 'percentage', maxInstallments: 12, isDeleted: false }
     );
     
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {

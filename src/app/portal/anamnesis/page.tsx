@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -33,8 +34,8 @@ export default function AnamnesisPage() {
 
         const fetchAllData = async () => {
             // Fetch questions
-            const q = query(collection(db, 'anamnesisQuestions'), where('organizationId', '==', user.organizationId));
-            const questionSnap = await getDoc(q);
+            const q = query(collection(db, 'anamnesisQuestions'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
+            const questionSnap = await getDocs(q);
             const questionData = questionSnap.docs.map(d => ({ id: d.id, ...d.data() } as AnamnesisQuestion))
                 .sort((a,b) => (a.order || 0) - (b.order || 0));
             setQuestions(questionData);

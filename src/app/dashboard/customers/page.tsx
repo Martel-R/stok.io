@@ -236,7 +236,7 @@ export default function CustomersPage() {
             return;
         }
 
-        const customersQuery = query(collection(db, 'customers'), where("organizationId", "==", user.organizationId));
+        const customersQuery = query(collection(db, 'customers'), where("organizationId", "==", user.organizationId), where("isDeleted", "==", false));
         const customersUnsub = onSnapshot(customersQuery, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
             setCustomers(data.sort((a,b) => a.name.localeCompare(b.name)));
@@ -264,9 +264,8 @@ export default function CustomersPage() {
     }, [user, toast]);
 
     const filteredCustomers = useMemo(() => {
-        const activeCustomers = customers.filter(c => !c.isDeleted);
-        if (!searchQuery) return activeCustomers;
-        return activeCustomers.filter(c => 
+        if (!searchQuery) return customers;
+        return customers.filter(c => 
             c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             (c.email && c.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
             c.cpfCnpj.includes(searchQuery)
@@ -283,7 +282,7 @@ export default function CustomersPage() {
         
         try {
             if (isEditing) {
-                await updateDoc(doc(db, "customers", editingCustomer.id), data);
+                await updateDoc(doc(db, "customers", editingCustomer.id!), { ...data, isDeleted: false });
                 toast({ title: 'Cliente atualizado com sucesso!' });
                 logUserActivity({
                     userId: user.id,
@@ -306,11 +305,11 @@ export default function CustomersPage() {
                         toast({ title: "Erro ao criar conta de acesso", description: error, variant: "destructive" });
                         return;
                     }
-                    batch.set(customerRef, { ...data, organizationId: user.organizationId, userId: userId });
+                    batch.set(customerRef, { ...data, organizationId: user.organizationId, userId: userId, isDeleted: false });
                     toast({ title: 'Cliente adicionado!', description: 'Uma conta de acesso foi criada com uma senha temporária.' });
                 } else {
                     const existingUser = userSnapshot.docs[0];
-                    batch.set(customerRef, { ...data, organizationId: user.organizationId, userId: existingUser.id });
+                    batch.set(customerRef, { ...data, organizationId: user.organizationId, userId: existingUser.id, isDeleted: false });
                     batch.update(existingUser.ref, { customerId: customerRef.id });
                     toast({ title: 'Cliente adicionado!', description: 'Conta de acesso existente foi vinculada.' });
                 }
@@ -472,3 +471,4 @@ export default function CustomersPage() {
         </div>
     );
 }
+

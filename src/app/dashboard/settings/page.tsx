@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -441,7 +442,7 @@ function BranchesSettings() {
     );
 }
 
-function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users: User[]; onSave: (data: Omit<Branch, 'id' | 'organizationId'>) => void; onDone: () => void }) {
+function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users: User[]; onSave: (data: Omit<Branch, 'id' | 'organizationId' | 'isDeleted'>) => void; onDone: () => void }) {
     const { user: currentUser } = useAuth();
     const [formData, setFormData] = useState(
         branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], taxRate: 8 }
@@ -464,7 +465,7 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData as Omit<Branch, 'id' | 'organizationId'>);
+        onSave(formData as Omit<Branch, 'id' | 'organizationId' | 'isDeleted'>);
         onDone();
     };
 
@@ -542,7 +543,7 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
 
 function PaymentConditionForm({ condition, onSave, onDone }: { condition?: PaymentCondition, onSave: (data: Partial<PaymentCondition>) => void, onDone: () => void }) {
     const [formData, setFormData] = useState(
-        condition || { name: '', type: 'credit', fee: 0, feeType: 'percentage', maxInstallments: 12 }
+        condition || { name: '', type: 'credit', fee: 0, feeType: 'percentage', maxInstallments: 12, isDeleted: false }
     );
     
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -634,10 +635,10 @@ function PaymentConditions() {
 
     useEffect(() => {
         if (!user?.organizationId) return;
-        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
+        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId), where('isDeleted', '==', false));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition));
-            setConditions(data.filter(c => !c.isDeleted));
+            setConditions(data);
             setLoading(false);
         });
         return () => unsubscribe();

@@ -238,13 +238,13 @@ export default function ServicesPage() {
             return;
         }
 
-        const servicesQuery = query(collection(db, 'services'), where("organizationId", "==", user.organizationId), where("isDeleted", "!=", true));
+        const servicesQuery = query(collection(db, 'services'), where("organizationId", "==", user.organizationId), where("isDeleted", "==", false));
         const servicesUnsub = onSnapshot(servicesQuery, (snapshot) => {
             setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Service)));
             setLoading(false);
         });
 
-        const productsQuery = query(collection(db, 'products'), where("branchId", "==", currentBranch.id));
+        const productsQuery = query(collection(db, 'products'), where("branchId", "==", currentBranch.id), where("isDeleted", "==", false));
         const productsUnsub = onSnapshot(productsQuery, (snapshot) => {
             setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
         });
@@ -291,7 +291,7 @@ export default function ServicesPage() {
 
         try {
             if (isEditing) {
-                await updateDoc(doc(db, "services", editingService.id!), data);
+                await updateDoc(doc(db, "services", editingService.id!), { ...data, isDeleted: false });
                 toast({ title: 'Serviço atualizado com sucesso!' });
             } else {
                 await addDoc(collection(db, "services"), { ...data, organizationId: user.organizationId, isDeleted: false });
@@ -314,7 +314,7 @@ export default function ServicesPage() {
     const handleDelete = async (service: Service) => {
         if (!user || !currentBranch) return;
         try {
-            await deleteDoc(doc(db, "services", service.id));
+            await updateDoc(doc(db, "services", service.id), { isDeleted: true });
             toast({ title: 'Serviço excluído com sucesso!', variant: 'destructive' });
             logUserActivity({
                 userId: user.id,

@@ -86,49 +86,6 @@ const professionalPermissions: EnabledModules = {
     subscription: { view: false, edit: false, delete: false },
 };
 
-const runDataIntegrityCheck = async (organizationId: string) => {
-    if (sessionStorage.getItem(`integrityCheck_${organizationId}`)) {
-      return;
-    }
-  
-    console.log("Running data integrity check for organization:", organizationId);
-  
-    const collectionsToFix = [
-      'products', 'combos', 'kits', 'services', 'customers',
-      'anamnesisQuestions', 'suppliers', 'branches', 'expenses', 'appointments', 'permissionProfiles'
-    ];
-  
-    try {
-      const batch = writeBatch(db);
-      let updatesMade = 0;
-  
-      for (const collectionName of collectionsToFix) {
-        const q = query(collection(db, collectionName), where("organizationId", "==", organizationId));
-        const snapshot = await getDocs(q);
-        
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          if (data.isDeleted === undefined || data.isDeleted === null) {
-            batch.update(doc.ref, { isDeleted: false });
-            updatesMade++;
-          }
-        });
-      }
-  
-      if (updatesMade > 0) {
-        await batch.commit();
-        console.log(`Data integrity check complete. Updated ${updatesMade} records.`);
-      } else {
-        console.log("Data integrity check complete. No records needed updating.");
-      }
-      
-      sessionStorage.setItem(`integrityCheck_${organizationId}`, 'true');
-  
-    } catch (error) {
-      console.error("Error during data integrity check:", error);
-    }
-};
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<UserWithOrg | null>(null);
   const [organizations, setOrganizations] = React.useState<Organization[]>([]);
@@ -177,8 +134,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (effectiveOrgId) {
-            await runDataIntegrityCheck(effectiveOrgId);
-
             const unsubOrg = onSnapshot(doc(db, 'organizations', effectiveOrgId), async (orgDoc) => {
                 if (!orgDoc.exists()) {
                     setUser(null); setLoading(false); return;
@@ -213,10 +168,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 userData = { ...userData, organization: orgData, enabledModules: finalPermissions as EnabledModules, paymentStatus: orgData.paymentStatus };
                 setUser(userData);
 
-                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
-                const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
+                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '==', false));
+                const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '==', false));
 
-                // Await both branches and payment conditions before setting loading to false
                 const [branchSnap, conditionsSnap] = await Promise.all([
                     getDocs(branchesQuery),
                     getDocs(conditionsQuery)
@@ -240,14 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
                 
                 setPaymentConditions(conditionsSnap.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition));
-
-                // Now set loading to false after all essential data is fetched
                 setLoading(false);
-
-                // Set up listeners for real-time updates
-                const unsubBranches = onSnapshot(branchesQuery, (snap) => setBranches(snap.docs.map(b => ({id: b.id, ...b.data()} as Branch)).filter(b => !b.isDeleted)));
-                const unsubConditions = onSnapshot(conditionsQuery, (snap) => setPaymentConditions(snap.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition)));
-                unsubscribers.push(unsubBranches, unsubConditions);
             });
             unsubscribers.push(unsubOrg);
         } else {
@@ -563,7 +510,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { success: true };
     } catch (error: any) {
       console.error("Password Reset Error:", error);
-      let message = "Ocorreu um erro.";
+      let message = "Ocorreu um erro desconhecido.";
       if (error.code === 'auth/user-not-found') {
           message = "Nenhum usuário encontrado com este e-mail.";
       }

@@ -86,6 +86,49 @@ const professionalPermissions: EnabledModules = {
     subscription: { view: false, edit: false, delete: false },
 };
 
+const runDataIntegrityCheck = async (organizationId: string) => {
+    if (sessionStorage.getItem(`integrityCheck_${organizationId}`)) {
+      return;
+    }
+  
+    console.log("Running data integrity check for organization:", organizationId);
+  
+    const collectionsToFix = [
+      'products', 'combos', 'kits', 'services', 'customers',
+      'anamnesisQuestions', 'suppliers', 'branches', 'expenses', 'appointments', 'permissionProfiles'
+    ];
+  
+    try {
+      const batch = writeBatch(db);
+      let updatesMade = 0;
+  
+      for (const collectionName of collectionsToFix) {
+        const q = query(collection(db, collectionName), where("organizationId", "==", organizationId));
+        const snapshot = await getDocs(q);
+        
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          if (data.isDeleted === undefined || data.isDeleted === null) {
+            batch.update(doc.ref, { isDeleted: false });
+            updatesMade++;
+          }
+        });
+      }
+  
+      if (updatesMade > 0) {
+        await batch.commit();
+        console.log(`Data integrity check complete. Updated ${updatesMade} records.`);
+      } else {
+        console.log("Data integrity check complete. No records needed updating.");
+      }
+      
+      sessionStorage.setItem(`integrityCheck_${organizationId}`, 'true');
+  
+    } catch (error) {
+      console.error("Error during data integrity check:", error);
+    }
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<UserWithOrg | null>(null);
   const [organizations, setOrganizations] = React.useState<Organization[]>([]);
@@ -101,15 +144,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let unsubscribers: Unsubscribe[] = [];
 
     const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      // Cleanup previous listeners
       unsubscribers.forEach(unsub => unsub());
       unsubscribers = [];
       setLoading(true);
 
       if (firebaseUser) {
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
-
+        const userDocSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
         if (!userDocSnap.exists()) {
           setUser(null); setLoading(false); return;
         }
@@ -124,8 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         let userData: UserWithOrg = { ...baseUser, isImpersonating };
 
         if (isSuperAdmin && !isImpersonating) {
-            // Super Admin listing all organizations
-            const unsubOrgs = onSnapshot(collection(db, 'organizations'), (snapshot) => {
+            const unsub = onSnapshot(collection(db, 'organizations'), (snapshot) => {
                 setOrganizations(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Organization)));
                 setUser({ ...userData, enabledModules: defaultPermissions });
                 setBranches([]);
@@ -133,55 +172,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setCurrentBranchState(null);
                 setLoading(false);
             });
-            unsubscribers.push(unsubOrgs);
+            unsubscribers.push(unsub);
             return;
         }
 
         if (effectiveOrgId) {
-          // Organization-specific logic
-          const orgDocRef = doc(db, 'organizations', effectiveOrgId);
-          const unsubOrg = onSnapshot(orgDocRef, async (orgDoc) => {
-            if (!orgDoc.exists()) {
-              setUser(null); setLoading(false); return;
-            }
-            const orgData = { id: orgDoc.id, ...orgDoc.data() } as Organization;
-            userData.organization = orgData;
-            userData.paymentStatus = orgData.paymentStatus;
+            await runDataIntegrityCheck(effectiveOrgId);
 
-            // Fetch profiles to calculate permissions
-            const profilesSnap = await getDocs(query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId)));
-            const profiles = profilesSnap.docs.map(p => ({ id: p.id, ...p.data() } as PermissionProfile));
-            
-            const orgModules = orgData.enabledModules || {};
-            let finalPermissions: Partial<EnabledModules> = {};
+            const unsubOrg = onSnapshot(doc(db, 'organizations', effectiveOrgId), async (orgDoc) => {
+                if (!orgDoc.exists()) {
+                    setUser(null); setLoading(false); return;
+                }
+                
+                const orgData = { id: orgDoc.id, ...orgDoc.data() } as Organization;
+                const profilesSnap = await getDocs(query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId)));
+                const profiles = profilesSnap.docs.map(p => ({ id: p.id, ...p.data() } as PermissionProfile));
+                
+                const orgModules = orgData.enabledModules || {};
+                let finalPermissions: Partial<EnabledModules> = {};
 
-            if (isImpersonating || baseUser.role === 'admin') {
-                Object.keys(orgModules).forEach(key => {
-                    const moduleKey = key as keyof EnabledModules;
-                    if (orgModules[moduleKey]) {
-                        finalPermissions[moduleKey] = { view: true, edit: true, delete: true };
-                    }
-                });
-            } else {
-                const userProfile = profiles.find(p => p.id === baseUser.role);
-                if (userProfile?.permissions) {
+                if (isImpersonating || baseUser.role === 'admin') {
                     Object.keys(orgModules).forEach(key => {
                         const moduleKey = key as keyof EnabledModules;
                         if (orgModules[moduleKey]) {
-                            finalPermissions[moduleKey] = userProfile.permissions[moduleKey] || { view: false, edit: false, delete: false };
+                            finalPermissions[moduleKey] = { view: true, edit: true, delete: true };
                         }
                     });
+                } else {
+                    const userProfile = profiles.find(p => p.id === baseUser.role);
+                    if (userProfile?.permissions) {
+                        Object.keys(orgModules).forEach(key => {
+                            const moduleKey = key as keyof EnabledModules;
+                            if (orgModules[moduleKey]) {
+                                finalPermissions[moduleKey] = userProfile.permissions[moduleKey] || { view: false, edit: false, delete: false };
+                            }
+                        });
+                    }
                 }
-            }
-            userData.enabledModules = finalPermissions as EnabledModules;
-            setUser(userData);
+                
+                userData = { ...userData, organization: orgData, enabledModules: finalPermissions as EnabledModules, paymentStatus: orgData.paymentStatus };
+                setUser(userData);
 
-            // Subscribe to branches and payment conditions after user and org are set
-            const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '==', false));
-            const unsubBranches = onSnapshot(branchesQuery, (branchSnap) => {
-                const userBranches = branchSnap.docs
-                    .map(b => ({ id: b.id, ...b.data() } as Branch))
-                    .filter(b => isImpersonating || baseUser.role === 'admin' || b.userIds.includes(baseUser.id));
+                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '==', false));
+                const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '==', false));
+
+                // Await both branches and payment conditions before setting loading to false
+                const [branchSnap, conditionsSnap] = await Promise.all([
+                    getDocs(branchesQuery),
+                    getDocs(conditionsQuery)
+                ]);
+
+                const allOrgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
+                const userBranches = isImpersonating || baseUser.role === 'admin' ? allOrgBranches : allOrgBranches.filter(b => b.userIds.includes(baseUser.id));
                 setBranches(userBranches);
                 
                 const storedBranchId = localStorage.getItem('currentBranchId');
@@ -196,30 +238,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     setCurrentBranchState(null);
                     localStorage.removeItem('currentBranchId');
                 }
+                
+                setPaymentConditions(conditionsSnap.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition));
+
+                // Now set loading to false after all essential data is fetched
                 setLoading(false);
-            });
 
-            const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
-            const unsubConditions = onSnapshot(conditionsQuery, (snapshot) => {
-                setPaymentConditions(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition));
+                // Set up listeners for real-time updates
+                const unsubBranches = onSnapshot(branchesQuery, (snap) => setBranches(snap.docs.map(b => ({id: b.id, ...b.data()} as Branch)).filter(b => !b.isDeleted)));
+                const unsubConditions = onSnapshot(conditionsQuery, (snap) => setPaymentConditions(snap.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition)));
+                unsubscribers.push(unsubBranches, unsubConditions);
             });
-
-            unsubscribers.push(unsubBranches, unsubConditions);
-          });
-          unsubscribers.push(unsubOrg);
+            unsubscribers.push(unsubOrg);
         } else {
-          // User exists but has no organization
-          setUser(null);
-          setLoading(false);
+            setUser(null); setLoading(false);
         }
       } else {
-        // No Firebase user
-        setUser(null);
-        setOrganizations([]);
-        setBranches([]);
-        setPaymentConditions([]);
-        setCurrentBranchState(null);
-        setLoading(false);
+        setUser(null); setOrganizations([]); setBranches([]); setPaymentConditions([]); setCurrentBranchState(null); setLoading(false);
       }
     });
 

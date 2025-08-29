@@ -49,7 +49,12 @@ export default function NfeProcessingPage() {
                 router.push('/dashboard/inventory');
                 return;
             }
-            const parsedData: NfeData = JSON.parse(data);
+            const parsedData: NfeData = JSON.parse(data, (key, value) => {
+                if (key === 'issueDate' || key === 'expirationDate') {
+                    return new Date(value);
+                }
+                return value;
+            });
             setNfeData(parsedData);
 
             const initialProcessed = parsedData.products.map(p => ({
@@ -345,5 +350,3 @@ function ProductMappingCell({ product, stokioProducts, onUpdateStatus }: { produ
         </div>
     );
 }
-
-    

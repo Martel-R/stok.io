@@ -19,11 +19,12 @@ import { ArrowLeft, Check, ChevronsUpDown, Loader2, Save, Link as LinkIcon, Plus
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-import { NfeData } from '@/components/nfe-import-dialog'; // Assuming NfeData is exported
+import { NfeData } from '@/components/nfe-import-dialog';
+import { Badge } from '@/components/ui/badge';
 
 type ProcessingStatus = 'unmapped' | 'mapped' | 'new' | 'ignored';
 
-interface ProcessedNfeProduct extends NfeData['products'][0] {
+interface ProcessedNfeProduct extends NfeData['products'][number] {
     processingStatus: ProcessingStatus;
     stokioProductId?: string;
     finalQuantity: number;
@@ -48,7 +49,12 @@ export default function NfeProcessingPage() {
                 router.push('/dashboard/inventory');
                 return;
             }
-            const parsedData: NfeData = JSON.parse(data);
+            const parsedData: NfeData = JSON.parse(data, (key, value) => {
+                if (key === 'issueDate' || key === 'expirationDate') {
+                    return new Date(value);
+                }
+                return value;
+            });
             setNfeData(parsedData);
 
             const initialProcessed = parsedData.products.map(p => ({
@@ -344,4 +350,3 @@ function ProductMappingCell({ product, stokioProducts, onUpdateStatus }: { produ
         </div>
     );
 }
-

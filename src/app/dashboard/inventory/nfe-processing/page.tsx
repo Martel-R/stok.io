@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { db } from '@/lib/firebase';
-import { collection, writeBatch, doc, getDocs, query, where, addDoc } from 'firebase/firestore';
+import { collection, writeBatch, doc, getDocs, query, where, addDoc, onSnapshot } from 'firebase/firestore';
 import type { Product, StockEntry, Supplier } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
@@ -50,7 +50,7 @@ export default function NfeProcessingPage() {
                 return;
             }
             const parsedData: NfeData = JSON.parse(data, (key, value) => {
-                if (key === 'issueDate' || key === 'expirationDate') {
+                if ((key === 'issueDate' || key === 'expirationDate') && value) {
                     return new Date(value);
                 }
                 return value;
@@ -350,3 +350,4 @@ function ProductMappingCell({ product, stokioProducts, onUpdateStatus }: { produ
         </div>
     );
 }
+

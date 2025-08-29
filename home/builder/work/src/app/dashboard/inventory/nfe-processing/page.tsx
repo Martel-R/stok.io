@@ -394,3 +394,4 @@ function ProductMappingCell({ product, stokioProducts, onUpdateStatus }: { produ
         </div>
     );
 }
+

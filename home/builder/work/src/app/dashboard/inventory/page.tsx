@@ -65,7 +65,6 @@ export default function InventoryPage() {
 
     const canManageStock = useMemo(() => user?.enabledModules?.inventory?.edit ?? false, [user]);
 
-
     useEffect(() => {
         if (authLoading || !currentBranch) {
             setLoading(true);
@@ -78,12 +77,12 @@ export default function InventoryPage() {
         const unsubscribeEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
             const entriesData = entriesSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, date: convertDate(doc.data().date) } as StockEntry));
             setAllStockEntries(entriesData);
-            setLoading(false);
         });
 
         const unsubscribeProducts = onSnapshot(productsQuery, (productsSnapshot) => {
             const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
             setProducts(productsData);
+            setLoading(false);
         });
 
         return () => {
@@ -531,3 +530,4 @@ export default function InventoryPage() {
 }
 
     
+

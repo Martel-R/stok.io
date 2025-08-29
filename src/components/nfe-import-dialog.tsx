@@ -16,6 +16,7 @@ export interface NfeProduct {
     name: string;
     quantity: number;
     unitPrice: number;
+    totalPrice: number;
     ncm: string;
     cfop: string;
     unitOfMeasure: string;
@@ -85,6 +86,7 @@ export function NfeImportDialog() {
                     name: getTagValue(prod, 'xProd'),
                     quantity: parseFloat(getTagValue(prod, 'qCom')),
                     unitPrice: parseFloat(getTagValue(prod, 'vUnCom')),
+                    totalPrice: parseFloat(getTagValue(prod, 'vProd')),
                     ncm: getTagValue(prod, 'NCM'),
                     cfop: getTagValue(prod, 'CFOP'),
                     unitOfMeasure: getTagValue(prod, 'uCom'),

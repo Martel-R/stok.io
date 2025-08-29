@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
@@ -306,10 +307,10 @@ export default function CombosPage() {
     }
     
     const combosRef = collection(db, 'combos');
-    const qCombos = query(combosRef, where("branchId", "==", currentBranch.id), where("isDeleted", "==", false));
+    const qCombos = query(combosRef, where("branchId", "==", currentBranch.id), where("isDeleted", "!=", true));
 
     const productsRef = collection(db, 'products');
-    const qProducts = query(productsRef, where("branchId", "==", currentBranch.id), where("isDeleted", "==", false));
+    const qProducts = query(productsRef, where("branchId", "==", currentBranch.id));
     
     const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId));
 
@@ -354,7 +355,8 @@ export default function CombosPage() {
         await addDoc(collection(db, "combos"), { 
             ...comboData, 
             branchId: currentBranch.id,
-            organizationId: user.organizationId
+            organizationId: user.organizationId,
+            isDeleted: false,
         });
         toast({ title: 'Combo adicionado com sucesso!' });
       }
@@ -520,3 +522,4 @@ export default function CombosPage() {
   );
 }
     
+

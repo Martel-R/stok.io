@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -1004,10 +1005,10 @@ export default function ProductsPage() {
             </TableHead>}
             <TableHead className="w-[80px]">Imagem</TableHead>
             <TableHead>Nome</TableHead>
-            <TableHead>Marca</TableHead>
-            <TableHead>Modelo</TableHead>
-            <TableHead>NCM</TableHead>
-            <TableHead>Un.</TableHead>
+            <TableHead>Categoria</TableHead>
+            <TableHead>Comerciável</TableHead>
+            <TableHead className="text-right">Preço de Compra</TableHead>
+            <TableHead className="text-right">Margem</TableHead>
             <TableHead className="text-right">Preço de Venda</TableHead>
             <TableHead className="text-right">Estoque</TableHead>
             <TableHead className="text-center">Ações</TableHead>
@@ -1022,8 +1023,8 @@ export default function ProductsPage() {
                     <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                    <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                    <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-center"><Skeleton className="h-8 w-8 mx-auto rounded-full" /></TableCell>
@@ -1043,10 +1044,14 @@ export default function ProductsPage() {
                    <Image src={product.imageUrl} alt={product.name} width={40} height={40} className="rounded-md object-cover aspect-square" data-ai-hint="product image" />
                 </TableCell>
                 <TableCell className="font-medium">{product.name}</TableCell>
-                <TableCell>{product.brand || '-'}</TableCell>
-                <TableCell>{product.model || '-'}</TableCell>
-                <TableCell>{product.ncm || '-'}</TableCell>
-                <TableCell>{product.unitOfMeasure || '-'}</TableCell>
+                <TableCell>{product.category}</TableCell>
+                <TableCell>
+                    <Badge variant={product.isSalable ? "secondary" : "outline"}>
+                        {product.isSalable ? "Sim" : "Não"}
+                    </Badge>
+                </TableCell>
+                <TableCell className="text-right">{(product.purchasePrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
+                <TableCell className="text-right">{getMarginDisplay(product)}</TableCell>
                 <TableCell className="text-right font-semibold">{(product.price || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
                 <TableCell className="text-right">{product.stock}</TableCell>
                 <TableCell className="text-center">

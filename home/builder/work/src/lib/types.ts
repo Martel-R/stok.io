@@ -23,6 +23,8 @@ export interface EnabledModules {
     appointments: ModulePermissions;
     services: ModulePermissions;
     expenses: ModulePermissions;
+    backup: ModulePermissions;
+    subscription: ModulePermissions;
 }
 
 export interface PermissionProfile {
@@ -67,6 +69,7 @@ export interface User {
   customerId?: string; // Link to customer profile if role is 'customer'
   availability?: Availability;
   isImpersonating?: boolean;
+  isDeleted?: boolean;
 }
 
 export type AnamnesisQuestionType = 'text' | 'boolean' | 'boolean_with_text' | 'integer' | 'decimal';
@@ -174,6 +177,8 @@ export interface Attendance {
 export interface Supplier {
     id: string;
     name: string;
+    cnpj?: string;
+    ie?: string;
     contactName?: string;
     phone?: string;
     email?: string;
@@ -200,6 +205,12 @@ export interface Product {
   supplierId?: string;
   supplierName?: string;
   code?: string;
+  brand?: string;
+  model?: string;
+  isPerishable?: boolean;
+  ncm?: string;
+  cfop?: string;
+  unitOfMeasure?: string;
   isDeleted?: boolean;
 }
 
@@ -267,6 +278,7 @@ export interface StockEntry {
     branchId: string;
     organizationId: string;
     notes?: string;
+    expirationDate?: any; // Timestamp
     // For transfers
     relatedBranchId?: string;
     relatedBranchName?: string;
@@ -364,6 +376,7 @@ export interface Expense {
     notes?: string;
     supplierId?: string;
     supplierName?: string;
+    nfeNumber?: string;
     userId: string;
     userName: string;
     isDeleted?: boolean;

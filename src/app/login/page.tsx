@@ -65,11 +65,15 @@ export default function LoginPage() {
 
   return (
     <div className="w-full h-screen lg:grid lg:grid-cols-2">
-      <div className="relative hidden h-full flex-col bg-muted p-10 text-white dark:border-r lg:flex">
-        <div className={cn(
-          "absolute inset-0 bg-gradient-to-br from-primary via-primary/70 to-secondary",
-          "animate-animated-gradient bg-[length:200%_200%]"
-        )} />
+       <div className="relative hidden h-full flex-col bg-muted p-10 text-white dark:border-r lg:flex">
+         <Image
+          src="https://picsum.photos/1920/1080"
+          alt="Banner de login com imagem de um depósito moderno"
+          fill
+          className="object-cover"
+          data-ai-hint="warehouse background"
+        />
+        <div className="absolute inset-0 bg-primary/60" />
         <div className="relative z-20 flex flex-col items-center justify-center h-full">
             <div className="flex items-center text-lg font-medium">
                 <Icons.logo className="mr-2 h-12 w-12" />

@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Icons } from '@/components/ui/icons';
+import { Icons } from '@/components/icons';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -124,10 +124,14 @@ export default function SignupPage() {
         </div>
       </div>
       <div className="relative hidden h-full flex-col bg-muted p-10 text-white dark:border-r lg:flex">
-         <div className={cn(
-          "absolute inset-0 bg-gradient-to-br from-primary via-primary/70 to-secondary",
-          "animate-animated-gradient bg-[length:200%_200%]"
-        )} />
+         <Image
+          src="https://picsum.photos/1920/1080"
+          alt="Banner de cadastro com imagem de um depósito moderno"
+          fill
+          className="object-cover"
+          data-ai-hint="warehouse background"
+        />
+        <div className="absolute inset-0 bg-primary/60" />
         <div className="relative z-20 flex flex-col items-center justify-center h-full">
             <div className="flex items-center text-lg font-medium">
                 <Icons.logo className="mr-2 h-12 w-12" />

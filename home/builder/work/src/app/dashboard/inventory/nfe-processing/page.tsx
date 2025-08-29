@@ -1,3 +1,4 @@
+
 // src/app/dashboard/inventory/nfe-processing/page.tsx
 'use client';
 
@@ -276,6 +277,9 @@ export default function NfeProcessingPage() {
                                 <TableRow key={index}>
                                     <TableCell>
                                         <p className="font-medium">{p.name}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            Valor na Nota: R$ {p.totalPrice.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                                        </p>
                                         <p className="text-xs text-muted-foreground flex items-center gap-1">
                                             <Barcode className="h-3 w-3" /> {p.code} | NCM: {p.ncm}
                                         </p>

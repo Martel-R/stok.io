@@ -146,7 +146,7 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
     product || { 
         name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
         purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: '',
-        brand: '', model: '', isPerishable: false,
+        brand: '', model: '', isPerishable: false, ncm: '', cfop: '', unitOfMeasure: '',
     }
   );
   const [isUploading, setIsUploading] = useState(false);
@@ -161,7 +161,7 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
         setFormData(product || { 
             name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
             purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: '',
-            brand: '', model: '', isPerishable: false,
+            brand: '', model: '', isPerishable: false, ncm: '', cfop: '', unitOfMeasure: '',
         });
     }, [product]);
 
@@ -361,6 +361,24 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
                 </SelectContent>
             </Select>
         </div>
+
+        <Card>
+            <CardHeader><CardTitle>Dados Fiscais</CardTitle></CardHeader>
+            <CardContent className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label htmlFor="ncm">NCM</Label>
+                    <Input id="ncm" name="ncm" value={formData.ncm || ''} onChange={handleChange} />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="cfop">CFOP</Label>
+                    <Input id="cfop" name="cfop" value={formData.cfop || ''} onChange={handleChange} />
+                </div>
+                 <div className="space-y-2">
+                    <Label htmlFor="unitOfMeasure">Unidade de Medida</Label>
+                    <Input id="unitOfMeasure" name="unitOfMeasure" value={formData.unitOfMeasure || ''} onChange={handleChange} placeholder="Ex: UN, CX, KG" />
+                </div>
+            </CardContent>
+        </Card>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -989,9 +1007,8 @@ export default function ProductsPage() {
             <TableHead>Nome</TableHead>
             <TableHead>Marca</TableHead>
             <TableHead>Modelo</TableHead>
-            <TableHead>Categoria</TableHead>
-            <TableHead>Comerciável</TableHead>
-            <TableHead className="text-right">Preço de Compra</TableHead>
+            <TableHead>NCM</TableHead>
+            <TableHead>Un.</TableHead>
             <TableHead className="text-right">Preço de Venda</TableHead>
             <TableHead className="text-right">Estoque</TableHead>
             <TableHead className="text-center">Ações</TableHead>
@@ -1007,8 +1024,7 @@ export default function ProductsPage() {
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                    <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                    <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-center"><Skeleton className="h-8 w-8 mx-auto rounded-full" /></TableCell>
@@ -1030,13 +1046,8 @@ export default function ProductsPage() {
                 <TableCell className="font-medium">{product.name}</TableCell>
                 <TableCell>{product.brand || '-'}</TableCell>
                 <TableCell>{product.model || '-'}</TableCell>
-                <TableCell>{product.category}</TableCell>
-                <TableCell>
-                    <Badge variant={product.isSalable ? "secondary" : "outline"}>
-                        {product.isSalable ? "Sim" : "Não"}
-                    </Badge>
-                </TableCell>
-                <TableCell className="text-right">{(product.purchasePrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
+                <TableCell>{product.ncm || '-'}</TableCell>
+                <TableCell>{product.unitOfMeasure || '-'}</TableCell>
                 <TableCell className="text-right font-semibold">{(product.price || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
                 <TableCell className="text-right">{product.stock}</TableCell>
                 <TableCell className="text-center">
@@ -1061,7 +1072,7 @@ export default function ProductsPage() {
             ))
           ) : (
              <TableRow>
-                <TableCell colSpan={can.edit ? 11 : 10} className="h-24 text-center">
+                <TableCell colSpan={can.edit ? 10 : 9} className="h-24 text-center">
                     Nenhum produto encontrado. Adicione produtos para começar.
                 </TableCell>
             </TableRow>
@@ -1197,5 +1208,6 @@ export default function ProductsPage() {
     </div>
   );
 }
+
 
 

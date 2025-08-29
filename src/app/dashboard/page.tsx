@@ -1,5 +1,4 @@
 
-
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/auth';
@@ -85,6 +84,17 @@ export default function DashboardPage() {
     const totalRevenue = filteredSales.reduce((acc, sale) => acc + sale.total, 0);
     const totalSalesCount = filteredSales.length;
     const averageTicket = totalSalesCount > 0 ? totalRevenue / totalSalesCount : 0;
+    const totalProducts = allProducts.filter(p => !p.isDeleted).length;
+
+    const totalStock = useMemo(() => {
+        const salableProductIds = new Set(allProducts.filter(p => p.isSalable).map(p => p.id));
+        return allStockEntries
+            .filter(entry => salableProductIds.has(entry.productId))
+            .reduce((sum, entry) => {
+                const quantity = typeof entry.quantity === 'number' ? entry.quantity : 0;
+                return sum + quantity;
+            }, 0);
+    }, [allStockEntries, allProducts]);
 
     const expiringLotsCount = useMemo(() => {
         const perishableProductIds = new Set(allProducts.filter(p => p.isPerishable).map(p => p.id));
@@ -230,7 +240,7 @@ export default function DashboardPage() {
                 </Popover>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Receita Total</CardTitle>
@@ -258,17 +268,28 @@ export default function DashboardPage() {
                         <div className="text-2xl font-bold">R${averageTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                     </CardContent>
                 </Card>
-                 <Card className={cn(expiringLotsCount > 0 && "border-destructive text-destructive")}>
+                <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Lotes a Vencer</CardTitle>
-                        <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                        <CardTitle className="text-sm font-medium">Estoque Comerciável</CardTitle>
+                        <Package className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{expiringLotsCount}</div>
-                        <p className="text-xs text-muted-foreground">Vencidos ou nos próximos 15 dias.</p>
-                         <Link href="/dashboard/reports?tab=expiration" className="text-xs underline">Ver Relatório</Link>
+                        <div className="text-2xl font-bold">{totalStock.toLocaleString('pt-BR')}</div>
                     </CardContent>
                 </Card>
+                 {expiringLotsCount > 0 && (
+                    <Card className="border-destructive text-destructive">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Lotes a Vencer</CardTitle>
+                            <AlertTriangle className="h-4 w-4" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">{expiringLotsCount}</div>
+                            <p className="text-xs text-muted-foreground">Vencidos ou nos próximos 15 dias.</p>
+                            <Link href="/dashboard/reports?tab=expiration" className="text-xs underline text-destructive">Ver Relatório</Link>
+                        </CardContent>
+                    </Card>
+                )}
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">

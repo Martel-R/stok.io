@@ -1,4 +1,3 @@
-
 // src/app/dashboard/inventory/nfe-processing/page.tsx
 'use client';
 
@@ -6,7 +5,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { db } from '@/lib/firebase';
-import { collection, writeBatch, doc, getDocs, query, where, addDoc, onSnapshot } from 'firebase/firestore';
+import { collection, writeBatch, doc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
 import type { Product, StockEntry, Supplier } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
@@ -15,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Check, ChevronsUpDown, Loader2, Save, Link as LinkIcon, PlusCircle, Wand2 } from 'lucide-react';
+import { ArrowLeft, Check, ChevronsUpDown, Loader2, Save, Link as LinkIcon, PlusCircle, Wand2, Barcode } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
@@ -277,7 +276,9 @@ export default function NfeProcessingPage() {
                                 <TableRow key={index}>
                                     <TableCell>
                                         <p className="font-medium">{p.name}</p>
-                                        <p className="text-xs text-muted-foreground">Cód: {p.code} | NCM: {p.ncm}</p>
+                                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <Barcode className="h-3 w-3" /> {p.code} | NCM: {p.ncm}
+                                        </p>
                                     </TableCell>
                                      <TableCell>
                                         <Input 
@@ -389,4 +390,3 @@ function ProductMappingCell({ product, stokioProducts, onUpdateStatus }: { produ
         </div>
     );
 }
-

@@ -1,5 +1,4 @@
 
-
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -1208,6 +1207,3 @@ export default function ProductsPage() {
     </div>
   );
 }
-
-
-

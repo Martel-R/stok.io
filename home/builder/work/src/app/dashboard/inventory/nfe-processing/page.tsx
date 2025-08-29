@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { db } from '@/lib/firebase';
 import { collection, writeBatch, doc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
-import type { Product, StockEntry, Supplier, NfeProduct } from '@/lib/types';
+import type { Product, StockEntry, Supplier } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,7 @@ import { ArrowLeft, Check, ChevronsUpDown, Loader2, Save, Link as LinkIcon, Plus
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-import type { NfeData } from '@/components/nfe-import-dialog';
+import type { NfeData, NfeProduct } from '@/components/nfe-import-dialog';
 import { Badge } from '@/components/ui/badge';
 
 type ProcessingStatus = 'unmapped' | 'mapped' | 'new' | 'ignored';
@@ -60,9 +60,13 @@ export default function NfeProcessingPage() {
             setNfeData(parsedData);
 
             const initialProcessed: ProcessedNfeProduct[] = parsedData.products.map(p => {
-                 const purchasePricePerUnit = (p.totalPrice || 0) / (p.quantity || 1);
+                 const quantity = p.quantity || 1;
+                 const totalPrice = p.totalPrice || 0;
+                 const purchasePricePerUnit = totalPrice / quantity;
                  return {
                     ...p,
+                    totalPrice: totalPrice,
+                    quantity: quantity,
                     processingStatus: 'unmapped' as ProcessingStatus,
                     finalQuantity: p.quantity || 0,
                     finalPurchasePrice: purchasePricePerUnit,
@@ -306,7 +310,6 @@ export default function NfeProcessingPage() {
                                             value={p.finalPurchasePrice.toFixed(2)}
                                             onChange={(e) => updateProductValue(index, 'finalPurchasePrice', Number(e.target.value))}
                                             className="text-right"
-                                            disabled={p.processingStatus !== 'new'}
                                         />
                                     </TableCell>
                                      <TableCell>
@@ -316,7 +319,6 @@ export default function NfeProcessingPage() {
                                             value={p.finalSalePrice.toFixed(2)} 
                                             onChange={(e) => updateProductValue(index, 'finalSalePrice', Number(e.target.value))}
                                             className="text-right"
-                                            disabled={p.processingStatus !== 'new'}
                                         />
                                     </TableCell>
                                 </TableRow>

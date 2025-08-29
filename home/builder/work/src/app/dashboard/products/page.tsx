@@ -146,7 +146,7 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
     product || { 
         name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
         purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: '',
-        brand: '', model: '', isPerishable: false, ncm: '', cfop: '', unitOfMeasure: '',
+        brand: '', model: '', isPerishable: false,
     }
   );
   const [isUploading, setIsUploading] = useState(false);
@@ -161,7 +161,7 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
         setFormData(product || { 
             name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
             purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: '',
-            brand: '', model: '', isPerishable: false, ncm: '', cfop: '', unitOfMeasure: '',
+            brand: '', model: '', isPerishable: false,
         });
     }, [product]);
 
@@ -361,24 +361,6 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
                 </SelectContent>
             </Select>
         </div>
-
-        <Card>
-            <CardHeader><CardTitle>Dados Fiscais</CardTitle></CardHeader>
-            <CardContent className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <Label htmlFor="ncm">NCM</Label>
-                    <Input id="ncm" name="ncm" value={formData.ncm || ''} onChange={handleChange} />
-                </div>
-                <div className="space-y-2">
-                    <Label htmlFor="cfop">CFOP</Label>
-                    <Input id="cfop" name="cfop" value={formData.cfop || ''} onChange={handleChange} />
-                </div>
-                 <div className="space-y-2">
-                    <Label htmlFor="unitOfMeasure">Unidade de Medida</Label>
-                    <Input id="unitOfMeasure" name="unitOfMeasure" value={formData.unitOfMeasure || ''} onChange={handleChange} placeholder="Ex: UN, CX, KG" />
-                </div>
-            </CardContent>
-        </Card>
 
       <div className="grid grid-cols-2 gap-4">
         <div>

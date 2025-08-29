@@ -5,7 +5,7 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc, addDoc, serverTimestamp, arrayUnion, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { Organization, User, PaymentStatus, EnabledModules, PermissionProfile, Subscription, PaymentRecord, PaymentRecordStatus } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
@@ -24,13 +24,12 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { PermissionProfileForm } from '@/components/permission-profile-form';
 import { format, eachMonthOfInterval, startOfMonth } from 'date-fns';
-import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { DateRange } from 'react-day-picker';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { allModuleConfig } from '@/components/module-permission-row';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type OrgWithUser = Organization & { owner?: User };
 
@@ -547,23 +546,6 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
     )
 }
 
-function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: PermissionProfile[]; onSave: (user: Partial<User>) => void; onDone: () => void }) {
-    const [formData, setFormData] = useState<Partial<User>>(user || { name: '', email: '', role: profiles[0]?.id || '' });
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    const handleRoleChange = (roleId: string) => setFormData(prev => ({...prev, role: roleId}));
-    const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSave(formData as User); onDone(); };
-
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <Input name="name" value={formData.name || ''} onChange={handleChange} placeholder="Nome do usuário" required />
-            <Input name="email" type="email" value={formData.email || ''} onChange={handleChange} placeholder="Email" required disabled={!!user} />
-            <Select value={formData.role} onValueChange={handleRoleChange}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{profiles.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
-            <DialogFooter><Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button><Button type="submit">Salvar</Button></DialogFooter>
-        </form>
-    );
-}
-
 function OrgProfilesDialog({ organization, isOpen, onOpenChange }: { organization: OrgWithUser | null; isOpen: boolean; onOpenChange: (open: boolean) => void }) {
     const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
     const [loading, setLoading] = useState(true);
@@ -673,7 +655,7 @@ function SuperAdminPage() {
         if (user && user.email === process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
             const unsubscribeOrgs = onSnapshot(collection(db, 'organizations'), async (orgSnapshot) => {
                 const orgsData = orgSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Organization));
-                const usersSnapshot = await getDocs(collection(db, 'users'));
+                const usersSnapshot = await getDocs(query(collection(db, 'users')));
                 const usersData = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
 
                 const orgsWithUsers = orgsData.map(org => ({ ...org, owner: usersData.find(u => u.id === org.ownerId) }));
@@ -720,7 +702,7 @@ function SuperAdminPage() {
         if (type === 'subscription') setIsSubscriptionDialogOpen(true);
     };
 
-    if (authLoading || loading || !user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
+    if (authLoading || !user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
         return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
     }
 
@@ -740,7 +722,13 @@ function SuperAdminPage() {
                     <Table>
                         <TableHeader><TableRow><TableHead>Organização</TableHead><TableHead>Proprietário</TableHead><TableHead>Status Pag.</TableHead><TableHead>Próx. Venc.</TableHead><TableHead>Acessar</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {organizations.map((org) => (
+                            {loading ? (
+                                <TableRow>
+                                    <TableCell colSpan={6} className="h-24 text-center">
+                                        <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+                                    </TableCell>
+                                </TableRow>
+                            ) : organizations.map((org) => (
                                 <TableRow key={org.id}>
                                     <TableCell className="font-medium">{org.name}</TableCell>
                                     <TableCell>{org.owner?.name || 'N/A'}</TableCell>
@@ -802,3 +790,4 @@ function SuperAdminPage() {
 }
 
 export default SuperAdminPage;
+

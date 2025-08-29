@@ -59,7 +59,8 @@ export function ImportProductsDialog({
             'codigo_barras': 'barcode',
             'url_imagem': 'imageUrl',
             'codigo_interno': 'code',
-            'estoque_inicial': 'stock'
+            'estoque_inicial': 'stock',
+            'unidade_medida': 'unitOfMeasure'
         };
 
         const requiredHeaders = ['nome', 'categoria', 'preco_venda', 'preco_compra'];
@@ -88,6 +89,7 @@ export function ImportProductsDialog({
             const lowStockThreshold = parseInt(entry.lowStockThreshold, 10) || 10;
             const isSalable = entry.isSalable?.toLowerCase() !== 'false'; // Defaults to true
             const stock = parseInt(entry.stock, 10) || 0;
+            const unitOfMeasure = entry.unitOfMeasure || 'UN';
 
             if (name && category && price > 0) {
                  data.push({
@@ -98,6 +100,7 @@ export function ImportProductsDialog({
                     lowStockThreshold,
                     isSalable,
                     stock,
+                    unitOfMeasure,
                     barcode: entry.barcode || '',
                     imageUrl: entry.imageUrl || 'https://placehold.co/400x400.png',
                     code: entry.code || '',
@@ -110,8 +113,8 @@ export function ImportProductsDialog({
     };
     
     const downloadTemplate = () => {
-        const headers = "nome,categoria,preco_compra,preco_venda,alerta_estoque_baixo,comerciavel,codigo_barras,url_imagem,codigo_interno,estoque_inicial";
-        const example = "Laptop Gamer,Eletrônicos,6000.00,7500.50,5,TRUE,7890123456789,https://placehold.co/400x400.png,LP-GAMER-01,15\nSacola Plástica,Insumos,0.10,0.50,100,FALSE,,,,500";
+        const headers = "nome,categoria,preco_compra,preco_venda,alerta_estoque_baixo,comerciavel,codigo_barras,url_imagem,codigo_interno,estoque_inicial,unidade_medida";
+        const example = "Laptop Gamer,Eletrônicos,6000.00,7500.50,5,TRUE,7890123456789,https://placehold.co/400x400.png,LP-GAMER-01,15,UN\nSacola Plástica,Insumos,0.10,0.50,100,FALSE,,,,500,PCT";
         const csvContent = `data:text/csv;charset=utf-8,${headers}\n${example}`;
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
@@ -171,6 +174,7 @@ export function ImportProductsDialog({
                                     <TableRow>
                                         <TableHead>Nome</TableHead>
                                         <TableHead>Categoria</TableHead>
+                                        <TableHead className="text-right">Unidade</TableHead>
                                         <TableHead className="text-right">P. Compra</TableHead>
                                         <TableHead className="text-right">P. Venda</TableHead>
                                         <TableHead className="text-right">Estoque</TableHead>
@@ -182,6 +186,7 @@ export function ImportProductsDialog({
                                             <TableRow key={index}>
                                                 <TableCell className="font-medium">{product.name}</TableCell>
                                                 <TableCell>{product.category}</TableCell>
+                                                <TableCell className="text-right">{product.unitOfMeasure}</TableCell>
                                                 <TableCell className="text-right">R$ {product.purchasePrice.toFixed(2)}</TableCell>
                                                 <TableCell className="text-right">R$ {product.price.toFixed(2)}</TableCell>
                                                 <TableCell className="text-right">{product.stock}</TableCell>
@@ -189,7 +194,7 @@ export function ImportProductsDialog({
                                         ))
                                     ) : (
                                         <TableRow>
-                                            <TableCell colSpan={5} className="h-24 text-center">
+                                            <TableCell colSpan={6} className="h-24 text-center">
                                                 Aguardando arquivo...
                                             </TableCell>
                                         </TableRow>

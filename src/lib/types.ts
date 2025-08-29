@@ -202,6 +202,9 @@ export interface Product {
   supplierName?: string;
   code?: string;
   isDeleted?: boolean;
+  brand?: string;
+  model?: string;
+  isPerishable?: boolean;
 }
 
 export type PaymentConditionType = 'credit' | 'debit' | 'cash' | 'pix';
@@ -268,6 +271,7 @@ export interface StockEntry {
     branchId: string;
     organizationId: string;
     notes?: string;
+    expirationDate?: any; // Timestamp
     // For transfers
     relatedBranchId?: string;
     relatedBranchName?: string;

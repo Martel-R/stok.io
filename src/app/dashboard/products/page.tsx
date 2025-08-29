@@ -145,7 +145,8 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
   const [formData, setFormData] = useState<Partial<Product>>(
     product || { 
         name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
-        purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: ''
+        purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: '',
+        brand: '', model: '', isPerishable: false,
     }
   );
   const [isUploading, setIsUploading] = useState(false);
@@ -159,7 +160,8 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
     useEffect(() => {
         setFormData(product || { 
             name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
-            purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: ''
+            purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: '',
+            brand: '', model: '', isPerishable: false,
         });
     }, [product]);
 
@@ -306,6 +308,16 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
            </div>
         </div>
       </div>
+       <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="brand">Marca</Label>
+          <Input id="brand" name="brand" value={formData.brand || ''} onChange={handleChange} />
+        </div>
+        <div>
+          <Label htmlFor="model">Modelo</Label>
+          <Input id="model" name="model" value={formData.model || ''} onChange={handleChange} />
+        </div>
+      </div>
 
        <Card>
         <CardHeader><CardTitle>Precificação</CardTitle></CardHeader>
@@ -409,14 +421,26 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
           </div>
       )}
 
-      <div className="flex items-center space-x-2">
-        <Switch 
-          id="isSalable" 
-          checked={formData.isSalable} 
-          onCheckedChange={(checked) => setFormData(prev => ({...prev, isSalable: checked}))}
-        />
-        <Label htmlFor="isSalable">Produto Comerciável</Label>
-      </div>
+        <div className="flex items-center justify-between rounded-lg border p-3">
+             <div className="space-y-0.5">
+                <Label htmlFor="isPerishable">Produto Perecível</Label>
+                <p className="text-xs text-muted-foreground">Marque se o produto requer controle de validade.</p>
+            </div>
+            <Switch 
+                id="isPerishable" 
+                checked={formData.isPerishable} 
+                onCheckedChange={(checked) => setFormData(prev => ({...prev, isPerishable: checked}))}
+            />
+        </div>
+        <div className="flex items-center space-x-2">
+            <Switch 
+            id="isSalable" 
+            checked={formData.isSalable} 
+            onCheckedChange={(checked) => setFormData(prev => ({...prev, isSalable: checked}))}
+            />
+            <Label htmlFor="isSalable">Produto Comerciável</Label>
+        </div>
+
 
       <DialogFooter>
         <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
@@ -963,11 +987,11 @@ export default function ProductsPage() {
             </TableHead>}
             <TableHead className="w-[80px]">Imagem</TableHead>
             <TableHead>Nome</TableHead>
-            <TableHead>Fornecedor</TableHead>
+            <TableHead>Marca</TableHead>
+            <TableHead>Modelo</TableHead>
             <TableHead>Categoria</TableHead>
             <TableHead>Comerciável</TableHead>
             <TableHead className="text-right">Preço de Compra</TableHead>
-            <TableHead className="text-right">Margem</TableHead>
             <TableHead className="text-right">Preço de Venda</TableHead>
             <TableHead className="text-right">Estoque</TableHead>
             <TableHead className="text-center">Ações</TableHead>
@@ -979,11 +1003,11 @@ export default function ProductsPage() {
                 <TableRow key={i}>
                     {can.edit && <TableCell><Skeleton className="h-5 w-5"/></TableCell>}
                     <TableCell><Skeleton className="h-10 w-10 rounded-md" /></TableCell>
-                    <TableCell><Skeleton className="h-5 w-48" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                    <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
@@ -1004,7 +1028,8 @@ export default function ProductsPage() {
                    <Image src={product.imageUrl} alt={product.name} width={40} height={40} className="rounded-md object-cover aspect-square" data-ai-hint="product image" />
                 </TableCell>
                 <TableCell className="font-medium">{product.name}</TableCell>
-                <TableCell>{product.supplierName || '-'}</TableCell>
+                <TableCell>{product.brand || '-'}</TableCell>
+                <TableCell>{product.model || '-'}</TableCell>
                 <TableCell>{product.category}</TableCell>
                 <TableCell>
                     <Badge variant={product.isSalable ? "secondary" : "outline"}>
@@ -1012,7 +1037,6 @@ export default function ProductsPage() {
                     </Badge>
                 </TableCell>
                 <TableCell className="text-right">{(product.purchasePrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
-                <TableCell className="text-right">{getMarginDisplay(product)}</TableCell>
                 <TableCell className="text-right font-semibold">{(product.price || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
                 <TableCell className="text-right">{product.stock}</TableCell>
                 <TableCell className="text-center">

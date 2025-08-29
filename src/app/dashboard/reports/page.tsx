@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart, Book, Activity, Package, ArrowDownCircle } from 'lucide-react';
+import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart, Book, Activity, Package, ArrowDownCircle, PackageCheck } from 'lucide-react';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Sale, Branch, User, PaymentDetail, Product, StockEntry, PaymentCondition, Combo, Kit, Organization, Expense } from '@/lib/types';
@@ -19,7 +19,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Checkbox } from '@/components/ui/checkbox';
 import { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
-import { format, startOfDay, endOfDay } from 'date-fns';
+import { format, startOfDay, endOfDay, isBefore } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -320,7 +320,7 @@ function GeneralReport() {
                 <CardHeader>
                     <div className="flex flex-col md:flex-row justify-between gap-4 no-print">
                          <div className="flex flex-wrap gap-2">
-                            <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
+                            <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedIds} />
                             <DateRangePicker date={dateRange} onSelect={setDateRange} />
                         </div>
                          <div className="flex gap-2">
@@ -1434,6 +1434,125 @@ function ABCCurveReport() {
     );
 }
 
+function ExpirationReport() {
+    const { user } = useAuth();
+    const [loading, setLoading] = useState(true);
+    const [allProducts, setAllProducts] = useState<Product[]>([]);
+    const [allStockEntries, setAllStockEntries] = useState<StockEntry[]>([]);
+    const [branches, setBranches] = useState<Branch[]>([]);
+    const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
+    
+    useEffect(() => {
+        if (!user?.organizationId) return;
+
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const orgId = user.organizationId;
+                const productsQuery = query(collection(db, 'products'), where('organizationId', '==', orgId), where('isPerishable', '==', true));
+                const stockEntriesQuery = query(collection(db, 'stockEntries'), where('organizationId', '==', orgId));
+                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', orgId));
+
+                const [productsSnap, stockEntriesSnap, branchesSnap] = await Promise.all([
+                    getDocs(productsQuery),
+                    getDocs(stockEntriesQuery),
+                    getDocs(branchesQuery),
+                ]);
+
+                setAllProducts(productsSnap.docs.map(d => ({id: d.id, ...d.data()}) as Product));
+                setAllStockEntries(stockEntriesSnap.docs.map(d => ({...d.data(), date: (d.data().date as Timestamp).toDate()} as StockEntry)));
+                const branchesData = branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+                setBranches(branchesData);
+                setSelectedBranchIds(branchesData.map(b => b.id));
+
+            } catch (error) {
+                console.error("Error fetching expiration report data:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, [user]);
+
+    const expirationData = useMemo(() => {
+        const perishableEntries = allStockEntries.filter(entry => {
+            const product = allProducts.find(p => p.id === entry.productId);
+            const inBranch = selectedBranchIds.length === 0 || selectedBranchIds.includes(entry.branchId);
+            return product?.isPerishable && entry.expirationDate && inBranch;
+        });
+
+        const lots = new Map<string, { productId: string, productName: string, expirationDate: Date, quantity: number, branchName: string }>();
+
+        perishableEntries.forEach(entry => {
+            const expirationDate = (entry.expirationDate as Timestamp).toDate();
+            const lotKey = `${entry.productId}-${expirationDate.toISOString().split('T')[0]}-${entry.branchId}`;
+            
+            const existing = lots.get(lotKey) || {
+                productId: entry.productId,
+                productName: entry.productName,
+                expirationDate,
+                quantity: 0,
+                branchName: branches.find(b => b.id === entry.branchId)?.name || 'N/A'
+            };
+            
+            existing.quantity += entry.quantity;
+            lots.set(lotKey, existing);
+        });
+
+        return Array.from(lots.values())
+            .filter(lot => lot.quantity > 0)
+            .sort((a,b) => a.expirationDate.getTime() - b.expirationDate.getTime());
+
+    }, [allProducts, allStockEntries, selectedBranchIds, branches]);
+
+
+    if (loading) return <Skeleton className="h-96 w-full" />;
+
+    return (
+        <Card>
+            <CardHeader>
+                 <CardTitle>Relatório de Validade de Produtos</CardTitle>
+                <CardDescription>Acompanhe os lotes de produtos perecíveis e suas datas de vencimento para evitar perdas.</CardDescription>
+                <div className="flex flex-col md:flex-row justify-between gap-4 pt-4">
+                    <div className="flex flex-wrap gap-2">
+                        <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent>
+                 <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Produto</TableHead>
+                            <TableHead>Filial</TableHead>
+                            <TableHead className="text-right">Quantidade</TableHead>
+                            <TableHead className="text-right">Data de Validade</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {expirationData.length > 0 ? expirationData.map((item, index) => {
+                            const isExpired = isBefore(item.expirationDate, new Date());
+                            const isNearExpiration = !isExpired && isBefore(item.expirationDate, new Date(new Date().setDate(new Date().getDate() + 7)));
+                            return (
+                                <TableRow key={index} className={cn(isExpired ? "text-destructive font-bold" : isNearExpiration ? "text-yellow-600" : "")}>
+                                    <TableCell>{item.productName}</TableCell>
+                                    <TableCell>{item.branchName}</TableCell>
+                                    <TableCell className="text-right">{item.quantity}</TableCell>
+                                    <TableCell className="text-right">{format(item.expirationDate, 'dd/MM/yyyy')}</TableCell>
+                                </TableRow>
+                            )
+                        }) : (
+                            <TableRow><TableCell colSpan={4} className="text-center h-24">Nenhum produto perecível com data de validade registrada.</TableCell></TableRow>
+                        )}
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+    )
+}
+
+
 
 // --- Main Page Component ---
 export default function ReportsPage() {
@@ -1498,6 +1617,9 @@ export default function ReportsPage() {
                         <SelectItem value="low-stock">
                             <span className="flex items-center"><AlertTriangle className="mr-2 h-4 w-4"/>Estoque Baixo</span>
                         </SelectItem>
+                         <SelectItem value="expiration">
+                            <span className="flex items-center"><PackageCheck className="mr-2 h-4 w-4"/>Controle de Validade</span>
+                        </SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -1508,6 +1630,7 @@ export default function ReportsPage() {
             {reportType === 'abc-curve' && <ABCCurveReport />}
             {reportType === 'top-selling' && <TopSellingProductsReport />}
             {reportType === 'low-stock' && <LowStockReport />}
+            {reportType === 'expiration' && <ExpirationReport />}
 
 
             <style jsx global>{`

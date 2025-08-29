@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React from 'react';
@@ -36,6 +37,7 @@ interface AuthContextType {
   loginWithGoogle: () => Promise<boolean>;
   signup: (email: string, pass: string, name: string) => Promise<{ success: boolean; error?: string, isFirstUser?: boolean }>;
   createUser: (email: string, name: string, role: string, organizationId: string, customerId?: string) => Promise<{ success: boolean; error?: string, userId?: string }>;
+  deleteUser: (userId: string) => Promise<{ success: boolean; error?: string }>;
   updateUserProfile: (data: Partial<User>) => Promise<{ success: boolean; error?: string }>;
   changeUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean, error?: string }>;
   sendPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
@@ -86,6 +88,49 @@ const professionalPermissions: EnabledModules = {
     subscription: { view: false, edit: false, delete: false },
 };
 
+const runDataIntegrityCheck = async (organizationId: string) => {
+    if (sessionStorage.getItem(`integrityCheck_${organizationId}`)) {
+      return;
+    }
+  
+    console.log("Running data integrity check for organization:", organizationId);
+  
+    const collectionsToFix = [
+      'products', 'combos', 'kits', 'services', 'customers',
+      'anamnesisQuestions', 'suppliers', 'branches', 'expenses', 'appointments', 'permissionProfiles'
+    ];
+  
+    try {
+      const batch = writeBatch(db);
+      let updatesMade = 0;
+  
+      for (const collectionName of collectionsToFix) {
+        const q = query(collection(db, collectionName), where("organizationId", "==", organizationId));
+        const snapshot = await getDocs(q);
+        
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          if (data.isDeleted === undefined || data.isDeleted === null) {
+            batch.update(doc.ref, { isDeleted: false });
+            updatesMade++;
+          }
+        });
+      }
+  
+      if (updatesMade > 0) {
+        await batch.commit();
+        console.log(`Data integrity check complete. Updated ${updatesMade} records.`);
+      } else {
+        console.log("Data integrity check complete. No records needed updating.");
+      }
+      
+      sessionStorage.setItem(`integrityCheck_${organizationId}`, 'true');
+  
+    } catch (error) {
+      console.error("Error during data integrity check:", error);
+    }
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<UserWithOrg | null>(null);
   const [organizations, setOrganizations] = React.useState<Organization[]>([]);
@@ -106,8 +151,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
 
       if (firebaseUser) {
-        const userDocSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (!userDocSnap.exists()) {
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        
+        if (!userDocSnap.exists() || userDocSnap.data().isDeleted) {
           setUser(null); setLoading(false); return;
         }
 
@@ -134,6 +181,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (effectiveOrgId) {
+            await runDataIntegrityCheck(effectiveOrgId);
+
             const unsubOrg = onSnapshot(doc(db, 'organizations', effectiveOrgId), async (orgDoc) => {
                 if (!orgDoc.exists()) {
                     setUser(null); setLoading(false); return;
@@ -194,6 +243,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
                 
                 setPaymentConditions(conditionsSnap.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition));
+
                 setLoading(false);
             });
             unsubscribers.push(unsubOrg);
@@ -239,7 +289,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email,
         role: 'admin',
         avatar: avatar,
-        organizationId: organizationId
+        organizationId: organizationId,
+        isDeleted: false,
       };
 
       batch.set(doc(db, "users", firebaseUser.uid), newUser);
@@ -314,6 +365,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             role,
             avatar: getRandomAvatar(),
             organizationId: organizationId,
+            isDeleted: false,
             ...(customerId && { customerId: customerId }),
         };
         
@@ -333,6 +385,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return { success: false, error: errorMessage };
     }
+  }
+
+  const deleteUser = async (userId: string): Promise<{ success: boolean; error?: string; }> => {
+      // This function can only be called by an admin. 
+      // The secure way requires a backend function to delete the auth user.
+      // For now, we will disable the auth user and mark as deleted in Firestore.
+      if (!user || user.role !== 'admin') {
+          return { success: false, error: "Apenas administradores podem excluir usuários." };
+      }
+
+      console.warn("A exclusão de usuários na autenticação requer uma função de backend com privilégios de administrador. Implementando desativação do usuário e exclusão lógica.");
+
+      try {
+        const userRef = doc(db, 'users', userId);
+        await updateDoc(userRef, { isDeleted: true });
+
+        // Note: Disabling the user requires admin privileges not available on the client.
+        // This log serves as a placeholder for the backend function call.
+        console.log(`[ACTION REQUIRED] User ${userId} marked as deleted. Please disable or delete the user from Firebase Authentication console.`);
+
+        logUserActivity({
+            userId: user.id,
+            userName: user.name,
+            organizationId: user.organizationId,
+            action: 'user_deleted',
+            details: { deletedUserId: userId }
+        });
+
+        return { success: true };
+      } catch (error: any) {
+          console.error("Error deleting user:", error);
+          return { success: false, error: "Ocorreu um erro ao excluir o usuário." };
+      }
   }
 
 
@@ -371,7 +456,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const userDocSnap = await getDoc(userDocRef);
 
         if (!userDocSnap.exists()) {
-            // This is a new Google user, need to create a profile
             const organizationId = doc(collection(db, 'organizations')).id;
             const newUser: User = {
                 id: result.user.uid,
@@ -380,6 +464,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 role: 'admin',
                 avatar: result.user.photoURL || getRandomAvatar(),
                 organizationId: organizationId,
+                isDeleted: false,
             };
             
             const batch = writeBatch(db);
@@ -443,7 +528,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const startImpersonation = (orgId: string) => {
     localStorage.setItem('impersonatedOrgId', orgId);
     router.push('/dashboard');
-    window.location.reload(); // Force a full reload to re-trigger the auth provider
+    window.location.reload(); 
   };
   
   const stopImpersonation = () => {
@@ -510,7 +595,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { success: true };
     } catch (error: any) {
       console.error("Password Reset Error:", error);
-      let message = "Ocorreu um erro desconhecido.";
+      let message = "Ocorreu um erro.";
       if (error.code === 'auth/user-not-found') {
           message = "Nenhum usuário encontrado com este e-mail.";
       }
@@ -553,7 +638,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // User is authenticated
     const isSuperAdmin = user.email === process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL;
 
     if (isAuthPage) {
@@ -575,7 +659,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations, paymentConditions }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations, paymentConditions, deleteUser }}>
       {children}
     </AuthContext.Provider>
   );

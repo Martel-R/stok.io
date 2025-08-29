@@ -118,14 +118,14 @@ function UsersTable() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
     const { toast } = useToast();
-    const { createUser, user: adminUser } = useAuth();
+    const { createUser, user: adminUser, deleteUser } = useAuth();
 
     useEffect(() => {
         if (!adminUser?.organizationId) {
             setLoading(false);
             return;
         }
-        const qUsers = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId));
+        const qUsers = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
         const qProfiles = query(collection(db, 'permissionProfiles'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
         
         const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
@@ -195,8 +195,17 @@ function UsersTable() {
         setIsFormOpen(false);
     };
 
-    const handleDelete = (userId: string) => {
-        toast({ title: 'Funcionalidade não implementada', description: 'A exclusão de usuários deve ser feita a partir de um ambiente seguro.', variant: 'destructive'});
+    const handleDelete = async (userToDelete: User) => {
+        if (userToDelete.id === adminUser?.id) {
+            toast({title: 'Ação não permitida', description: 'Você não pode excluir sua própria conta.', variant: 'destructive'});
+            return;
+        }
+        const { success, error } = await deleteUser(userToDelete.id);
+        if (success) {
+            toast({ title: 'Usuário excluído com sucesso!' });
+        } else {
+            toast({ title: 'Erro ao excluir usuário', description: error, variant: 'destructive' });
+        }
     };
 
     return (
@@ -258,20 +267,20 @@ function UsersTable() {
                                             <DropdownMenuContent align="end">
                                                 <DropdownMenuItem onClick={() => openEditDialog(user)}>Editar</DropdownMenuItem>
                                                 <AlertDialogTrigger asChild>
-                                                    <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive">Excluir</DropdownMenuItem>
+                                                    <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" disabled={user.id === adminUser?.id}>Excluir</DropdownMenuItem>
                                                 </AlertDialogTrigger>
                                             </DropdownMenuContent>
                                             </DropdownMenu>
                                             <AlertDialogContent>
                                                 <AlertDialogHeader>
-                                                    <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
+                                                    <AlertDialogTitle>Excluir usuário?</AlertDialogTitle>
                                                     <AlertDialogDescription>
-                                                        Essa ação não pode ser desfeita. A exclusão de usuários é uma funcionalidade restrita.
+                                                        Esta ação irá desativar a conta do usuário, impedindo o login. O registro será mantido para fins históricos.
                                                     </AlertDialogDescription>
                                                 </AlertDialogHeader>
                                                 <AlertDialogFooter>
                                                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                    <AlertDialogAction onClick={() => handleDelete(user.id)} className={buttonVariants({ variant: "destructive" })}>Confirmar</AlertDialogAction>
+                                                    <AlertDialogAction onClick={() => handleDelete(user)} className={buttonVariants({ variant: "destructive" })}>Confirmar Exclusão</AlertDialogAction>
                                                 </AlertDialogFooter>
                                             </AlertDialogContent>
                                          </AlertDialog>
@@ -635,7 +644,7 @@ function PaymentConditions() {
 
     useEffect(() => {
         if (!user?.organizationId) return;
-        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId), where('isDeleted', '==', false));
+        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition));
             setConditions(data);

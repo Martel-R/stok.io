@@ -19,12 +19,12 @@ import { ArrowLeft, Check, ChevronsUpDown, Loader2, Save, Link as LinkIcon, Plus
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-import { NfeData } from '@/components/nfe-import-dialog';
+import { NfeData, NfeProduct } from '@/components/nfe-import-dialog';
 import { Badge } from '@/components/ui/badge';
 
 type ProcessingStatus = 'unmapped' | 'mapped' | 'new' | 'ignored';
 
-interface ProcessedNfeProduct extends NfeData['products'][number] {
+interface ProcessedNfeProduct extends NfeProduct {
     processingStatus: ProcessingStatus;
     stokioProductId?: string;
     finalQuantity: number;

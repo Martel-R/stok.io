@@ -11,6 +11,17 @@ import { Upload } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { parseISO } from 'date-fns';
 
+export interface NfeProduct {
+    code: string;
+    name: string;
+    quantity: number;
+    unitPrice: number;
+    ncm: string;
+    cfop: string;
+    unitOfMeasure: string;
+    expirationDate?: Date;
+}
+
 export interface NfeData {
     supplierName: string;
     supplierCnpj: string;
@@ -19,16 +30,7 @@ export interface NfeData {
     totalValue: number;
     nfeNumber: string;
     issueDate: Date;
-    products: {
-        code: string;
-        name: string;
-        quantity: number;
-        unitPrice: number;
-        ncm: string;
-        cfop: string;
-        unitOfMeasure: string;
-        expirationDate?: Date;
-    }[];
+    products: NfeProduct[];
 }
 
 export function NfeImportDialog() {
@@ -73,7 +75,7 @@ export function NfeImportDialog() {
             const total = infNFe.getElementsByTagName('ICMSTot')[0];
             const detItems = Array.from(infNFe.getElementsByTagName('det'));
 
-            const nfeProducts = detItems.map(item => {
+            const nfeProducts: NfeProduct[] = detItems.map(item => {
                 const prod = item.getElementsByTagName('prod')[0];
                 const rastro = prod.getElementsByTagName('rastro')[0];
                 const expirationDateStr = rastro ? getTagValue(rastro, 'dVal') : '';

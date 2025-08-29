@@ -1,11 +1,12 @@
 
+
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart, CalendarIcon, DollarSign, Package, Users, Trophy, TrendingUp } from 'lucide-react';
+import { BarChart, CalendarIcon, DollarSign, Package, Users, Trophy, TrendingUp, AlertTriangle } from 'lucide-react';
 import { Bar, BarChart as RechartsBarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts';
-import { addDays, format, fromUnixTime, startOfDay, endOfDay, eachDayOfInterval } from 'date-fns';
+import { addDays, format, fromUnixTime, startOfDay, endOfDay, eachDayOfInterval, isBefore } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -17,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
+import Link from 'next/link';
 
 
 // Helper para converter Timestamps do Firebase
@@ -63,8 +65,7 @@ export default function DashboardPage() {
             setAllStockEntries(entriesData);
         });
         
-        // This combines listeners, might need a more robust way to handle loading state
-        const timer = setTimeout(() => setLoadingData(false), 1500); // Give time for all listeners to fire
+        const timer = setTimeout(() => setLoadingData(false), 1500); 
 
         return () => {
             unsubscribeProducts();
@@ -84,16 +85,31 @@ export default function DashboardPage() {
     const totalRevenue = filteredSales.reduce((acc, sale) => acc + sale.total, 0);
     const totalSalesCount = filteredSales.length;
     const averageTicket = totalSalesCount > 0 ? totalRevenue / totalSalesCount : 0;
-    const totalProducts = allProducts.length;
 
-    const totalStock = useMemo(() => {
-        const salableProductIds = new Set(allProducts.filter(p => p.isSalable).map(p => p.id));
-        return allStockEntries
-            .filter(entry => salableProductIds.has(entry.productId))
-            .reduce((sum, entry) => {
-                const quantity = typeof entry.quantity === 'number' ? entry.quantity : 0;
-                return sum + quantity;
-            }, 0);
+    const expiringLotsCount = useMemo(() => {
+        const perishableProductIds = new Set(allProducts.filter(p => p.isPerishable).map(p => p.id));
+        const lotMap = new Map<string, { quantity: number; expirationDate: Date }>();
+        const fifteenDaysFromNow = addDays(new Date(), 15);
+
+        // Process only entries for perishable products with an expiration date
+        allStockEntries.forEach(entry => {
+            if (perishableProductIds.has(entry.productId) && entry.expirationDate) {
+                const expirationDate = (entry.expirationDate as Timestamp).toDate();
+                const lotKey = `${entry.productId}-${format(expirationDate, 'yyyy-MM-dd')}`;
+                const currentLot = lotMap.get(lotKey) || { quantity: 0, expirationDate };
+                currentLot.quantity += entry.quantity;
+                lotMap.set(lotKey, currentLot);
+            }
+        });
+        
+        let count = 0;
+        lotMap.forEach(lot => {
+            if (lot.quantity > 0 && isBefore(lot.expirationDate, fifteenDaysFromNow)) {
+                count++;
+            }
+        });
+
+        return count;
     }, [allStockEntries, allProducts]);
 
 
@@ -214,7 +230,7 @@ export default function DashboardPage() {
                 </Popover>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Receita Total</CardTitle>
@@ -242,22 +258,15 @@ export default function DashboardPage() {
                         <div className="text-2xl font-bold">R${averageTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                     </CardContent>
                 </Card>
-                <Card>
+                 <Card className={cn(expiringLotsCount > 0 && "border-destructive text-destructive")}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total de Produtos</CardTitle>
-                        <Package className="h-4 w-4 text-muted-foreground" />
+                        <CardTitle className="text-sm font-medium">Lotes a Vencer</CardTitle>
+                        <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{totalProducts}</div>
-                    </CardContent>
-                </Card>
-                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Estoque Comerciável</CardTitle>
-                        <Package className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{totalStock.toLocaleString('pt-BR')}</div>
+                        <div className="text-2xl font-bold">{expiringLotsCount}</div>
+                        <p className="text-xs text-muted-foreground">Vencidos ou nos próximos 15 dias.</p>
+                         <Link href="/dashboard/reports?tab=expiration" className="text-xs underline">Ver Relatório</Link>
                     </CardContent>
                 </Card>
             </div>

@@ -1,4 +1,3 @@
-
 // src/components/nfe-import-dialog.tsx
 'use client';
 import { useState } from 'react';
@@ -15,12 +14,14 @@ import { useAuth } from '@/lib/auth';
 import { db } from '@/lib/firebase';
 import { collection, writeBatch, doc, getDocs, query, where, addDoc } from 'firebase/firestore';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { parseISO } from 'date-fns';
 
 interface NfeProduct {
     code: string;
     name: string;
     quantity: number;
     unitPrice: number;
+    expirationDate?: Date;
 }
 
 interface NfeData {
@@ -70,11 +71,13 @@ export function NfeImportDialog({ products }: { products: Product[] }) {
 
             const nfeProducts: NfeProduct[] = detItems.map(item => {
                 const prod = item.getElementsByTagName('prod')[0];
+                const expirationDateStr = getTagValue(prod, 'dVal');
                 return {
                     code: getTagValue(prod, 'cProd'),
                     name: getTagValue(prod, 'xProd'),
                     quantity: parseFloat(getTagValue(prod, 'qCom')),
                     unitPrice: parseFloat(getTagValue(prod, 'vUnCom')),
+                    expirationDate: expirationDateStr ? parseISO(expirationDateStr) : undefined,
                 };
             });
             
@@ -102,6 +105,8 @@ export function NfeImportDialog({ products }: { products: Product[] }) {
         try {
             for (const nfeProd of parsedData.products) {
                 let productDocId: string;
+                let isPerishable = !!nfeProd.expirationDate;
+
                 // NF-e 'code' corresponds to Product 'barcode' for uniqueness within the branch
                 const q = query(productsRef, where("branchId", "==", currentBranch.id), where("barcode", "==", nfeProd.code));
                 const querySnapshot = await getDocs(q);
@@ -121,13 +126,18 @@ export function NfeImportDialog({ products }: { products: Product[] }) {
                         imageUrl: 'https://placehold.co/400x400.png',
                         lowStockThreshold: 10,
                         isSalable: true,
+                        isPerishable: isPerishable,
                         branchId: currentBranch.id,
                         organizationId: user.organizationId,
                     };
                     batch.set(newProductRef, newProduct);
                 } else {
-                    // Product exists
-                    productDocId = querySnapshot.docs[0].id;
+                    // Product exists, update it if necessary
+                    const existingDoc = querySnapshot.docs[0];
+                    productDocId = existingDoc.id;
+                    if(isPerishable && !existingDoc.data().isPerishable) {
+                        batch.update(existingDoc.ref, { isPerishable: true });
+                    }
                 }
 
                 // Add stock entry
@@ -142,7 +152,8 @@ export function NfeImportDialog({ products }: { products: Product[] }) {
                     userName: user.name,
                     branchId: currentBranch.id,
                     organizationId: user.organizationId,
-                    notes: `Importado da NF-e - Fornecedor: ${parsedData.supplierName}`
+                    notes: `Importado da NF-e - Fornecedor: ${parsedData.supplierName}`,
+                    ...(nfeProd.expirationDate && { expirationDate: nfeProd.expirationDate }),
                 };
                 batch.set(stockEntryRef, stockEntry);
             }
@@ -210,8 +221,9 @@ export function NfeImportDialog({ products }: { products: Product[] }) {
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>Produto</TableHead>
-                                            <TableHead className="text-right">Qtd.</TableHead>
-                                            <TableHead className="text-right">Preço Custo</TableHead>
+                                            <TableHead>Qtd.</TableHead>
+                                            <TableHead>Preço Custo</TableHead>
+                                            <TableHead>Validade</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -220,6 +232,7 @@ export function NfeImportDialog({ products }: { products: Product[] }) {
                                                 <TableCell>{p.name}</TableCell>
                                                 <TableCell className="text-right">{p.quantity}</TableCell>
                                                 <TableCell className="text-right">R$ {p.unitPrice.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
+                                                <TableCell className="text-right">{p.expirationDate ? p.expirationDate.toLocaleDateString('pt-BR') : '-'}</TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>

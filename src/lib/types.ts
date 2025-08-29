@@ -24,6 +24,7 @@ export interface EnabledModules {
     services: ModulePermissions;
     expenses: ModulePermissions;
     backup: ModulePermissions;
+    subscription: ModulePermissions;
 }
 
 export interface PermissionProfile {

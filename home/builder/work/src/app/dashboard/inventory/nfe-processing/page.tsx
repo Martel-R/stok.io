@@ -1,3 +1,4 @@
+
 // src/app/dashboard/inventory/nfe-processing/page.tsx
 'use client';
 
@@ -27,6 +28,8 @@ interface ProcessedNfeProduct extends NfeProduct {
     processingStatus: ProcessingStatus;
     stokioProductId?: string;
     finalQuantity: number;
+    finalPurchasePrice: number;
+    finalSalePrice: number;
 }
 
 export default function NfeProcessingPage() {
@@ -49,18 +52,23 @@ export default function NfeProcessingPage() {
                 return;
             }
             const parsedData: NfeData = JSON.parse(data, (key, value) => {
-                if (key === 'issueDate' || key === 'expirationDate') {
+                if ((key === 'issueDate' || key === 'expirationDate') && value) {
                     return new Date(value);
                 }
                 return value;
             });
             setNfeData(parsedData);
 
-            const initialProcessed = parsedData.products.map(p => ({
-                ...p,
-                processingStatus: 'unmapped' as ProcessingStatus,
-                finalQuantity: p.quantity,
-            }));
+            const initialProcessed: ProcessedNfeProduct[] = parsedData.products.map(p => {
+                 const purchasePricePerUnit = p.totalPrice / p.quantity;
+                 return {
+                    ...p,
+                    processingStatus: 'unmapped' as ProcessingStatus,
+                    finalQuantity: p.quantity,
+                    finalPurchasePrice: purchasePricePerUnit,
+                    finalSalePrice: purchasePricePerUnit * 1.5, // Default 50% markup
+                 }
+            });
             setProcessedProducts(initialProcessed);
 
         } catch (error) {
@@ -71,7 +79,7 @@ export default function NfeProcessingPage() {
     
     useEffect(() => {
         if (!currentBranch) return;
-        const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
+        const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id), where("isDeleted", "!=", true));
         const unsub = onSnapshot(productsQuery, snap => {
             setStokioProducts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Product)));
             setIsLoading(false);
@@ -88,10 +96,19 @@ export default function NfeProcessingPage() {
         });
     };
 
-    const updateProductQuantity = (index: number, quantity: number) => {
+    const updateProductValue = (index: number, field: keyof ProcessedNfeProduct, value: number) => {
         setProcessedProducts(prev => {
             const newProducts = [...prev];
-            newProducts[index].finalQuantity = quantity;
+            (newProducts[index] as any)[field] = value;
+
+            // Recalculate purchase price if quantity changes
+            if (field === 'finalQuantity') {
+                const nfeProduct = newProducts[index];
+                if (value > 0) {
+                    newProducts[index].finalPurchasePrice = nfeProduct.totalPrice / value;
+                }
+            }
+
             return newProducts;
         });
     }
@@ -138,11 +155,15 @@ export default function NfeProcessingPage() {
                 if(prod.processingStatus === 'new') {
                     const newProductRef = doc(collection(db, 'products'));
                     productId = newProductRef.id;
+                    const purchasePrice = prod.finalPurchasePrice || 0;
+                    const salePrice = prod.finalSalePrice || 0;
+                    const marginValue = purchasePrice > 0 ? ((salePrice - purchasePrice) / purchasePrice) * 100 : 0;
+
                     const newProductData: Omit<Product, 'id'> = {
                         name: prod.name,
                         category: 'Importado NF-e',
-                        price: prod.unitPrice * 1.5, // Default margin
-                        purchasePrice: prod.unitPrice,
+                        price: salePrice,
+                        purchasePrice: purchasePrice,
                         lowStockThreshold: 10,
                         isSalable: true,
                         barcode: prod.code,
@@ -156,15 +177,14 @@ export default function NfeProcessingPage() {
                         isDeleted: false,
                         imageUrl: 'https://placehold.co/400x400.png',
                         marginType: 'percentage',
-                        marginValue: 50,
+                        marginValue: marginValue,
                     };
                     batch.set(newProductRef, newProductData);
                 } else if (prod.processingStatus === 'mapped' && productId) {
                      const existingProduct = stokioProducts.find(p => p.id === productId);
                      productName = existingProduct?.name || prod.name;
-                     // Optionally update existing product data here
                      const productRef = doc(db, 'products', productId);
-                     batch.update(productRef, { purchasePrice: prod.unitPrice });
+                     batch.update(productRef, { purchasePrice: prod.finalPurchasePrice });
                 }
 
                 if (!productId) continue;
@@ -245,10 +265,11 @@ export default function NfeProcessingPage() {
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead className="w-[30%]">Produto na NF-e</TableHead>
-                                <TableHead className="w-[15%] text-center">Qtd. na NF-e</TableHead>
+                                <TableHead className="w-[25%]">Produto na NF-e</TableHead>
+                                <TableHead className="w-[10%] text-center">Qtd.</TableHead>
                                 <TableHead className="w-[35%]">Ação / Produto no Sistema</TableHead>
-                                <TableHead className="w-[20%] text-center">Qtd. a Entrar</TableHead>
+                                <TableHead className="w-[15%]">Custo Unit. (R$)</TableHead>
+                                <TableHead className="w-[15%]">Venda Unit. (R$)</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -258,7 +279,14 @@ export default function NfeProcessingPage() {
                                         <p className="font-medium">{p.name}</p>
                                         <p className="text-xs text-muted-foreground">Cód: {p.code} | NCM: {p.ncm}</p>
                                     </TableCell>
-                                     <TableCell className="text-center">{p.quantity} {p.unitOfMeasure}</TableCell>
+                                     <TableCell>
+                                        <Input 
+                                            type="number" 
+                                            value={p.finalQuantity} 
+                                            onChange={(e) => updateProductValue(index, 'finalQuantity', Number(e.target.value))}
+                                            className="text-center"
+                                        />
+                                    </TableCell>
                                     <TableCell>
                                         <ProductMappingCell
                                             product={p}
@@ -266,13 +294,25 @@ export default function NfeProcessingPage() {
                                             onUpdateStatus={(status, id) => updateProductStatus(index, status, id)}
                                         />
                                     </TableCell>
-                                    <TableCell>
+                                     <TableCell>
                                         <Input 
-                                            type="number" 
-                                            value={p.finalQuantity} 
-                                            onChange={(e) => updateProductQuantity(index, Number(e.target.value))}
-                                            className="text-center"
-                                            />
+                                            type="number"
+                                            step="0.01"
+                                            value={p.finalPurchasePrice.toFixed(2)}
+                                            onChange={(e) => updateProductValue(index, 'finalPurchasePrice', Number(e.target.value))}
+                                            className="text-right"
+                                            disabled={p.processingStatus !== 'new'}
+                                        />
+                                    </TableCell>
+                                     <TableCell>
+                                        <Input 
+                                            type="number"
+                                            step="0.01"
+                                            value={p.finalSalePrice.toFixed(2)} 
+                                            onChange={(e) => updateProductValue(index, 'finalSalePrice', Number(e.target.value))}
+                                            className="text-right"
+                                            disabled={p.processingStatus !== 'new'}
+                                        />
                                     </TableCell>
                                 </TableRow>
                             ))}
@@ -349,3 +389,4 @@ function ProductMappingCell({ product, stokioProducts, onUpdateStatus }: { produ
         </div>
     );
 }
+

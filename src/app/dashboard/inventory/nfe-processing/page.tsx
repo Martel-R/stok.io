@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { db } from '@/lib/firebase';
 import { collection, writeBatch, doc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
-import type { Product, StockEntry, Supplier, NfeProduct } from '@/lib/types';
+import type { Product, StockEntry, Supplier } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@ import { ArrowLeft, Check, ChevronsUpDown, Loader2, Save, Link as LinkIcon, Plus
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-import type { NfeData } from '@/components/nfe-import-dialog';
+import type { NfeData, NfeProduct } from '@/components/nfe-import-dialog';
 import { Badge } from '@/components/ui/badge';
 
 type ProcessingStatus = 'unmapped' | 'mapped' | 'new' | 'ignored';
@@ -95,6 +95,14 @@ export default function NfeProcessingPage() {
             const newProducts = [...prev];
             newProducts[index].processingStatus = status;
             newProducts[index].stokioProductId = stokioProductId;
+
+            if (status === 'mapped' && stokioProductId) {
+                const mappedProduct = stokioProducts.find(p => p.id === stokioProductId);
+                if(mappedProduct) {
+                    newProducts[index].finalSalePrice = mappedProduct.price;
+                }
+            }
+            
             return newProducts;
         });
     };
@@ -187,7 +195,7 @@ export default function NfeProcessingPage() {
                      const existingProduct = stokioProducts.find(p => p.id === productId);
                      productName = existingProduct?.name || prod.name;
                      const productRef = doc(db, 'products', productId);
-                     batch.update(productRef, { purchasePrice: prod.finalPurchasePrice });
+                     batch.update(productRef, { purchasePrice: prod.finalPurchasePrice, price: prod.finalSalePrice });
                 }
 
                 if (!productId) continue;
@@ -309,7 +317,6 @@ export default function NfeProcessingPage() {
                                             value={p.finalPurchasePrice.toFixed(2)}
                                             onChange={(e) => updateProductValue(index, 'finalPurchasePrice', Number(e.target.value))}
                                             className="text-right"
-                                            disabled={p.processingStatus !== 'new'}
                                         />
                                     </TableCell>
                                      <TableCell>
@@ -319,7 +326,6 @@ export default function NfeProcessingPage() {
                                             value={p.finalSalePrice.toFixed(2)} 
                                             onChange={(e) => updateProductValue(index, 'finalSalePrice', Number(e.target.value))}
                                             className="text-right"
-                                            disabled={p.processingStatus !== 'new'}
                                         />
                                     </TableCell>
                                 </TableRow>

@@ -30,7 +30,7 @@ import { Badge } from '@/components/ui/badge';
 import { StockMovementForm } from '@/components/stock-movement-form';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { RadioGroup } from '@/components/ui/radio-group';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { logUserActivity } from '@/lib/logging';
 
@@ -987,11 +987,10 @@ export default function ProductsPage() {
             </TableHead>}
             <TableHead className="w-[80px]">Imagem</TableHead>
             <TableHead>Nome</TableHead>
-            <TableHead>Marca</TableHead>
-            <TableHead>Modelo</TableHead>
             <TableHead>Categoria</TableHead>
             <TableHead>Comerciável</TableHead>
             <TableHead className="text-right">Preço de Compra</TableHead>
+            <TableHead className="text-right">Margem</TableHead>
             <TableHead className="text-right">Preço de Venda</TableHead>
             <TableHead className="text-right">Estoque</TableHead>
             <TableHead className="text-center">Ações</TableHead>
@@ -1006,8 +1005,7 @@ export default function ProductsPage() {
                     <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                    <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                    <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
@@ -1028,8 +1026,6 @@ export default function ProductsPage() {
                    <Image src={product.imageUrl} alt={product.name} width={40} height={40} className="rounded-md object-cover aspect-square" data-ai-hint="product image" />
                 </TableCell>
                 <TableCell className="font-medium">{product.name}</TableCell>
-                <TableCell>{product.brand || '-'}</TableCell>
-                <TableCell>{product.model || '-'}</TableCell>
                 <TableCell>{product.category}</TableCell>
                 <TableCell>
                     <Badge variant={product.isSalable ? "secondary" : "outline"}>
@@ -1037,6 +1033,7 @@ export default function ProductsPage() {
                     </Badge>
                 </TableCell>
                 <TableCell className="text-right">{(product.purchasePrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
+                <TableCell className="text-right">{getMarginDisplay(product)}</TableCell>
                 <TableCell className="text-right font-semibold">{(product.price || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
                 <TableCell className="text-right">{product.stock}</TableCell>
                 <TableCell className="text-center">
@@ -1061,7 +1058,7 @@ export default function ProductsPage() {
             ))
           ) : (
              <TableRow>
-                <TableCell colSpan={can.edit ? 11 : 10} className="h-24 text-center">
+                <TableCell colSpan={can.edit ? 10 : 9} className="h-24 text-center">
                     Nenhum produto encontrado. Adicione produtos para começar.
                 </TableCell>
             </TableRow>
@@ -1197,4 +1194,3 @@ export default function ProductsPage() {
     </div>
   );
 }
-

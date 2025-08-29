@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/auth';
@@ -60,7 +61,7 @@ export default function DashboardPage() {
         });
 
         const unsubscribeStockEntries = onSnapshot(stockEntriesQuery, (snapshot) => {
-            const entriesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockEntry));
+            const entriesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), date: (doc.data().date as Timestamp).toDate() } as StockEntry));
             setAllStockEntries(entriesData);
         });
         
@@ -97,13 +98,15 @@ export default function DashboardPage() {
     }, [allStockEntries, allProducts]);
 
     const expiringLotsCount = useMemo(() => {
-        const perishableProductIds = new Set(allProducts.filter(p => p.isPerishable).map(p => p.id));
+        const activePerishableProductIds = new Set(
+            allProducts.filter(p => p.isPerishable && !p.isDeleted).map(p => p.id)
+        );
         const lotMap = new Map<string, { quantity: number; expirationDate: Date }>();
         const fifteenDaysFromNow = addDays(new Date(), 15);
 
-        // Process only entries for perishable products with an expiration date
+        // Process only entries for active, perishable products with an expiration date
         allStockEntries.forEach(entry => {
-            if (perishableProductIds.has(entry.productId) && entry.expirationDate) {
+            if (activePerishableProductIds.has(entry.productId) && entry.expirationDate) {
                 const expirationDate = (entry.expirationDate as Timestamp).toDate();
                 const lotKey = `${entry.productId}-${format(expirationDate, 'yyyy-MM-dd')}`;
                 const currentLot = lotMap.get(lotKey) || { quantity: 0, expirationDate };

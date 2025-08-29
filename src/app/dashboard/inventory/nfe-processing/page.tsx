@@ -1,4 +1,3 @@
-
 // src/app/dashboard/inventory/nfe-processing/page.tsx
 'use client';
 
@@ -7,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { db } from '@/lib/firebase';
 import { collection, writeBatch, doc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
-import type { Product, StockEntry, Supplier } from '@/lib/types';
+import type { Product, StockEntry, Supplier, NfeProduct } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,7 +18,7 @@ import { ArrowLeft, Check, ChevronsUpDown, Loader2, Save, Link as LinkIcon, Plus
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-import { NfeData, NfeProduct } from '@/components/nfe-import-dialog';
+import type { NfeData } from '@/components/nfe-import-dialog';
 import { Badge } from '@/components/ui/badge';
 
 type ProcessingStatus = 'unmapped' | 'mapped' | 'new' | 'ignored';
@@ -60,11 +59,15 @@ export default function NfeProcessingPage() {
             setNfeData(parsedData);
 
             const initialProcessed: ProcessedNfeProduct[] = parsedData.products.map(p => {
-                 const purchasePricePerUnit = p.totalPrice / p.quantity;
+                 const quantity = p.quantity || 1;
+                 const totalPrice = p.totalPrice || 0;
+                 const purchasePricePerUnit = totalPrice / quantity;
                  return {
                     ...p,
+                    totalPrice: totalPrice,
+                    quantity: quantity,
                     processingStatus: 'unmapped' as ProcessingStatus,
-                    finalQuantity: p.quantity,
+                    finalQuantity: p.quantity || 0,
                     finalPurchasePrice: purchasePricePerUnit,
                     finalSalePrice: purchasePricePerUnit * 1.5, // Default 50% markup
                  }
@@ -105,7 +108,7 @@ export default function NfeProcessingPage() {
             if (field === 'finalQuantity') {
                 const nfeProduct = newProducts[index];
                 if (value > 0) {
-                    newProducts[index].finalPurchasePrice = nfeProduct.totalPrice / value;
+                    newProducts[index].finalPurchasePrice = (nfeProduct.totalPrice || 0) / value;
                 }
             }
 
@@ -278,7 +281,7 @@ export default function NfeProcessingPage() {
                                     <TableCell>
                                         <p className="font-medium">{p.name}</p>
                                         <p className="text-xs text-muted-foreground">
-                                            Valor na Nota: R$ {p.totalPrice.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                                            Valor na Nota: R$ {(p.totalPrice || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}
                                         </p>
                                         <p className="text-xs text-muted-foreground flex items-center gap-1">
                                             <Barcode className="h-3 w-3" /> {p.code} | NCM: {p.ncm}
@@ -394,4 +397,3 @@ function ProductMappingCell({ product, stokioProducts, onUpdateStatus }: { produ
         </div>
     );
 }
-

@@ -1,3 +1,4 @@
+
 // src/components/nfe-import-dialog.tsx
 'use client';
 import { useState } from 'react';
@@ -9,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Upload, Loader2 } from 'lucide-react';
-import type { Product, Expense, StockEntry } from '@/lib/types';
+import type { Product, Expense, StockEntry, Supplier } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 import { db } from '@/lib/firebase';
 import { collection, writeBatch, doc, getDocs, query, where, addDoc } from 'firebase/firestore';
@@ -21,13 +22,20 @@ interface NfeProduct {
     name: string;
     quantity: number;
     unitPrice: number;
+    ncm: string;
+    cfop: string;
+    unitOfMeasure: string;
     expirationDate?: Date;
 }
 
 interface NfeData {
     supplierName: string;
     supplierCnpj: string;
+    supplierIe: string;
+    supplierAddress: string;
     totalValue: number;
+    nfeNumber: string;
+    issueDate: Date;
     products: NfeProduct[];
 }
 
@@ -61,13 +69,16 @@ export function NfeImportDialog({ products }: { products: Product[] }) {
         const parser = new DOMParser();
         const xmlDoc = parser.parseFromString(xmlText, "application/xml");
 
-        const getTagValue = (parent: Element, tagName: string) => parent.getElementsByTagName(tagName)[0]?.textContent || '';
+        const getTagValue = (parent: Element, tagName: string) => parent?.getElementsByTagName(tagName)[0]?.textContent || '';
         
         try {
-            const emit = xmlDoc.getElementsByTagName('emit')[0];
-            const ide = xmlDoc.getElementsByTagName('ide')[0];
-            const total = xmlDoc.getElementsByTagName('ICMSTot')[0];
-            const detItems = Array.from(xmlDoc.getElementsByTagName('det'));
+            const nfeProc = xmlDoc.getElementsByTagName('nfeProc')[0] || xmlDoc; // Handle both with and without proc
+            const infNFe = nfeProc.getElementsByTagName('infNFe')[0];
+            const ide = infNFe.getElementsByTagName('ide')[0];
+            const emit = infNFe.getElementsByTagName('emit')[0];
+            const enderEmit = emit.getElementsByTagName('enderEmit')[0];
+            const total = infNFe.getElementsByTagName('ICMSTot')[0];
+            const detItems = Array.from(infNFe.getElementsByTagName('det'));
 
             const nfeProducts: NfeProduct[] = detItems.map(item => {
                 const prod = item.getElementsByTagName('prod')[0];
@@ -77,19 +88,29 @@ export function NfeImportDialog({ products }: { products: Product[] }) {
                     name: getTagValue(prod, 'xProd'),
                     quantity: parseFloat(getTagValue(prod, 'qCom')),
                     unitPrice: parseFloat(getTagValue(prod, 'vUnCom')),
+                    ncm: getTagValue(prod, 'NCM'),
+                    cfop: getTagValue(prod, 'CFOP'),
+                    unitOfMeasure: getTagValue(prod, 'uCom'),
                     expirationDate: expirationDateStr ? parseISO(expirationDateStr) : undefined,
                 };
             });
             
+            const address = `${getTagValue(enderEmit, 'xLgr')}, ${getTagValue(enderEmit, 'nro')} - ${getTagValue(enderEmit, 'xBairro')}, ${getTagValue(enderEmit, 'xMun')} - ${getTagValue(enderEmit, 'UF')}, CEP: ${getTagValue(enderEmit, 'CEP')}`;
+
             const data: NfeData = {
                 supplierName: getTagValue(emit, 'xNome'),
                 supplierCnpj: getTagValue(emit, 'CNPJ'),
+                supplierIe: getTagValue(emit, 'IE'),
+                supplierAddress: address,
                 totalValue: parseFloat(getTagValue(total, 'vNF')),
+                nfeNumber: `${getTagValue(ide, 'serie')}-${getTagValue(ide, 'nNF')}`,
+                issueDate: parseISO(getTagValue(ide, 'dhEmi')),
                 products: nfeProducts,
             };
 
             setParsedData(data);
         } catch(error) {
+            console.error("XML Parsing Error:", error);
             toast({title: "Erro ao ler XML", description: "O arquivo XML parece ser inválido ou não está no formato de NF-e esperado.", variant: "destructive"});
             setParsedData(null);
         }
@@ -101,25 +122,51 @@ export function NfeImportDialog({ products }: { products: Product[] }) {
 
         const batch = writeBatch(db);
         const productsRef = collection(db, 'products');
-
+        
         try {
+            // Check for or create supplier
+            const suppliersRef = collection(db, 'suppliers');
+            const supplierQuery = query(suppliersRef, where("cnpj", "==", parsedData.supplierCnpj), where("organizationId", "==", user.organizationId));
+            const supplierSnapshot = await getDocs(supplierQuery);
+            let supplierId: string;
+            
+            if (supplierSnapshot.empty) {
+                const newSupplierRef = doc(suppliersRef);
+                supplierId = newSupplierRef.id;
+                const newSupplier: Omit<Supplier, 'id'> = {
+                    name: parsedData.supplierName,
+                    cnpj: parsedData.supplierCnpj,
+                    ie: parsedData.supplierIe,
+                    address: parsedData.supplierAddress,
+                    organizationId: user.organizationId,
+                    isDeleted: false,
+                };
+                batch.set(newSupplierRef, newSupplier);
+            } else {
+                supplierId = supplierSnapshot.docs[0].id;
+                // Optional: update supplier data if needed
+                 batch.update(supplierSnapshot.docs[0].ref, {
+                    name: parsedData.supplierName,
+                    ie: parsedData.supplierIe,
+                    address: parsedData.supplierAddress,
+                });
+            }
+
             for (const nfeProd of parsedData.products) {
                 let productDocId: string;
                 let isPerishable = !!nfeProd.expirationDate;
 
-                // NF-e 'code' corresponds to Product 'barcode' for uniqueness within the branch
                 const q = query(productsRef, where("branchId", "==", currentBranch.id), where("barcode", "==", nfeProd.code));
                 const querySnapshot = await getDocs(q);
                 
                 if (querySnapshot.empty) {
-                    // Create new product
                     const newProductRef = doc(productsRef);
                     productDocId = newProductRef.id;
                     const newProduct: Omit<Product, 'id'> = {
                         name: nfeProd.name,
-                        barcode: nfeProd.code, // Use barcode for the product code from NF-e
+                        barcode: nfeProd.code,
                         category: 'Importado NF-e',
-                        price: nfeProd.unitPrice * 1.5, // Default 50% margin
+                        price: nfeProd.unitPrice * 1.5,
                         purchasePrice: nfeProd.unitPrice,
                         marginValue: 50,
                         marginType: 'percentage',
@@ -129,43 +176,53 @@ export function NfeImportDialog({ products }: { products: Product[] }) {
                         isPerishable: isPerishable,
                         branchId: currentBranch.id,
                         organizationId: user.organizationId,
+                        supplierId: supplierId,
+                        supplierName: parsedData.supplierName,
+                        ncm: nfeProd.ncm,
+                        cfop: nfeProd.cfop,
+                        unitOfMeasure: nfeProd.unitOfMeasure,
                     };
                     batch.set(newProductRef, newProduct);
                 } else {
-                    // Product exists, update it if necessary
                     const existingDoc = querySnapshot.docs[0];
                     productDocId = existingDoc.id;
-                    if(isPerishable && !existingDoc.data().isPerishable) {
-                        batch.update(existingDoc.ref, { isPerishable: true });
-                    }
+                    batch.update(existingDoc.ref, { 
+                        isPerishable: isPerishable || existingDoc.data().isPerishable,
+                        purchasePrice: nfeProd.unitPrice, // Update purchase price
+                        supplierId: supplierId,
+                        supplierName: parsedData.supplierName,
+                        ncm: nfeProd.ncm,
+                        cfop: nfeProd.cfop,
+                        unitOfMeasure: nfeProd.unitOfMeasure,
+                     });
                 }
 
-                // Add stock entry
                 const stockEntryRef = doc(collection(db, 'stockEntries'));
                 const stockEntry: Omit<StockEntry, 'id'> = {
                     productId: productDocId,
                     productName: nfeProd.name,
                     quantity: nfeProd.quantity,
                     type: 'entry',
-                    date: new Date(),
+                    date: parsedData.issueDate,
                     userId: user.id,
                     userName: user.name,
                     branchId: currentBranch.id,
                     organizationId: user.organizationId,
-                    notes: `Importado da NF-e - Fornecedor: ${parsedData.supplierName}`,
+                    notes: `NF-e ${parsedData.nfeNumber}`,
                     ...(nfeProd.expirationDate && { expirationDate: nfeProd.expirationDate }),
                 };
                 batch.set(stockEntryRef, stockEntry);
             }
             
-            // Add expense
             const expenseRef = doc(collection(db, 'expenses'));
             const expense: Omit<Expense, 'id'> = {
-                description: `Compra de Fornecedor - NF-e ${fileName}`,
+                description: `Compra - NF-e ${parsedData.nfeNumber}`,
                 amount: parsedData.totalValue,
                 category: 'Fornecedores',
-                date: new Date(),
+                date: parsedData.issueDate,
+                supplierId: supplierId,
                 supplierName: parsedData.supplierName,
+                nfeNumber: parsedData.nfeNumber,
                 userId: user.id,
                 userName: user.name,
                 branchId: currentBranch.id,
@@ -213,6 +270,7 @@ export function NfeImportDialog({ products }: { products: Product[] }) {
                                 <CardContent>
                                     <p><strong>Fornecedor:</strong> {parsedData.supplierName} ({parsedData.supplierCnpj})</p>
                                     <p><strong>Valor Total:</strong> R$ {parsedData.totalValue.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                                    <p><strong>Número da Nota:</strong> {parsedData.nfeNumber}</p>
                                 </CardContent>
                             </Card>
                             <h3 className="font-semibold">Produtos a serem importados</h3>

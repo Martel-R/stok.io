@@ -176,6 +176,8 @@ export interface Attendance {
 export interface Supplier {
     id: string;
     name: string;
+    cnpj?: string;
+    ie?: string;
     contactName?: string;
     phone?: string;
     email?: string;
@@ -206,6 +208,9 @@ export interface Product {
   brand?: string;
   model?: string;
   isPerishable?: boolean;
+  ncm?: string;
+  cfop?: string;
+  unitOfMeasure?: string;
 }
 
 export type PaymentConditionType = 'credit' | 'debit' | 'cash' | 'pix';
@@ -372,5 +377,6 @@ export interface Expense {
     supplierName?: string;
     userId: string;
     userName: string;
+    nfeNumber?: string;
     isDeleted?: boolean;
 }

@@ -314,7 +314,7 @@ function BranchesSettings() {
         setIsFormOpen(true);
     }
 
-    const handleSave = async (branchData: Omit<Branch, 'id' | 'organizationId'>) => {
+    const handleSave = async (branchData: Omit<Branch, 'id' | 'organizationId' | 'isDeleted'>) => {
         if (!currentUser?.organizationId) {
              toast({ title: 'Erro de permissão', description: 'Organização do usuário não encontrada.', variant: 'destructive' });
              return;
@@ -1527,6 +1527,7 @@ function SuppliersSettings() {
                     <TableHeader>
                         <TableRow>
                             <TableHead>Nome</TableHead>
+                            <TableHead>CNPJ</TableHead>
                             <TableHead>Contato</TableHead>
                             <TableHead>Telefone</TableHead>
                             <TableHead>Email</TableHead>
@@ -1534,10 +1535,11 @@ function SuppliersSettings() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {loading ? <TableRow><TableCell colSpan={5}><Skeleton className="h-5"/></TableCell></TableRow> :
+                        {loading ? <TableRow><TableCell colSpan={6}><Skeleton className="h-5"/></TableCell></TableRow> :
                         suppliers.map(s => (
                             <TableRow key={s.id}>
                                 <TableCell>{s.name}</TableCell>
+                                <TableCell>{s.cnpj || '-'}</TableCell>
                                 <TableCell>{s.contactName}</TableCell>
                                 <TableCell>{s.phone}</TableCell>
                                 <TableCell>{s.email}</TableCell>
@@ -1620,14 +1622,39 @@ function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Suppl
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-                <Input name="name" value={formData.name || ''} onChange={handleChange} placeholder="Nome do Fornecedor" required />
-                <Input name="contactName" value={formData.contactName || ''} onChange={handleChange} placeholder="Nome do Contato" />
+                <div className="space-y-2">
+                    <Label htmlFor="name">Nome do Fornecedor</Label>
+                    <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} required />
+                </div>
+                 <div className="space-y-2">
+                    <Label htmlFor="cnpj">CNPJ</Label>
+                    <Input id="cnpj" name="cnpj" value={formData.cnpj || ''} onChange={handleChange} />
+                </div>
             </div>
              <div className="grid grid-cols-2 gap-4">
-                <Input name="phone" value={formData.phone || ''} onChange={handleChange} placeholder="Telefone" />
-                <Input name="email" type="email" value={formData.email || ''} onChange={handleChange} placeholder="Email" />
+                <div className="space-y-2">
+                    <Label htmlFor="contactName">Nome do Contato</Label>
+                    <Input id="contactName" name="contactName" value={formData.contactName || ''} onChange={handleChange} />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="ie">Inscrição Estadual</Label>
+                    <Input id="ie" name="ie" value={formData.ie || ''} onChange={handleChange} />
+                </div>
             </div>
-            <Input name="address" value={formData.address || ''} onChange={handleChange} placeholder="Endereço" />
+             <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label htmlFor="phone">Telefone</Label>
+                    <Input id="phone" name="phone" value={formData.phone || ''} onChange={handleChange} />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input id="email" type="email" value={formData.email || ''} onChange={handleChange} />
+                </div>
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="address">Endereço</Label>
+                <Input id="address" name="address" value={formData.address || ''} onChange={handleChange} />
+            </div>
             
             <div className="space-y-2">
                 <Label>Produtos Vinculados (nesta filial)</Label>

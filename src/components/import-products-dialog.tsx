@@ -140,7 +140,7 @@ export function ImportProductsDialog({
                     Importar Produtos
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-3xl">
+            <DialogContent className="sm:max-w-4xl">
                 <DialogHeader>
                     <DialogTitle>Importar Produtos em Lote</DialogTitle>
                     <DialogDescription>
@@ -170,22 +170,26 @@ export function ImportProductsDialog({
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Nome</TableHead>
-                                        <TableHead className="text-right">Preço</TableHead>
-                                        <TableHead className="text-right">Estoque Inicial</TableHead>
+                                        <TableHead>Categoria</TableHead>
+                                        <TableHead className="text-right">P. Compra</TableHead>
+                                        <TableHead className="text-right">P. Venda</TableHead>
+                                        <TableHead className="text-right">Estoque</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {parsedData.length > 0 ? (
                                         parsedData.map((product, index) => (
                                             <TableRow key={index}>
-                                                <TableCell>{product.name}</TableCell>
+                                                <TableCell className="font-medium">{product.name}</TableCell>
+                                                <TableCell>{product.category}</TableCell>
+                                                <TableCell className="text-right">R$ {product.purchasePrice.toFixed(2)}</TableCell>
                                                 <TableCell className="text-right">R$ {product.price.toFixed(2)}</TableCell>
                                                 <TableCell className="text-right">{product.stock}</TableCell>
                                             </TableRow>
                                         ))
                                     ) : (
                                         <TableRow>
-                                            <TableCell colSpan={3} className="h-24 text-center">
+                                            <TableCell colSpan={5} className="h-24 text-center">
                                                 Aguardando arquivo...
                                             </TableCell>
                                         </TableRow>

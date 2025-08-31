@@ -319,7 +319,7 @@ function GeneralReport() {
                 <CardHeader>
                     <div className="flex flex-col md:flex-row justify-between gap-4 no-print">
                          <div className="flex flex-wrap gap-2">
-                            <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
+                            <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedIds} />
                             <DateRangePicker date={dateRange} onSelect={setDateRange} />
                         </div>
                          <div className="flex gap-2">
@@ -582,13 +582,44 @@ function SalesReport() {
         if (!payments) return 'N/A';
         return payments.map(p => {
             const installments = p.installments > 1 ? ` (${p.installments}x)` : '';
-            return `${p.conditionName}${installments}: R$ ${p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            return `${p.conditionName}${installments}: ${formatCurrency(p.amount)}`;
         }).join('; ');
     };
 
     const exportToPDF = () => {
         const doc = new jsPDF();
-        doc.text("Relatório de Vendas", 14, 16);
+        const dateStr = `Período: ${format(dateRange?.from || new Date(), 'dd/MM/yy')} a ${format(dateRange?.to || new Date(), 'dd/MM/yy')}`;
+        
+        if (user?.organization?.branding?.logoUrl) {
+            doc.addImage(user.organization.branding.logoUrl, 'PNG', 14, 10, 20, 20);
+            doc.text("Relatório de Vendas", 40, 16);
+            doc.setFontSize(10);
+            doc.text(dateStr, 40, 22);
+        } else {
+            doc.text("Relatório de Vendas", 14, 16);
+            doc.setFontSize(10);
+            doc.text(dateStr, 14, 22);
+        }
+
+        autoTable(doc, {
+            head: [['Totais Gerais', '']],
+            body: [
+                ['Receita Bruta', formatCurrency(totals.grossRevenue)],
+                ['Total de Taxas', `-${formatCurrency(totals.totalFees)}`],
+                ['Receita Líquida', formatCurrency(totals.netRevenue)],
+            ],
+            startY: 30
+        });
+
+         autoTable(doc, {
+            head: [['Pagamento', 'Bruto', 'Líquido']],
+            body: Array.from(totals.payments.values()).map(p => [
+                p.name,
+                formatCurrency(p.gross),
+                formatCurrency(p.net),
+            ]),
+        });
+        
         autoTable(doc, {
             head: [['Data', 'Filial', 'Vendedor', 'Itens', 'Pagamentos', 'Total']],
             body: filteredSales.map(s => [
@@ -597,9 +628,8 @@ function SalesReport() {
                 s.cashier,
                 s.items.map(item => `${item.quantity}x ${item.name}`).join(', '),
                 formatPayments(s.payments),
-                `R$ ${s.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                formatCurrency(s.total)
             ]),
-            startY: 20
         });
         doc.save('relatorio_vendas.pdf');
     };
@@ -626,8 +656,7 @@ function SalesReport() {
     }
 
     return (
-        <Card className="printable-area">
-            <ReportPrintHeader organization={user?.organization} period={periodString} />
+        <Card>
             <CardHeader className="no-print">
                 <div className="flex flex-col md:flex-row justify-between gap-4">
                      <div className="flex flex-wrap gap-2">
@@ -648,8 +677,9 @@ function SalesReport() {
                     </div>
                 </div>
             </CardHeader>
-            <CardContent>
-                <Card className="mb-6 no-print">
+            <CardContent className="printable-area">
+                <ReportPrintHeader organization={user?.organization} period={periodString} />
+                <Card className="mb-6">
                     <CardHeader>
                         <CardTitle>Resumo Financeiro do Período</CardTitle>
                     </CardHeader>
@@ -719,11 +749,11 @@ function SalesReport() {
                                     <TableCell>
                                         {sale.payments?.map(p => (
                                             <div key={p.conditionId} className="text-xs">
-                                                {p.conditionName} ({p.installments}x): <span className="font-medium">R$ {p.amount.toLocaleString('pt-BR',{minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                                {p.conditionName} ({p.installments}x): <span className="font-medium">{formatCurrency(p.amount)}</span>
                                             </div>
                                         ))}
                                     </TableCell>
-                                    <TableCell className="text-right font-medium">R$ {sale.total.toLocaleString('pt-BR',{minimumFractionDigits: 2, maximumFractionDigits: 2})}</TableCell>
+                                    <TableCell className="text-right font-medium">{formatCurrency(sale.total)}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -1472,7 +1502,7 @@ function ABCCurveReport() {
                             abcData.map(item => (
                                 <TableRow key={item.name}>
                                     <TableCell className="font-medium">{item.name}</TableCell>
-                                    <TableCell className="text-right">R$ {item.total.toLocaleString('pt-BR',{minimumFractionDigits: 2, maximumFractionDigits: 2})}</TableCell>
+                                    <TableCell className="text-right">{formatCurrency(item.total)}</TableCell>
                                     <TableCell className="text-right">{item.percentage.toFixed(2)}%</TableCell>
                                     <TableCell className="text-right">{item.cumulativePercentage.toFixed(2)}%</TableCell>
                                     <TableCell className="text-center">
@@ -1793,3 +1823,5 @@ function DateRangePicker({ date, onSelect, className }: { date: DateRange | unde
     </div>
   )
 }
+
+    

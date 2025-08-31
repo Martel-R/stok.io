@@ -128,6 +128,7 @@ function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }:
       ...formData,
       originalPrice: prices.originalPrice,
       finalPrice: prices.finalPrice,
+      isDeleted: false,
       imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png'
     } as Omit<Combo, 'id' | 'branchId' | 'organizationId'>);
     onDone();
@@ -145,7 +146,7 @@ function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }:
          <div className="space-y-2 rounded-md border p-2">
             {formData.products?.map(p => (
                 <div key={p.productId} className="flex items-center justify-between">
-                    <span className="text-sm">{p.productName} (R$ {p.productPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})</span>
+                    <span className="text-sm">{p.productName} (R$ {p.productPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
                      <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeProductFromCombo(p.productId)}>
                         <Trash2 className="h-4 w-4 text-destructive"/>
                      </Button>
@@ -187,11 +188,11 @@ function ComboForm({ combo, branchProducts, paymentConditions, onSave, onDone }:
         <CardContent className="space-y-4">
             <div className="flex justify-between items-baseline">
                 <Label>Preço Original</Label>
-                <span className="text-muted-foreground text-lg line-through">R$ {originalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                <span className="text-muted-foreground text-lg line-through">R$ {originalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
              <div className="flex justify-between items-baseline">
                 <Label>Preço Final (Padrão)</Label>
-                <span className="font-bold text-xl text-primary">R$ {finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                <span className="font-bold text-xl text-primary">R$ {finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
             
             <Separator />
@@ -320,7 +321,7 @@ export default function CombosPage() {
     });
 
     const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
-        const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
+        const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Product[]);
         setProducts(productsData);
     });
     
@@ -376,7 +377,7 @@ export default function CombosPage() {
   const handleDelete = async (combo: Combo) => {
     if(!user || !currentBranch) return;
     try {
-      await deleteDoc(doc(db, "combos", combo.id));
+      await updateDoc(doc(db, "combos", combo.id), { isDeleted: true });
       toast({ title: 'Combo excluído com sucesso!', variant: 'destructive' });
        logUserActivity({
           userId: user.id,
@@ -486,8 +487,8 @@ export default function CombosPage() {
                         {combo.products.map(p => <Badge key={p.productId} variant="secondary">{p.productName}</Badge>)}
                     </div>
                 </TableCell>
-                <TableCell className="text-right line-through text-muted-foreground">R$ {combo.originalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
-                <TableCell className="text-right font-semibold">R$ {combo.finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
+                <TableCell className="text-right line-through text-muted-foreground">R$ {combo.originalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                <TableCell className="text-right font-semibold">R$ {combo.finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                 <TableCell className="text-center">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -521,4 +522,5 @@ export default function CombosPage() {
   );
 }
     
+
 

@@ -419,7 +419,7 @@ export default function ServicesPage() {
                             <TableRow key={service.id}>
                                 <TableCell className="font-medium">{service.name}</TableCell>
                                 <TableCell>{service.duration} min</TableCell>
-                                <TableCell>R$ {service.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
+                                <TableCell>R$ {service.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                 <TableCell>
                                     <Badge variant={service.isActive ? 'secondary' : 'outline'}>
                                         {service.isActive ? "Ativo" : "Inativo"}

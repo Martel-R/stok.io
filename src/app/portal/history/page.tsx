@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
@@ -42,7 +43,7 @@ export default function CustomerHistoryPage() {
 
             // Fetch Attendances
             const attendanceQuery = query(collection(db, 'attendances'), where('customerId', '==', customerId));
-            const attendanceSnap = await getDocs(attendanceQuery);
+            const attendanceSnap = await getDocs(attendanceQuery, { source: 'server' });
             const attendances = attendanceSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Attendance));
             
             const attendanceIds = attendances.map(a => a.id);
@@ -50,7 +51,7 @@ export default function CustomerHistoryPage() {
             // Fetch related sales
             if (attendanceIds.length > 0) {
                  const salesQuery = query(collection(db, 'sales'), where('attendanceId', 'in', attendanceIds));
-                 const salesSnap = await getDocs(salesQuery);
+                 const salesSnap = await getDocs(salesQuery, { source: 'server' });
                  const salesData = salesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale));
 
                  attendances.forEach(att => {
@@ -96,7 +97,7 @@ export default function CustomerHistoryPage() {
                                             <p className="text-sm text-muted-foreground max-w-lg truncate">{event.description}</p>
                                         </div>
                                         <div className="text-right">
-                                            <p className="font-bold text-xl">R$ {event.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                            <p className="font-bold text-xl">R$ {event.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                             <Badge variant={event.type === 'attendance' ? 'secondary' : 'outline'}>
                                                 {event.type === 'attendance' ? 'Atendimento' : 'Compra'}
                                             </Badge>

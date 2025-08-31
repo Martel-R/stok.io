@@ -296,7 +296,7 @@ export default function ExpensesPage() {
                                 <TableCell className="font-medium">{expense.description}</TableCell>
                                 <TableCell>{expense.category}</TableCell>
                                 <TableCell>{expense.supplierName || 'N/A'}</TableCell>
-                                <TableCell className="text-right">R$ {expense.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
+                                <TableCell className="text-right">R$ {expense.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                 <TableCell className="text-center">
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>

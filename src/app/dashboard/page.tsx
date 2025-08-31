@@ -310,7 +310,7 @@ export default function DashboardPage() {
                                         backgroundColor: 'hsl(var(--background))',
                                         borderColor: 'hsl(var(--border))',
                                     }}
-                                    formatter={(value: number) => [`R$${value.toLocaleString('pt-BR')}`, "Vendas"]}
+                                    formatter={(value: number) => [`R$${value.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, "Vendas"]}
                                 />
                                 <Legend />
                                 <Bar dataKey="Vendas" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
@@ -337,7 +337,7 @@ export default function DashboardPage() {
                                     <div className="ml-4 flex-1 space-y-1">
                                         <p className="text-sm font-medium leading-none">{name}</p>
                                     </div>
-                                    <div className="font-medium">R${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                                    <div className="font-medium">R${total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                                 </div>
                             )) : (
                                 <p className="text-sm text-muted-foreground text-center">Nenhuma venda registrada no período para ranking.</p>

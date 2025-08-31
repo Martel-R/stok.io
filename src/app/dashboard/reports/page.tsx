@@ -1,4 +1,5 @@
 
+
 'use client';
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
@@ -553,7 +554,7 @@ function SalesReport() {
         if (!payments) return 'N/A';
         return payments.map(p => {
             const installments = p.installments > 1 ? ` (${p.installments}x)` : '';
-            return `${p.conditionName}${installments}: R$ ${p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+            return `${p.conditionName}${installments}: R$ ${p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
         }).join('; ');
     };
 
@@ -568,7 +569,7 @@ function SalesReport() {
                 s.cashier,
                 s.items.map(item => `${item.quantity}x ${item.name}`).join(', '),
                 formatPayments(s.payments),
-                `R$ ${s.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                `R$ ${s.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
             ]),
             startY: 20
         });
@@ -620,7 +621,7 @@ function SalesReport() {
             </CardHeader>
             <CardContent>
                 <div className="mb-4 font-semibold no-print">
-                   Exibindo {filteredSales.length} de {sales.length} vendas. Total Filtrado: R$ {totalFilteredRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                   Exibindo {filteredSales.length} de {sales.length} vendas. Total Filtrado: R$ {totalFilteredRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
                 <div className="printable-area">
                     <ReportPrintHeader organization={user?.organization} period={periodString} />
@@ -656,11 +657,11 @@ function SalesReport() {
                                     <TableCell>
                                         {sale.payments?.map(p => (
                                             <div key={p.conditionId} className="text-xs">
-                                                {p.conditionName} ({p.installments}x): <span className="font-medium">R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                                {p.conditionName} ({p.installments}x): <span className="font-medium">R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                                             </div>
                                         ))}
                                     </TableCell>
-                                    <TableCell className="text-right font-medium">R$ {sale.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
+                                    <TableCell className="text-right font-medium">R$ {sale.total.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -993,7 +994,7 @@ function LowStockReport() {
                     </TableHeader>
                     <TableBody>
                         {lowStockData.map(product => (
-                            <TableRow key={product.name} className={product.totalStock <= 0 ? "text-destructive font-bold" : "text-yellow-600"}>
+                            <TableRow key={product.name} className={cn(product.totalStock <= 0 ? "text-destructive font-bold" : "text-yellow-600")}>
                                 <TableCell className="font-medium">{product.name}</TableCell>
                                 <TableCell className="text-right">{product.lowStockThreshold}</TableCell>
                                 <TableCell className="text-right font-semibold">{product.totalStock}</TableCell>
@@ -1412,7 +1413,7 @@ function ABCCurveReport() {
                             abcData.map(item => (
                                 <TableRow key={item.name}>
                                     <TableCell className="font-medium">{item.name}</TableCell>
-                                    <TableCell className="text-right">R$ {item.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
+                                    <TableCell className="text-right">R$ {item.total.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</TableCell>
                                     <TableCell className="text-right">{item.percentage.toFixed(2)}%</TableCell>
                                     <TableCell className="text-right">{item.cumulativePercentage.toFixed(2)}%</TableCell>
                                     <TableCell className="text-center">

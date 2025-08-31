@@ -402,10 +402,10 @@ export default function AttendanceClientPage({ id }: { id: string }) {
                                             <div key={item.id} className="flex justify-between items-center p-2 rounded-md bg-muted">
                                                 <div>
                                                     <p className="font-medium">{item.name} <Badge variant="outline">{item.type === 'product' ? 'Produto' : 'Serviço'}</Badge></p>
-                                                    <p className="text-sm text-muted-foreground">{item.quantity} x R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                                    <p className="text-sm text-muted-foreground">{item.quantity} x R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                                 </div>
                                                 <div className="flex items-center gap-2">
-                                                    <p className="font-semibold">R$ {item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                                    <p className="font-semibold">R$ {item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                                     <Button size="icon" variant="ghost" onClick={() => handleRemoveItem(item.id)}>
                                                         <Trash2 className="h-4 w-4 text-destructive"/>
                                                     </Button>
@@ -486,7 +486,7 @@ export default function AttendanceClientPage({ id }: { id: string }) {
                             <Separator />
                             <div className="flex justify-between items-baseline">
                                 <span className="text-lg font-semibold">Total</span>
-                                <p className="text-3xl font-bold">R$ {attendance.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                <p className="text-3xl font-bold">R$ {attendance.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                             </div>
                         </CardContent>
                     </Card>

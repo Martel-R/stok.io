@@ -476,7 +476,7 @@ function SalesReport() {
     const [loading, setLoading] = useState(true);
     const [sales, setSales] = useState<Sale[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
-    const [users, setUsers] = useState<User[]>([]);
+    const [paymentConditions, setPaymentConditions] = useState<PaymentCondition[]>([]);
 
     // Filter states
     const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
@@ -495,12 +495,12 @@ function SalesReport() {
                 const orgId = user.organizationId;
                 const salesQuery = query(collection(db, 'sales'), where('organizationId', '==', orgId));
                 const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', orgId));
-                const usersQuery = query(collection(db, 'users'), where('organizationId', '==', orgId));
+                const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', orgId));
 
-                const [salesSnap, branchesSnap, usersSnap] = await Promise.all([
+                const [salesSnap, branchesSnap, conditionsSnap] = await Promise.all([
                     getDocs(salesQuery),
                     getDocs(branchesQuery),
-                    getDocs(usersQuery),
+                    getDocs(conditionsQuery),
                 ]);
 
                 const salesData = salesSnap.docs.map(doc => {
@@ -513,7 +513,7 @@ function SalesReport() {
                 
                 setSales(salesData);
                 setBranches(branchesData);
-                setUsers(usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
+                setPaymentConditions(conditionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition)));
                 
                 setSelectedBranchIds(branchesData.map(b => b.id));
 
@@ -548,7 +548,37 @@ function SalesReport() {
         }).sort((a, b) => b.date.getTime() - a.date.getTime());
     }, [sales, dateRange, selectedBranchIds, selectedCashierIds]);
     
-    const totalFilteredRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
+    const totals = useMemo(() => {
+        const summary = {
+            grossRevenue: 0,
+            netRevenue: 0,
+            totalFees: 0,
+            payments: new Map<string, { name: string; gross: number; net: number; fee: number; }>(),
+        };
+
+        filteredSales.forEach(sale => {
+            summary.grossRevenue += sale.total;
+            let saleFee = 0;
+            (sale.payments || []).forEach(p => {
+                const condition = paymentConditions.find(c => c.id === p.conditionId);
+                const fee = condition ? (condition.feeType === 'percentage' ? p.amount * (condition.fee / 100) : condition.fee) : 0;
+                saleFee += fee;
+                
+                const typeName = condition?.name || 'Desconhecido';
+                const existing = summary.payments.get(typeName) || { name: typeName, gross: 0, net: 0, fee: 0 };
+                existing.gross += p.amount;
+                existing.net += (p.amount - fee);
+                existing.fee += fee;
+                summary.payments.set(typeName, existing);
+            });
+            summary.totalFees += saleFee;
+        });
+
+        summary.netRevenue = summary.grossRevenue - summary.totalFees;
+        return summary;
+
+    }, [filteredSales, paymentConditions]);
+    
 
     const formatPayments = (payments: PaymentDetail[]) => {
         if (!payments) return 'N/A';
@@ -598,7 +628,8 @@ function SalesReport() {
     }
 
     return (
-        <Card>
+        <Card className="printable-area">
+            <ReportPrintHeader organization={user?.organization} period={periodString} />
             <CardHeader className="no-print">
                 <div className="flex flex-col md:flex-row justify-between gap-4">
                      <div className="flex flex-wrap gap-2">
@@ -620,11 +651,44 @@ function SalesReport() {
                 </div>
             </CardHeader>
             <CardContent>
+                <Card className="mb-6 no-print">
+                    <CardHeader>
+                        <CardTitle>Resumo Financeiro do Período</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                            <h3 className="font-semibold">Totais Gerais</h3>
+                             <p>Receita Bruta: <span className="font-bold">{formatCurrency(totals.grossRevenue)}</span></p>
+                             <p>Total de Taxas: <span className="font-bold text-destructive">-{formatCurrency(totals.totalFees)}</span></p>
+                             <p>Receita Líquida: <span className="font-bold text-green-600">{formatCurrency(totals.netRevenue)}</span></p>
+                        </div>
+                        <div className="space-y-2">
+                            <h3 className="font-semibold">Recebimentos por Forma de Pagamento</h3>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Método</TableHead>
+                                        <TableHead className="text-right">Bruto</TableHead>
+                                        <TableHead className="text-right">Líquido</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                     {Array.from(totals.payments.values()).map(p => (
+                                        <TableRow key={p.name}>
+                                            <TableCell>{p.name}</TableCell>
+                                            <TableCell className="text-right">{formatCurrency(p.gross)}</TableCell>
+                                            <TableCell className="text-right">{formatCurrency(p.net)}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </CardContent>
+                </Card>
                 <div className="mb-4 font-semibold no-print">
-                   Exibindo {filteredSales.length} de {sales.length} vendas. Total Filtrado: R$ {totalFilteredRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                   Exibindo {filteredSales.length} de {sales.length} vendas.
                 </div>
-                <div className="printable-area">
-                    <ReportPrintHeader organization={user?.organization} period={periodString} />
+                <div>
                     <Table>
                         <TableHeader>
                             <TableRow>
@@ -657,11 +721,11 @@ function SalesReport() {
                                     <TableCell>
                                         {sale.payments?.map(p => (
                                             <div key={p.conditionId} className="text-xs">
-                                                {p.conditionName} ({p.installments}x): <span className="font-medium">R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                                {p.conditionName} ({p.installments}x): <span className="font-medium">R$ {p.amount.toLocaleString('pt-BR',{minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                                             </div>
                                         ))}
                                     </TableCell>
-                                    <TableCell className="text-right font-medium">R$ {sale.total.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</TableCell>
+                                    <TableCell className="text-right font-medium">R$ {sale.total.toLocaleString('pt-BR',{minimumFractionDigits: 2, maximumFractionDigits: 2})}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -1413,7 +1477,7 @@ function ABCCurveReport() {
                             abcData.map(item => (
                                 <TableRow key={item.name}>
                                     <TableCell className="font-medium">{item.name}</TableCell>
-                                    <TableCell className="text-right">R$ {item.total.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</TableCell>
+                                    <TableCell className="text-right">R$ {item.total.toLocaleString('pt-BR',{minimumFractionDigits: 2, maximumFractionDigits: 2})}</TableCell>
                                     <TableCell className="text-right">{item.percentage.toFixed(2)}%</TableCell>
                                     <TableCell className="text-right">{item.cumulativePercentage.toFixed(2)}%</TableCell>
                                     <TableCell className="text-center">

@@ -1,5 +1,4 @@
 
-
 'use client';
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
@@ -29,6 +28,7 @@ import { Separator } from '@/components/ui/separator';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from "recharts";
 import Image from 'next/image';
 
+const formatCurrency = (value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function ReportPrintHeader({ organization, period }: { organization: Organization | undefined, period: string }) {
     return (
@@ -213,8 +213,6 @@ function GeneralReport() {
 
     if (loading) return <Skeleton className="h-[500px] w-full" />;
     
-    const formatCurrency = (value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
     const exportToPDF = () => {
         const doc = new jsPDF();
         const dateStr = `Período: ${format(dateRange?.from || new Date(), 'dd/MM/yy')} a ${format(dateRange?.to || new Date(), 'dd/MM/yy')}`;
@@ -1198,9 +1196,6 @@ function FinancialSummaryReport() {
             return acc;
         }, { salesCount: 0, grossRevenue: 0, netRevenue: 0, totalExpenses: 0, netProfit: 0 });
     }, [financialData]);
-
-
-    const formatCurrency = (value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     const exportToPDF = () => {
          const doc = new jsPDF({ orientation: "landscape" });

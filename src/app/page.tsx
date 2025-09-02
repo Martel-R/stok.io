@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
 
 
 const features = [
@@ -184,4 +185,3 @@ export default function InstitutionalPage() {
     </div>
   );
 }
-

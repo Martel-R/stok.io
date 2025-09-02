@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Icons } from '@/components/icons';
+import { Icons } from '@/components/ui/icons';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -52,91 +52,77 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="w-full h-screen lg:grid lg:grid-cols-2">
-      <div className="flex items-center justify-center py-12">
-        <div className="mx-auto grid w-[350px] gap-6">
-          <div className="grid gap-2 text-center">
-            <h1 className="text-3xl font-bold">Criar Conta</h1>
-            <p className="text-balance text-muted-foreground">
-              Digite seus dados para criar sua conta
-            </p>
-          </div>
-          <form onSubmit={handleSignup} className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name">Nome da Empresa/Negócio</Label>
-              <Input
-                id="name"
-                placeholder="Sua Empresa"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                disabled={loading}
-              />
+    <div className="w-full h-screen flex items-center justify-center bg-muted p-4">
+      <div className="mx-auto grid w-[380px] max-w-full gap-6 rounded-lg border bg-background p-6 shadow-lg sm:p-8">
+        <div className="grid gap-2 text-center">
+           <div className="flex items-center justify-center text-lg font-medium">
+                <Icons.logo className="mr-2 h-8 w-8 text-primary" />
+                <span className="text-2xl font-bold">Stokio</span>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="email">E-mail do Administrador</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="admin@suaempresa.com"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={loading}
-              />
-            </div>
-            <div className="grid gap-2">
-              <div className="flex items-center">
-                <Label htmlFor="password">Senha</Label>
-              </div>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={loading}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  disabled={loading}
-                >
-                  {showPassword ? <EyeOff /> : <Eye />}
-                </Button>
-              </div>
-            </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Criar Conta
-            </Button>
-          </form>
-          <div className="mt-4 text-center text-sm">
-            Já tem uma conta?{' '}
-            <Link href="/login" className="underline">
-              Fazer Login
-            </Link>
-          </div>
+          <h1 className="text-3xl font-bold">Criar Conta</h1>
+          <p className="text-balance text-muted-foreground">
+            Digite seus dados para criar sua conta gratuitamente.
+          </p>
         </div>
-      </div>
-      <div className="relative hidden h-full flex-col bg-muted p-10 text-white dark:border-r lg:flex">
-         <Image
-          src="https://picsum.photos/1920/1080"
-          alt="Banner de cadastro com imagem de um depósito moderno"
-          fill
-          className="object-cover"
-          data-ai-hint="warehouse background"
-        />
-        <div className="absolute inset-0 bg-primary/60" />
-        <div className="relative z-20 flex flex-col items-center justify-center h-full">
-            <div className="flex items-center text-lg font-medium">
-                <Icons.logo className="mr-2 h-12 w-12" />
-                <span className="text-4xl font-bold">Stokio</span>
+        <form onSubmit={handleSignup} className="grid gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="name">Nome da Empresa/Negócio</Label>
+            <Input
+              id="name"
+              placeholder="Sua Empresa"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={loading}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="email">E-mail do Administrador</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="admin@suaempresa.com"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={loading}
+            />
+          </div>
+          <div className="grid gap-2">
+            <div className="flex items-center">
+              <Label htmlFor="password">Senha</Label>
             </div>
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
+                onClick={() => setShowPassword((prev) => !prev)}
+                disabled={loading}
+              >
+                {showPassword ? <EyeOff /> : <Eye />}
+              </Button>
+            </div>
+          </div>
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Criar Conta Grátis
+          </Button>
+        </form>
+        <div className="mt-4 text-center text-sm">
+          Já tem uma conta?{' '}
+          <Link href="/login" className="underline">
+            Fazer Login
+          </Link>
         </div>
       </div>
     </div>

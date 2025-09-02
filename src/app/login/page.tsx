@@ -64,29 +64,16 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="w-full h-screen lg:grid lg:grid-cols-2">
-       <div className="relative hidden h-full flex-col bg-muted p-10 text-white dark:border-r lg:flex">
-         <Image
-          src="https://picsum.photos/1920/1080"
-          alt="Banner de login com imagem de um depósito moderno"
-          fill
-          className="object-cover"
-          data-ai-hint="warehouse background"
-        />
-        <div className="absolute inset-0 bg-primary/60" />
-        <div className="relative z-20 flex flex-col items-center justify-center h-full">
-            <div className="flex items-center text-lg font-medium">
-                <Icons.logo className="mr-2 h-12 w-12" />
-                <span className="text-4xl font-bold">Stokio</span>
-            </div>
-        </div>
-      </div>
-      <div className="flex items-center justify-center py-12">
-        <div className="mx-auto grid w-[350px] gap-6">
+    <div className="w-full h-screen flex items-center justify-center p-4">
+        <div className="mx-auto grid w-[380px] max-w-full gap-6 rounded-lg border bg-background p-6 shadow-lg sm:p-8">
           <div className="grid gap-2 text-center">
+            <div className="flex items-center justify-center text-lg font-medium">
+                <Icons.logo className="mr-2 h-8 w-8 text-primary" />
+                <span className="text-2xl font-bold">Stokio</span>
+            </div>
             <h1 className="text-3xl font-bold">Login</h1>
             <p className="text-balance text-muted-foreground">
-              Acesse sua conta para gerenciar seu estoque
+              Acesse sua conta para gerenciar seu negócio.
             </p>
           </div>
           <form onSubmit={handleLogin} className="grid gap-4">
@@ -162,7 +149,6 @@ export default function LoginPage() {
               </Link>
           </div>
         </div>
-      </div>
     </div>
   );
 }

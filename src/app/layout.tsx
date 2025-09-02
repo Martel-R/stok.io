@@ -2,10 +2,13 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { Providers } from '@/components/providers';
 import { Toaster } from '@/components/ui/toaster';
+import { Inter } from 'next/font/google';
+
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata: Metadata = {
-  title: 'Stokio',
-  description: 'Gestão Inteligente de Estoque com IA',
+  title: 'Stokio - Gestão Inteligente de Estoque',
+  description: 'Sistema de Ponto de Venda (PDV) e gestão de estoque completo, construído para modernizar e otimizar a operação de varejo.',
 };
 
 export default function RootLayout({
@@ -15,12 +18,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-      </head>
-      <body className="font-body antialiased">
+      <body className={`${inter.variable} font-sans antialiased`}>
         <Providers>
           {children}
           <Toaster />

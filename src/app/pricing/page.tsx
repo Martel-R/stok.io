@@ -12,6 +12,7 @@ import { Check, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Icons } from '@/components/ui/icons';
+import { Badge } from '@/components/ui/badge';
 
 export default function PricingPage() {
     const [plans, setPlans] = useState<PricingPlan[]>([]);

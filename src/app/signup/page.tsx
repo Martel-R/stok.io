@@ -61,7 +61,7 @@ export default function SignupPage() {
             </div>
           <h1 className="text-3xl font-bold">Criar Conta</h1>
           <p className="text-balance text-muted-foreground">
-            Digite seus dados para criar sua conta gratuitamente.
+            Digite seus dados para criar sua conta.
           </p>
         </div>
         <form onSubmit={handleSignup} className="grid gap-4">
@@ -115,7 +115,7 @@ export default function SignupPage() {
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Criar Conta Grátis
+            Criar Conta
           </Button>
         </form>
         <div className="mt-4 text-center text-sm">

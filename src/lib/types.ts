@@ -204,13 +204,13 @@ export interface Product {
   supplierId?: string;
   supplierName?: string;
   code?: string;
-  isDeleted?: boolean;
   brand?: string;
   model?: string;
   isPerishable?: boolean;
   ncm?: string;
   cfop?: string;
   unitOfMeasure?: string;
+  isDeleted?: boolean;
 }
 
 export type PaymentConditionType = 'credit' | 'debit' | 'cash' | 'pix';
@@ -378,5 +378,15 @@ export interface Expense {
     userId: string;
     userName: string;
     nfeNumber?: string;
+    isDeleted?: boolean;
+}
+
+export interface PricingPlan {
+    id: string;
+    name: string;
+    price: number; // Stored in cents or as a float, depending on preference
+    description: string;
+    features: string[]; // List of feature descriptions
+    isFeatured?: boolean;
     isDeleted?: boolean;
 }

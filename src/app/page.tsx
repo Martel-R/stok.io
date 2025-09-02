@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import Link from 'next/link';
@@ -144,7 +145,7 @@ export default function InstitutionalPage() {
                 </p>
                 <div className="mt-8 flex gap-4">
                     <Button asChild size="lg">
-                        <Link href="/signup">Comece Agora - É Grátis</Link>
+                        <Link href="/pricing">Ver Planos</Link>
                     </Button>
                 </div>
             </div>

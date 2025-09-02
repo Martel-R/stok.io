@@ -6,14 +6,14 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
-import type { Organization, User, PaymentStatus, EnabledModules, PermissionProfile, Subscription, PaymentRecord, PaymentRecordStatus } from '@/lib/types';
+import type { Organization, User, PaymentStatus, EnabledModules, PermissionProfile, Subscription, PaymentRecord, PaymentRecordStatus, PricingPlan } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn, Tags } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { allModuleConfig } from '@/components/module-permission-row';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 type OrgWithUser = Organization & { owner?: User };
 
@@ -40,6 +41,149 @@ const toDate = (date: any): Date | undefined => {
     if (date instanceof Timestamp) return date.toDate();
     return undefined;
 };
+
+function PlanForm({ plan, onSave, onDone }: { plan?: PricingPlan, onSave: (data: Partial<PricingPlan>) => void, onDone: () => void }) {
+    const [formData, setFormData] = useState<Partial<PricingPlan>>(plan || { name: '', price: 0, description: '', features: [], isFeatured: false });
+    const [featureInput, setFeatureInput] = useState('');
+
+    const handleFeatureAdd = () => {
+        if(featureInput.trim()) {
+            setFormData(prev => ({...prev, features: [...(prev.features || []), featureInput.trim()]}));
+            setFeatureInput('');
+        }
+    }
+
+    const handleFeatureRemove = (index: number) => {
+        setFormData(prev => ({...prev, features: prev.features?.filter((_, i) => i !== index)}));
+    }
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData);
+    }
+    
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <Input name="name" value={formData.name || ''} onChange={e => setFormData(p => ({...p, name: e.target.value}))} placeholder="Nome do Plano" required />
+            <Input name="description" value={formData.description || ''} onChange={e => setFormData(p => ({...p, description: e.target.value}))} placeholder="Descrição do Plano" required />
+            <Input name="price" type="number" step="0.01" value={formData.price || ''} onChange={e => setFormData(p => ({...p, price: parseFloat(e.target.value) || 0}))} placeholder="Preço (ex: 99.90)" required />
+            <div className="space-y-2">
+                <Label>Funcionalidades</Label>
+                <div className="flex gap-2">
+                    <Input value={featureInput} onChange={e => setFeatureInput(e.target.value)} placeholder="Adicionar funcionalidade"/>
+                    <Button type="button" onClick={handleFeatureAdd}>Adicionar</Button>
+                </div>
+                <div className="space-y-1">
+                    {formData.features?.map((feat, i) => (
+                        <div key={i} className="flex items-center justify-between text-sm">
+                            <span>- {feat}</span>
+                            <Button type="button" size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleFeatureRemove(i)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+             <div className="flex items-center space-x-2">
+                <Switch id="isFeatured" checked={formData.isFeatured} onCheckedChange={c => setFormData(p => ({...p, isFeatured: c}))} />
+                <Label htmlFor="isFeatured">Marcar como plano em destaque?</Label>
+            </div>
+            <DialogFooter>
+                <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
+                <Button type="submit">Salvar Plano</Button>
+            </DialogFooter>
+        </form>
+    );
+}
+
+function PricingPlansSettings() {
+    const [plans, setPlans] = useState<PricingPlan[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [editingPlan, setEditingPlan] = useState<PricingPlan | undefined>(undefined);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        const q = query(collection(db, 'pricingPlans'), where('isDeleted', '!=', true));
+        const unsub = onSnapshot(q, snap => {
+            setPlans(snap.docs.map(d => ({id: d.id, ...d.data()}) as PricingPlan).sort((a,b) => a.price - b.price));
+            setLoading(false);
+        });
+        return () => unsub();
+    }, []);
+
+    const handleSave = async (data: Partial<PricingPlan>) => {
+        try {
+            if(editingPlan?.id) {
+                await updateDoc(doc(db, 'pricingPlans', editingPlan.id), data);
+                toast({title: 'Plano atualizado!'});
+            } else {
+                await addDoc(collection(db, 'pricingPlans'), {...data, isDeleted: false });
+                toast({title: 'Plano criado!'});
+            }
+            setIsFormOpen(false);
+        } catch(error) {
+            toast({title: 'Erro ao salvar o plano', variant: 'destructive'});
+        }
+    }
+    
+    const handleDelete = async (id: string) => {
+        await updateDoc(doc(db, 'pricingPlans', id), { isDeleted: true });
+        toast({title: 'Plano excluído', variant: 'destructive'});
+    }
+
+    return (
+        <Card>
+            <CardHeader>
+                 <div className="flex justify-between items-center">
+                    <div>
+                        <CardTitle>Planos de Preços</CardTitle>
+                        <CardDescription>Gerencie os planos de assinatura que serão exibidos publicamente.</CardDescription>
+                    </div>
+                    <Button onClick={() => { setEditingPlan(undefined); setIsFormOpen(true)}}>
+                        <PlusCircle className="mr-2"/> Adicionar Plano
+                    </Button>
+                 </div>
+            </CardHeader>
+            <CardContent>
+                 <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Nome</TableHead>
+                            <TableHead>Preço</TableHead>
+                            <TableHead>Funcionalidades</TableHead>
+                            <TableHead>Destaque</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {loading ? <TableRow><TableCell colSpan={5}><Skeleton className="h-5 w-full"/></TableCell></TableRow> :
+                        plans.map(plan => (
+                            <TableRow key={plan.id}>
+                                <TableCell className="font-semibold">{plan.name}</TableCell>
+                                <TableCell>R$ {plan.price.toLocaleString('pt-br', {minimumFractionDigits: 2})}</TableCell>
+                                <TableCell>{plan.features.join(', ')}</TableCell>
+                                <TableCell>{plan.isFeatured ? <Badge>Sim</Badge> : 'Não'}</TableCell>
+                                <TableCell className="text-right">
+                                    <Button variant="ghost" size="icon" onClick={() => { setEditingPlan(plan); setIsFormOpen(true)}}>
+                                        <Pencil className="h-4 w-4"/>
+                                    </Button>
+                                    <Button variant="ghost" size="icon" onClick={() => handleDelete(plan.id)}>
+                                        <Trash2 className="h-4 w-4 text-destructive"/>
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </CardContent>
+             <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>{editingPlan ? 'Editar Plano' : 'Novo Plano'}</DialogTitle></DialogHeader>
+                    <PlanForm plan={editingPlan} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
+                </DialogContent>
+            </Dialog>
+        </Card>
+    );
+}
 
 
 function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void, adminUser: User | null }) {
@@ -714,71 +858,82 @@ function SuperAdminPage() {
                        <ShieldAlert className="h-8 w-8 text-destructive" />
                        <div>
                          <CardTitle>Painel Super Admin</CardTitle>
-                         <CardDescription>Gerenciamento de todas as organizações do sistema.</CardDescription>
+                         <CardDescription>Gerenciamento de todas as organizações e planos do sistema.</CardDescription>
                        </div>
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <Table>
-                        <TableHeader><TableRow><TableHead>Organização</TableHead><TableHead>Proprietário</TableHead><TableHead>Status Pag.</TableHead><TableHead>Próx. Venc.</TableHead><TableHead>Acessar</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
-                        <TableBody>
-                            {loading ? (
-                                <TableRow>
-                                    <TableCell colSpan={6} className="h-24 text-center">
-                                        <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
-                                    </TableCell>
-                                </TableRow>
-                            ) : organizations.map((org) => (
-                                <TableRow key={org.id}>
-                                    <TableCell className="font-medium">{org.name}</TableCell>
-                                    <TableCell>{org.owner?.name || 'N/A'}</TableCell>
-                                    <TableCell>{getStatusBadge(org.paymentStatus)}</TableCell>
-                                    <TableCell>
-                                        {org.subscription?.paymentRecords
-                                            ?.filter(p => p.status === 'pending')
-                                            .sort((a,b) => toDate(a.date)!.getTime() - toDate(b.date)!.getTime())
-                                            [0] 
-                                            ? format(toDate(org.subscription.paymentRecords.find(p => p.status === 'pending')!.date)!, 'dd/MM/yyyy') 
-                                            : <Badge variant="outline">N/A</Badge>
-                                        }
-                                    </TableCell>
-                                    <TableCell>
-                                        <Button variant="outline" size="sm" onClick={() => startImpersonation(org.id)}>
-                                            <LogIn className="mr-2 h-4 w-4"/>
-                                            Acessar Painel
-                                        </Button>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <AlertDialog>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                                    <DropdownMenuSeparator />
-                                                     <div className="p-2">
-                                                        <Select defaultValue={org.paymentStatus} onValueChange={(s: PaymentStatus) => handleStatusChange(org.id, s)}>
-                                                            <SelectTrigger><SelectValue placeholder="Mudar Status" /></SelectTrigger>
-                                                            <SelectContent><SelectItem value="active">Ativo</SelectItem><SelectItem value="overdue">Vencido</SelectItem><SelectItem value="locked">Bloqueado</SelectItem></SelectContent>
-                                                        </Select>
-                                                     </div>
-                                                    <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'subscription')}><DollarSign className="mr-2 h-4 w-4" /> Gerenciar Assinatura</DropdownMenuItem>
-                                                    <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'users')}><Users className="mr-2 h-4 w-4" /> Gerenciar Usuários</DropdownMenuItem>
-                                                    <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'profiles')}><Pencil className="mr-2 h-4 w-4" /> Gerenciar Perfis</DropdownMenuItem>
-                                                    <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'modules')}><SlidersHorizontal className="mr-2 h-4 w-4" /> Gerenciar Módulos</DropdownMenuItem>
-                                                    <DropdownMenuSeparator />
-                                                     <AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Excluir Organização</DropdownMenuItem></AlertDialogTrigger>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                            <AlertDialogContent>
-                                                <AlertDialogHeader><AlertDialogTitle>Excluir "{org.name}"?</AlertDialogTitle><AlertDialogDescription>Essa ação é irreversível e excluirá a organização e todos os seus dados.</AlertDialogDescription></AlertDialogHeader>
-                                                <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteOrganization(org.id)} className={buttonVariants({ variant: "destructive" })}>Sim, excluir</AlertDialogAction></AlertDialogFooter>
-                                            </AlertDialogContent>
-                                        </AlertDialog>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                     <Tabs defaultValue="organizations">
+                        <TabsList>
+                            <TabsTrigger value="organizations">Organizações</TabsTrigger>
+                            <TabsTrigger value="plans">Planos</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="organizations" className="mt-4">
+                            <Table>
+                                <TableHeader><TableRow><TableHead>Organização</TableHead><TableHead>Proprietário</TableHead><TableHead>Status Pag.</TableHead><TableHead>Próx. Venc.</TableHead><TableHead>Acessar</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
+                                <TableBody>
+                                    {loading ? (
+                                        <TableRow>
+                                            <TableCell colSpan={6} className="h-24 text-center">
+                                                <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : organizations.map((org) => (
+                                        <TableRow key={org.id}>
+                                            <TableCell className="font-medium">{org.name}</TableCell>
+                                            <TableCell>{org.owner?.name || 'N/A'}</TableCell>
+                                            <TableCell>{getStatusBadge(org.paymentStatus)}</TableCell>
+                                            <TableCell>
+                                                {org.subscription?.paymentRecords
+                                                    ?.filter(p => p.status === 'pending')
+                                                    .sort((a,b) => toDate(a.date)!.getTime() - toDate(b.date)!.getTime())
+                                                    [0] 
+                                                    ? format(toDate(org.subscription.paymentRecords.find(p => p.status === 'pending')!.date)!, 'dd/MM/yyyy') 
+                                                    : <Badge variant="outline">N/A</Badge>
+                                                }
+                                            </TableCell>
+                                            <TableCell>
+                                                <Button variant="outline" size="sm" onClick={() => startImpersonation(org.id)}>
+                                                    <LogIn className="mr-2 h-4 w-4"/>
+                                                    Acessar Painel
+                                                </Button>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <AlertDialog>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end">
+                                                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                                                            <DropdownMenuSeparator />
+                                                            <div className="p-2">
+                                                                <Select defaultValue={org.paymentStatus} onValueChange={(s: PaymentStatus) => handleStatusChange(org.id, s)}>
+                                                                    <SelectTrigger><SelectValue placeholder="Mudar Status" /></SelectTrigger>
+                                                                    <SelectContent><SelectItem value="active">Ativo</SelectItem><SelectItem value="overdue">Vencido</SelectItem><SelectItem value="locked">Bloqueado</SelectItem></SelectContent>
+                                                                </Select>
+                                                            </div>
+                                                            <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'subscription')}><DollarSign className="mr-2 h-4 w-4" /> Gerenciar Assinatura</DropdownMenuItem>
+                                                            <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'users')}><Users className="mr-2 h-4 w-4" /> Gerenciar Usuários</DropdownMenuItem>
+                                                            <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'profiles')}><Pencil className="mr-2 h-4 w-4" /> Gerenciar Perfis</DropdownMenuItem>
+                                                            <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'modules')}><SlidersHorizontal className="mr-2 h-4 w-4" /> Gerenciar Módulos</DropdownMenuItem>
+                                                            <DropdownMenuSeparator />
+                                                            <AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Excluir Organização</DropdownMenuItem></AlertDialogTrigger>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader><AlertDialogTitle>Excluir "{org.name}"?</AlertDialogTitle><AlertDialogDescription>Essa ação é irreversível e excluirá a organização e todos os seus dados.</AlertDialogDescription></AlertDialogHeader>
+                                                        <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteOrganization(org.id)} className={buttonVariants({ variant: "destructive" })}>Sim, excluir</AlertDialogAction></AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </TabsContent>
+                         <TabsContent value="plans" className="mt-4">
+                            <PricingPlansSettings />
+                        </TabsContent>
+                    </Tabs>
                 </CardContent>
             </Card>
              {selectedOrg && <ModulesSettingsDialog organization={selectedOrg} isOpen={isModuleDialogOpen} onOpenChange={setIsModuleDialogOpen} />}
@@ -790,4 +945,3 @@ function SuperAdminPage() {
 }
 
 export default SuperAdminPage;
-

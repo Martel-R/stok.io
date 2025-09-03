@@ -69,6 +69,7 @@ export interface User {
   customerId?: string; // Link to customer profile if role is 'customer'
   availability?: Availability;
   isImpersonating?: boolean;
+  isDeleted?: boolean;
 }
 
 export type AnamnesisQuestionType = 'text' | 'boolean' | 'boolean_with_text' | 'integer' | 'decimal';
@@ -346,11 +347,14 @@ export interface PaymentRecord {
 }
 
 export interface Subscription {
+    planId?: string;
     planName: string;
     price: number;
     startDate: any; // Timestamp
     endDate: any; // Timestamp
     paymentRecords: PaymentRecord[];
+    maxBranches: number;
+    maxUsers: number;
 }
 
 
@@ -384,9 +388,11 @@ export interface Expense {
 export interface PricingPlan {
     id: string;
     name: string;
-    price: number; // Stored in cents or as a float, depending on preference
+    price: number;
     description: string;
-    features: string[]; // List of feature descriptions
+    features: string[];
+    maxBranches: number;
+    maxUsers: number;
     isFeatured?: boolean;
     isDeleted?: boolean;
 }

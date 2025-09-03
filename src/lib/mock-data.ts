@@ -31,6 +31,8 @@ export const MOCK_PRICING_PLANS: Omit<PricingPlan, 'id'>[] = [
       "Relatórios Essenciais",
       "Suporte por E-mail",
     ],
+    maxBranches: 1,
+    maxUsers: 3,
     isFeatured: false,
   },
   {
@@ -46,6 +48,8 @@ export const MOCK_PRICING_PLANS: Omit<PricingPlan, 'id'>[] = [
       "Oráculo AI para insights",
       "Suporte Prioritário por Chat",
     ],
+    maxBranches: 3,
+    maxUsers: 10,
     isFeatured: true,
   },
   {
@@ -60,6 +64,8 @@ export const MOCK_PRICING_PLANS: Omit<PricingPlan, 'id'>[] = [
       "Gerente de Contas Dedicado",
       "Branding Personalizado Avançado",
     ],
+    maxBranches: 999,
+    maxUsers: 999,
     isFeatured: false,
   },
 ];

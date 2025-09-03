@@ -301,6 +301,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           startDate: Timestamp.now(),
           endDate: Timestamp.fromDate(addMonths(new Date(), 12)),
           paymentRecords: [],
+          maxBranches: 3,
+          maxUsers: 10,
       };
       
       batch.set(doc(db, "organizations", organizationId), { 
@@ -347,6 +349,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const createUser = async (email: string, name: string, role: string, organizationId: string, customerId?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
     try {
+        const orgDoc = await getDoc(doc(db, 'organizations', organizationId));
+        if(!orgDoc.exists()) return { success: false, error: 'Organização não encontrada.'};
+
+        const orgData = orgDoc.data() as Organization;
+        const usersQuery = query(collection(db, 'users'), where('organizationId', '==', organizationId), where('isDeleted', '!=', true));
+        const usersSnap = await getDocs(usersQuery);
+        const currentUsersCount = usersSnap.size;
+
+        if (currentUsersCount >= (orgData.subscription?.maxUsers || 1)) {
+             return { success: false, error: `Limite de ${orgData.subscription?.maxUsers} usuários para este plano atingido.` };
+        }
+
         const { getApp, initializeApp, deleteApp } = await import('firebase/app');
         const { getAuth: getAuth_local, createUserWithEmailAndPassword: createUserWithEmailAndPassword_local, sendPasswordResetEmail: sendPasswordResetEmail_local, signOut: signOut_local } = await import('firebase/auth');
 
@@ -388,22 +402,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const deleteUser = async (userId: string): Promise<{ success: boolean; error?: string; }> => {
-      // This function can only be called by an admin. 
-      // The secure way requires a backend function to delete the auth user.
-      // For now, we will disable the auth user and mark as deleted in Firestore.
-      if (!user || user.role !== 'admin') {
-          return { success: false, error: "Apenas administradores podem excluir usuários." };
+      if (!user) {
+          return { success: false, error: "Usuário não autenticado." };
       }
-
-      console.warn("A exclusão de usuários na autenticação requer uma função de backend com privilégios de administrador. Implementando desativação do usuário e exclusão lógica.");
-
       try {
         const userRef = doc(db, 'users', userId);
         await updateDoc(userRef, { isDeleted: true });
-
-        // Note: Disabling the user requires admin privileges not available on the client.
-        // This log serves as a placeholder for the backend function call.
-        console.log(`[ACTION REQUIRED] User ${userId} marked as deleted. Please disable or delete the user from Firebase Authentication console.`);
 
         logUserActivity({
             userId: user.id,

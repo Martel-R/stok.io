@@ -43,7 +43,7 @@ const toDate = (date: any): Date | undefined => {
 };
 
 function PlanForm({ plan, onSave, onDone }: { plan?: PricingPlan, onSave: (data: Partial<PricingPlan>) => void, onDone: () => void }) {
-    const [formData, setFormData] = useState<Partial<PricingPlan>>(plan || { name: '', price: 0, description: '', features: [], isFeatured: false });
+    const [formData, setFormData] = useState<Partial<PricingPlan>>(plan || { name: '', price: 0, description: '', features: [], maxBranches: 1, maxUsers: 1, isFeatured: false });
     const [featureInput, setFeatureInput] = useState('');
 
     const handleFeatureAdd = () => {
@@ -64,9 +64,21 @@ function PlanForm({ plan, onSave, onDone }: { plan?: PricingPlan, onSave: (data:
     
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
-            <Input name="name" value={formData.name || ''} onChange={e => setFormData(p => ({...p, name: e.target.value}))} placeholder="Nome do Plano" required />
-            <Input name="description" value={formData.description || ''} onChange={e => setFormData(p => ({...p, description: e.target.value}))} placeholder="Descrição do Plano" required />
-            <Input name="price" type="number" step="0.01" value={formData.price || ''} onChange={e => setFormData(p => ({...p, price: parseFloat(e.target.value) || 0}))} placeholder="Preço (ex: 99.90)" required />
+            <div className="grid grid-cols-2 gap-4">
+                <Input name="name" value={formData.name || ''} onChange={e => setFormData(p => ({...p, name: e.target.value}))} placeholder="Nome do Plano" required />
+                <Input name="price" type="number" step="0.01" value={formData.price || ''} onChange={e => setFormData(p => ({...p, price: parseFloat(e.target.value) || 0}))} placeholder="Preço (ex: 99.90)" required />
+            </div>
+            <Textarea name="description" value={formData.description || ''} onChange={e => setFormData(p => ({...p, description: e.target.value}))} placeholder="Descrição do Plano" required />
+             <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label>Máx. Filiais</Label>
+                    <Input name="maxBranches" type="number" value={formData.maxBranches || ''} onChange={e => setFormData(p => ({...p, maxBranches: parseInt(e.target.value, 10) || 1}))} required />
+                </div>
+                <div className="space-y-2">
+                    <Label>Máx. Usuários</Label>
+                    <Input name="maxUsers" type="number" value={formData.maxUsers || ''} onChange={e => setFormData(p => ({...p, maxUsers: parseInt(e.target.value, 10) || 1}))} required />
+                </div>
+            </div>
             <div className="space-y-2">
                 <Label>Funcionalidades</Label>
                 <div className="flex gap-2">
@@ -149,7 +161,7 @@ function PricingPlansSettings() {
                         <TableRow>
                             <TableHead>Nome</TableHead>
                             <TableHead>Preço</TableHead>
-                            <TableHead>Funcionalidades</TableHead>
+                            <TableHead>Limites</TableHead>
                             <TableHead>Destaque</TableHead>
                             <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
@@ -160,10 +172,15 @@ function PricingPlansSettings() {
                             <TableRow key={plan.id}>
                                 <TableCell className="font-semibold">{plan.name}</TableCell>
                                 <TableCell>R$ {plan.price.toLocaleString('pt-br', {minimumFractionDigits: 2})}</TableCell>
-                                <TableCell>{plan.features.join(', ')}</TableCell>
+                                <TableCell>
+                                    <div className='text-sm'>
+                                        <p>{plan.maxBranches} Filiais</p>
+                                        <p>{plan.maxUsers} Usuários</p>
+                                    </div>
+                                </TableCell>
                                 <TableCell>{plan.isFeatured ? <Badge>Sim</Badge> : 'Não'}</TableCell>
                                 <TableCell className="text-right">
-                                    <Button variant="ghost" size="icon" onClick={() => { setEditingPlan(plan); setIsFormOpen(true)}}>
+                                    <Button variant="ghost" size="icon" onClick={() => { setEditingPlan(plan); setIsFormOpen(true);}}>
                                         <Pencil className="h-4 w-4"/>
                                     </Button>
                                     <Button variant="ghost" size="icon" onClick={() => handleDelete(plan.id)}>
@@ -176,7 +193,7 @@ function PricingPlansSettings() {
                 </Table>
             </CardContent>
              <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                <DialogContent>
+                <DialogContent className="sm:max-w-xl">
                     <DialogHeader><DialogTitle>{editingPlan ? 'Editar Plano' : 'Novo Plano'}</DialogTitle></DialogHeader>
                     <PlanForm plan={editingPlan} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
                 </DialogContent>
@@ -185,16 +202,38 @@ function PricingPlansSettings() {
     );
 }
 
-
 function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void, adminUser: User | null }) {
     const { toast } = useToast();
     const [subDetails, setSubDetails] = useState<Partial<Subscription>>(organization.subscription || {});
     const [editingRecord, setEditingRecord] = useState<PaymentRecord | null>(null);
     const [payingRecord, setPayingRecord] = useState<PaymentRecord | null>(null);
+    const [plans, setPlans] = useState<PricingPlan[]>([]);
     
+    useEffect(() => {
+        const q = query(collection(db, 'pricingPlans'), where('isDeleted', '!=', true));
+        const unsub = onSnapshot(q, snap => {
+            setPlans(snap.docs.map(d => ({id: d.id, ...d.data()}) as PricingPlan));
+        });
+        return () => unsub();
+    }, []);
+
     useEffect(() => {
         setSubDetails(organization.subscription || {});
     }, [organization.subscription]);
+    
+    const handlePlanChange = (planId: string) => {
+        const selectedPlan = plans.find(p => p.id === planId);
+        if (selectedPlan) {
+            setSubDetails(prev => ({
+                ...prev,
+                planId: selectedPlan.id,
+                planName: selectedPlan.name,
+                price: selectedPlan.price,
+                maxBranches: selectedPlan.maxBranches,
+                maxUsers: selectedPlan.maxUsers,
+            }));
+        }
+    };
 
     const handleCreateOrUpdateSubscription = async () => {
         if (!adminUser || !subDetails.planName || !subDetails.price) {
@@ -230,6 +269,8 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
             price: subDetails.price,
             startDate: subDetails.startDate || null,
             endDate: subDetails.endDate || null,
+            maxBranches: subDetails.maxBranches || 1,
+            maxUsers: subDetails.maxUsers || 1,
             paymentRecords,
         };
         try {
@@ -326,12 +367,13 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                         <h3 className="font-semibold">Detalhes do Contrato</h3>
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label htmlFor="planName">Nome do Plano</Label>
-                                <Input id="planName" value={subDetails.planName || ''} onChange={e => setSubDetails(p => ({...p, planName: e.target.value}))} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="planPrice">Preço Mensal (R$)</Label>
-                                <Input id="planPrice" type="number" value={subDetails.price || ''} onChange={e => setSubDetails(p => ({...p, price: parseFloat(e.target.value) || 0}))} />
+                                <Label htmlFor="planName">Plano</Label>
+                                <Select value={subDetails.planId} onValueChange={handlePlanChange}>
+                                    <SelectTrigger><SelectValue placeholder="Selecione um plano..." /></SelectTrigger>
+                                    <SelectContent>
+                                        {plans.map(p => <SelectItem key={p.id} value={p.id}>{p.name} (R$ {p.price.toFixed(2)})</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
                             </div>
                          </div>
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -817,7 +859,7 @@ function SuperAdminPage() {
     };
     
     const handleDeleteOrganization = async (orgId: string) => {
-        const collectionsToDelete = ['users', 'branches', 'products', 'combos', 'kits', 'sales', 'stockEntries', 'paymentConditions', 'permissionProfiles'];
+        const collectionsToDelete = ['users', 'branches', 'products', 'combos', 'kits', 'sales', 'stockEntries', 'paymentConditions', 'permissionProfiles', 'anamnesisQuestions', 'customers', 'attendances', 'appointments', 'services'];
         try {
             const batch = writeBatch(db);
             for (const collectionName of collectionsToDelete) {
@@ -905,18 +947,18 @@ function SuperAdminPage() {
                                                         <DropdownMenuContent align="end">
                                                             <DropdownMenuLabel>Ações</DropdownMenuLabel>
                                                             <DropdownMenuSeparator />
-                                                            <div className="p-2">
+                                                             <div className="p-2">
                                                                 <Select defaultValue={org.paymentStatus} onValueChange={(s: PaymentStatus) => handleStatusChange(org.id, s)}>
                                                                     <SelectTrigger><SelectValue placeholder="Mudar Status" /></SelectTrigger>
                                                                     <SelectContent><SelectItem value="active">Ativo</SelectItem><SelectItem value="overdue">Vencido</SelectItem><SelectItem value="locked">Bloqueado</SelectItem></SelectContent>
                                                                 </Select>
-                                                            </div>
+                                                             </div>
                                                             <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'subscription')}><DollarSign className="mr-2 h-4 w-4" /> Gerenciar Assinatura</DropdownMenuItem>
                                                             <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'users')}><Users className="mr-2 h-4 w-4" /> Gerenciar Usuários</DropdownMenuItem>
                                                             <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'profiles')}><Pencil className="mr-2 h-4 w-4" /> Gerenciar Perfis</DropdownMenuItem>
                                                             <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'modules')}><SlidersHorizontal className="mr-2 h-4 w-4" /> Gerenciar Módulos</DropdownMenuItem>
                                                             <DropdownMenuSeparator />
-                                                            <AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Excluir Organização</DropdownMenuItem></AlertDialogTrigger>
+                                                             <AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Excluir Organização</DropdownMenuItem></AlertDialogTrigger>
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
                                                     <AlertDialogContent>

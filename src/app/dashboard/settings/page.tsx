@@ -119,6 +119,10 @@ function UsersTable() {
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
     const { toast } = useToast();
     const { createUser, user: adminUser, deleteUser } = useAuth();
+    
+    const userCount = useMemo(() => users.length, [users]);
+    const maxUsers = adminUser?.organization?.subscription?.maxUsers || 1;
+    const canAddUser = userCount < maxUsers;
 
     useEffect(() => {
         if (!adminUser?.organizationId) {
@@ -157,6 +161,10 @@ function UsersTable() {
     }
 
     const openNewDialog = () => {
+        if(!canAddUser) {
+            toast({ title: 'Limite de usuários atingido', description: `Seu plano atual permite até ${maxUsers} usuários.`, variant: 'destructive'});
+            return;
+        }
         setEditingUser(undefined);
         setIsFormOpen(true);
     }
@@ -214,7 +222,7 @@ function UsersTable() {
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                     <div>
                         <CardTitle>Usuários</CardTitle>
-                        <CardDescription>Gerencie as permissões dos usuários da sua organização.</CardDescription>
+                        <CardDescription>Gerencie as permissões dos usuários da sua organização. ({userCount} de {maxUsers} usuários)</CardDescription>
                     </div>
                      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                         <DialogTrigger asChild>
@@ -303,6 +311,10 @@ function BranchesSettings() {
     const [editingBranch, setEditingBranch] = useState<Branch | undefined>(undefined);
     const { toast } = useToast();
 
+    const branchCount = branches.length;
+    const maxBranches = currentUser?.organization?.subscription?.maxBranches || 1;
+    const canAddBranch = branchCount < maxBranches;
+
     useEffect(() => {
         if (!currentUser?.organizationId) return;
         const q = query(collection(db, 'users'), where('organizationId', '==', currentUser.organizationId));
@@ -319,6 +331,10 @@ function BranchesSettings() {
     }
 
     const openNewDialog = () => {
+        if(!canAddBranch) {
+            toast({ title: 'Limite de filiais atingido', description: `Seu plano atual permite até ${maxBranches} filiais.`, variant: 'destructive'});
+            return;
+        }
         setEditingBranch(undefined);
         setIsFormOpen(true);
     }
@@ -365,7 +381,7 @@ function BranchesSettings() {
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                     <div>
                         <CardTitle>Filiais</CardTitle>
-                        <CardDescription>Gerencie as unidades de negócio da sua empresa.</CardDescription>
+                        <CardDescription>Gerencie as unidades de negócio da sua empresa. ({branchCount} de {maxBranches} filiais)</CardDescription>
                     </div>
                     <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                         <DialogTrigger asChild>
@@ -1688,4 +1704,3 @@ function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Suppl
         </form>
     );
 }
-

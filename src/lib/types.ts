@@ -238,9 +238,39 @@ export interface PaymentDetail {
 
 export type SaleStatus = 'completed' | 'cancelled';
 
+export interface SaleItemProduct {
+  id: string;
+  name: string;
+  quantity: number;
+  price: number;
+  total: number;
+  type: 'product' | 'service';
+}
+
+export interface SaleItemKit {
+  id: string;
+  name: string;
+  quantity: number;
+  total: number;
+  type: 'kit';
+  chosenProducts: { id: string; name: string; price: number; }[];
+}
+
+export interface SaleItemCombo {
+  id: string;
+  name: string;
+  quantity: number;
+  originalPrice: number;
+  finalPrice: number;
+  type: 'combo';
+  products: { productId: string; productName: string; quantity: number; productPrice: number }[];
+}
+
+export type SaleItem = SaleItemProduct | SaleItemKit | SaleItemCombo;
+
 export interface Sale {
   id:string;
-  items: any[]; // Simplified for historical data viewing
+  items: SaleItem[];
   total: number;
   date: Date;
   cashier: string;

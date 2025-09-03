@@ -114,7 +114,7 @@ export function ImportProductsDialog({
     
     const downloadTemplate = () => {
         const headers = "nome,categoria,preco_compra,preco_venda,alerta_estoque_baixo,comerciavel,codigo_barras,url_imagem,codigo_interno,estoque_inicial,unidade_medida";
-        const example = "Laptop Gamer,Eletrônicos,6000.00,7500.50,5,TRUE,7890123456789,https://placehold.co/400x400.png,LP-GAMER-01,15,UN\nSacola Plástica,Insumos,0.10,0.50,100,FALSE,,,,500,PCT";
+        const example = "Laptop Gamer,Eletrônicos,6000.00,7500.50,5,TRUE,7890123456789,https://placehold.co/400x400.png,LP-GAMER-01,15,UN\\nSacola Plástica,Insumos,0.10,0.50,100,FALSE,,,,500,PCT";
         const csvContent = `data:text/csv;charset=utf-8,${headers}\n${example}`;
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");

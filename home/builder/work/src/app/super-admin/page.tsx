@@ -5,15 +5,15 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc, addDoc, serverTimestamp, arrayUnion, Timestamp } from 'firebase/firestore';
-import type { Organization, User, PaymentStatus, EnabledModules, PermissionProfile, Subscription, PaymentRecord, PaymentRecordStatus } from '@/lib/types';
+import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import type { Organization, User, PaymentStatus, EnabledModules, PermissionProfile, Subscription, PaymentRecord, PaymentRecordStatus, PricingPlan } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn, ArrowDownCircle } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn, Tags } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -24,13 +24,13 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { PermissionProfileForm } from '@/components/permission-profile-form';
 import { format, eachMonthOfInterval, startOfMonth } from 'date-fns';
-import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { DateRange } from 'react-day-picker';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { allModuleConfig } from '@/components/module-permission-row';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 type OrgWithUser = Organization & { owner?: User };
 
@@ -42,16 +42,206 @@ const toDate = (date: any): Date | undefined => {
     return undefined;
 };
 
+function PlanForm({ plan, onSave, onDone }: { plan?: PricingPlan, onSave: (data: Partial<PricingPlan>) => void, onDone: () => void }) {
+    const [formData, setFormData] = useState<Partial<PricingPlan>>(plan || { name: '', price: 0, description: '', features: [], maxBranches: 1, maxUsers: 1, isFeatured: false, isDeleted: false });
+    const [featureInput, setFeatureInput] = useState('');
+
+    const handleFeatureAdd = () => {
+        if(featureInput.trim()) {
+            setFormData(prev => ({...prev, features: [...(prev.features || []), featureInput.trim()]}));
+            setFeatureInput('');
+        }
+    }
+
+    const handleFeatureRemove = (index: number) => {
+        setFormData(prev => ({...prev, features: prev.features?.filter((_, i) => i !== index)}));
+    }
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData);
+    }
+    
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+                <Input name="name" value={formData.name || ''} onChange={e => setFormData(p => ({...p, name: e.target.value}))} placeholder="Nome do Plano" required />
+                <Input name="price" type="number" step="0.01" value={formData.price || ''} onChange={e => setFormData(p => ({...p, price: parseFloat(e.target.value) || 0}))} placeholder="Preço (ex: 99.90)" required />
+            </div>
+            <Textarea name="description" value={formData.description || ''} onChange={e => setFormData(p => ({...p, description: e.target.value}))} placeholder="Descrição do Plano" required />
+             <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label>Máx. Filiais</Label>
+                    <Input name="maxBranches" type="number" value={formData.maxBranches || ''} onChange={e => setFormData(p => ({...p, maxBranches: parseInt(e.target.value, 10) || 1}))} required />
+                </div>
+                <div className="space-y-2">
+                    <Label>Máx. Usuários</Label>
+                    <Input name="maxUsers" type="number" value={formData.maxUsers || ''} onChange={e => setFormData(p => ({...p, maxUsers: parseInt(e.target.value, 10) || 1}))} required />
+                </div>
+            </div>
+            <div className="space-y-2">
+                <Label>Funcionalidades</Label>
+                <div className="flex gap-2">
+                    <Input value={featureInput} onChange={e => setFeatureInput(e.target.value)} placeholder="Adicionar funcionalidade"/>
+                    <Button type="button" onClick={handleFeatureAdd}>Adicionar</Button>
+                </div>
+                <div className="space-y-1">
+                    {formData.features?.map((feat, i) => (
+                        <div key={i} className="flex items-center justify-between text-sm">
+                            <span>- {feat}</span>
+                            <Button type="button" size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleFeatureRemove(i)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+             <div className="flex items-center space-x-2">
+                <Switch id="isFeatured" checked={formData.isFeatured} onCheckedChange={c => setFormData(p => ({...p, isFeatured: c}))} />
+                <Label htmlFor="isFeatured">Marcar como plano em destaque?</Label>
+            </div>
+             <div className="flex items-center space-x-2">
+                <Switch id="isActive" checked={!formData.isDeleted} onCheckedChange={c => setFormData(p => ({...p, isDeleted: !c}))} />
+                <Label htmlFor="isActive">Plano Ativo (visível na página de preços)</Label>
+            </div>
+            <DialogFooter>
+                <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
+                <Button type="submit">Salvar Plano</Button>
+            </DialogFooter>
+        </form>
+    );
+}
+
+function PricingPlansSettings() {
+    const [plans, setPlans] = useState<PricingPlan[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [editingPlan, setEditingPlan] = useState<PricingPlan | undefined>(undefined);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        const q = query(collection(db, 'pricingPlans'));
+        const unsub = onSnapshot(q, snap => {
+            setPlans(snap.docs.map(d => ({id: d.id, ...d.data()}) as PricingPlan).sort((a,b) => a.price - b.price));
+            setLoading(false);
+        });
+        return () => unsub();
+    }, []);
+
+    const handleSave = async (data: Partial<PricingPlan>) => {
+        try {
+            if(editingPlan?.id) {
+                await updateDoc(doc(db, 'pricingPlans', editingPlan.id), data);
+                toast({title: 'Plano atualizado!'});
+            } else {
+                await addDoc(collection(db, 'pricingPlans'), {...data, isDeleted: data.isDeleted === undefined ? false : data.isDeleted });
+                toast({title: 'Plano criado!'});
+            }
+            setIsFormOpen(false);
+        } catch(error) {
+            toast({title: 'Erro ao salvar o plano', variant: 'destructive'});
+        }
+    }
+    
+    const togglePlanStatus = async (plan: PricingPlan) => {
+        await updateDoc(doc(db, 'pricingPlans', plan.id), { isDeleted: !plan.isDeleted });
+        toast({title: `Plano ${!plan.isDeleted ? 'desativado' : 'ativado'} com sucesso.`});
+    }
+
+    return (
+        <Card>
+            <CardHeader>
+                 <div className="flex justify-between items-center">
+                    <div>
+                        <CardTitle>Planos de Preços</CardTitle>
+                        <CardDescription>Gerencie os planos de assinatura que serão exibidos publicamente.</CardDescription>
+                    </div>
+                    <Button onClick={() => { setEditingPlan(undefined); setIsFormOpen(true)}}>
+                        <PlusCircle className="mr-2"/> Adicionar Plano
+                    </Button>
+                 </div>
+            </CardHeader>
+            <CardContent>
+                 <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Nome</TableHead>
+                            <TableHead>Preço</TableHead>
+                            <TableHead>Limites</TableHead>
+                            <TableHead>Destaque</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {loading ? <TableRow><TableCell colSpan={6}><Skeleton className="h-5 w-full"/></TableCell></TableRow> :
+                        plans.map(plan => (
+                            <TableRow key={plan.id}>
+                                <TableCell className="font-semibold">{plan.name}</TableCell>
+                                <TableCell>R$ {plan.price.toLocaleString('pt-br', {minimumFractionDigits: 2})}</TableCell>
+                                <TableCell>
+                                    <div className='text-sm'>
+                                        <p>{plan.maxBranches} Filiais</p>
+                                        <p>{plan.maxUsers} Usuários</p>
+                                    </div>
+                                </TableCell>
+                                <TableCell>{plan.isFeatured ? <Badge>Sim</Badge> : 'Não'}</TableCell>
+                                <TableCell>
+                                    <Badge variant={!plan.isDeleted ? "secondary" : "outline"} className={cn(!plan.isDeleted && 'bg-green-100 text-green-800')}>
+                                        {!plan.isDeleted ? "Ativo" : "Inativo"}
+                                    </Badge>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                    <Switch checked={!plan.isDeleted} onCheckedChange={() => togglePlanStatus(plan)} aria-label="Ativar/Desativar Plano" />
+                                    <Button variant="ghost" size="icon" onClick={() => { setEditingPlan(plan); setIsFormOpen(true);}}>
+                                        <Pencil className="h-4 w-4"/>
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </CardContent>
+             <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                <DialogContent className="sm:max-w-xl">
+                    <DialogHeader><DialogTitle>{editingPlan ? 'Editar Plano' : 'Novo Plano'}</DialogTitle></DialogHeader>
+                    <PlanForm plan={editingPlan} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
+                </DialogContent>
+            </Dialog>
+        </Card>
+    );
+}
 
 function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void, adminUser: User | null }) {
     const { toast } = useToast();
     const [subDetails, setSubDetails] = useState<Partial<Subscription>>(organization.subscription || {});
     const [editingRecord, setEditingRecord] = useState<PaymentRecord | null>(null);
     const [payingRecord, setPayingRecord] = useState<PaymentRecord | null>(null);
+    const [plans, setPlans] = useState<PricingPlan[]>([]);
     
+    useEffect(() => {
+        const q = query(collection(db, 'pricingPlans'), where('isDeleted', '!=', true));
+        const unsub = onSnapshot(q, snap => {
+            setPlans(snap.docs.map(d => ({id: d.id, ...d.data()}) as PricingPlan));
+        });
+        return () => unsub();
+    }, []);
+
     useEffect(() => {
         setSubDetails(organization.subscription || {});
     }, [organization.subscription]);
+    
+    const handlePlanChange = (planId: string) => {
+        const selectedPlan = plans.find(p => p.id === planId);
+        if (selectedPlan) {
+            setSubDetails(prev => ({
+                ...prev,
+                planId: selectedPlan.id,
+                planName: selectedPlan.name,
+                price: selectedPlan.price,
+                maxBranches: selectedPlan.maxBranches,
+                maxUsers: selectedPlan.maxUsers,
+            }));
+        }
+    };
 
     const handleCreateOrUpdateSubscription = async () => {
         if (!adminUser || !subDetails.planName || !subDetails.price) {
@@ -87,6 +277,8 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
             price: subDetails.price,
             startDate: subDetails.startDate || null,
             endDate: subDetails.endDate || null,
+            maxBranches: subDetails.maxBranches || 1,
+            maxUsers: subDetails.maxUsers || 1,
             paymentRecords,
         };
         try {
@@ -183,12 +375,13 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                         <h3 className="font-semibold">Detalhes do Contrato</h3>
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label htmlFor="planName">Nome do Plano</Label>
-                                <Input id="planName" value={subDetails.planName || ''} onChange={e => setSubDetails(p => ({...p, planName: e.target.value}))} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="planPrice">Preço Mensal (R$)</Label>
-                                <Input id="planPrice" type="number" value={subDetails.price || ''} onChange={e => setSubDetails(p => ({...p, price: parseFloat(e.target.value) || 0}))} />
+                                <Label htmlFor="planName">Plano</Label>
+                                <Select value={subDetails.planId} onValueChange={handlePlanChange}>
+                                    <SelectTrigger><SelectValue placeholder="Selecione um plano..." /></SelectTrigger>
+                                    <SelectContent>
+                                        {plans.map(p => <SelectItem key={p.id} value={p.id}>{p.name} (R$ {p.price.toFixed(2)})</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
                             </div>
                          </div>
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -547,23 +740,6 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
     )
 }
 
-function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: PermissionProfile[]; onSave: (user: Partial<User>) => void; onDone: () => void }) {
-    const [formData, setFormData] = useState<Partial<User>>(user || { name: '', email: '', role: profiles[0]?.id || '' });
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    const handleRoleChange = (roleId: string) => setFormData(prev => ({...prev, role: roleId}));
-    const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSave(formData as User); onDone(); };
-
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <Input name="name" value={formData.name || ''} onChange={handleChange} placeholder="Nome do usuário" required />
-            <Input name="email" type="email" value={formData.email || ''} onChange={handleChange} placeholder="Email" required disabled={!!user} />
-            <Select value={formData.role} onValueChange={handleRoleChange}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{profiles.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
-            <DialogFooter><Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button><Button type="submit">Salvar</Button></DialogFooter>
-        </form>
-    );
-}
-
 function OrgProfilesDialog({ organization, isOpen, onOpenChange }: { organization: OrgWithUser | null; isOpen: boolean; onOpenChange: (open: boolean) => void }) {
     const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
     const [loading, setLoading] = useState(true);
@@ -673,7 +849,7 @@ function SuperAdminPage() {
         if (user && user.email === process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
             const unsubscribeOrgs = onSnapshot(collection(db, 'organizations'), async (orgSnapshot) => {
                 const orgsData = orgSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Organization));
-                const usersSnapshot = await getDocs(query(collection(db, 'users')), { source: 'server' });
+                const usersSnapshot = await getDocs(query(collection(db, 'users')));
                 const usersData = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
 
                 const orgsWithUsers = orgsData.map(org => ({ ...org, owner: usersData.find(u => u.id === org.ownerId) }));
@@ -691,7 +867,7 @@ function SuperAdminPage() {
     };
     
     const handleDeleteOrganization = async (orgId: string) => {
-        const collectionsToDelete = ['users', 'branches', 'products', 'combos', 'kits', 'sales', 'stockEntries', 'paymentConditions', 'permissionProfiles'];
+        const collectionsToDelete = ['users', 'branches', 'products', 'combos', 'kits', 'sales', 'stockEntries', 'paymentConditions', 'permissionProfiles', 'anamnesisQuestions', 'customers', 'attendances', 'appointments', 'services'];
         try {
             const batch = writeBatch(db);
             for (const collectionName of collectionsToDelete) {
@@ -720,7 +896,7 @@ function SuperAdminPage() {
         if (type === 'subscription') setIsSubscriptionDialogOpen(true);
     };
 
-    if (authLoading || loading || !user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
+    if (authLoading || !user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
         return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
     }
 
@@ -732,65 +908,82 @@ function SuperAdminPage() {
                        <ShieldAlert className="h-8 w-8 text-destructive" />
                        <div>
                          <CardTitle>Painel Super Admin</CardTitle>
-                         <CardDescription>Gerenciamento de todas as organizações do sistema.</CardDescription>
+                         <CardDescription>Gerenciamento de todas as organizações e planos do sistema.</CardDescription>
                        </div>
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <Table>
-                        <TableHeader><TableRow><TableHead>Organização</TableHead><TableHead>Proprietário</TableHead><TableHead>Status Pag.</TableHead><TableHead>Próx. Venc.</TableHead><TableHead>Acessar</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
-                        <TableBody>
-                            {organizations.map((org) => (
-                                <TableRow key={org.id}>
-                                    <TableCell className="font-medium">{org.name}</TableCell>
-                                    <TableCell>{org.owner?.name || 'N/A'}</TableCell>
-                                    <TableCell>{getStatusBadge(org.paymentStatus)}</TableCell>
-                                    <TableCell>
-                                        {org.subscription?.paymentRecords
-                                            ?.filter(p => p.status === 'pending')
-                                            .sort((a,b) => toDate(a.date)!.getTime() - toDate(b.date)!.getTime())
-                                            [0] 
-                                            ? format(toDate(org.subscription.paymentRecords.find(p => p.status === 'pending')!.date)!, 'dd/MM/yyyy') 
-                                            : <Badge variant="outline">N/A</Badge>
-                                        }
-                                    </TableCell>
-                                    <TableCell>
-                                        <Button variant="outline" size="sm" onClick={() => startImpersonation(org.id)}>
-                                            <LogIn className="mr-2 h-4 w-4"/>
-                                            Acessar Painel
-                                        </Button>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <AlertDialog>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                                    <DropdownMenuSeparator />
-                                                     <div className="p-2">
-                                                        <Select defaultValue={org.paymentStatus} onValueChange={(s: PaymentStatus) => handleStatusChange(org.id, s)}>
-                                                            <SelectTrigger><SelectValue placeholder="Mudar Status" /></SelectTrigger>
-                                                            <SelectContent><SelectItem value="active">Ativo</SelectItem><SelectItem value="overdue">Vencido</SelectItem><SelectItem value="locked">Bloqueado</SelectItem></SelectContent>
-                                                        </Select>
-                                                     </div>
-                                                    <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'subscription')}><DollarSign className="mr-2 h-4 w-4" /> Gerenciar Assinatura</DropdownMenuItem>
-                                                    <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'users')}><Users className="mr-2 h-4 w-4" /> Gerenciar Usuários</DropdownMenuItem>
-                                                    <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'profiles')}><Pencil className="mr-2 h-4 w-4" /> Gerenciar Perfis</DropdownMenuItem>
-                                                    <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'modules')}><SlidersHorizontal className="mr-2 h-4 w-4" /> Gerenciar Módulos</DropdownMenuItem>
-                                                    <DropdownMenuSeparator />
-                                                     <AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Excluir Organização</DropdownMenuItem></AlertDialogTrigger>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                            <AlertDialogContent>
-                                                <AlertDialogHeader><AlertDialogTitle>Excluir "{org.name}"?</AlertDialogTitle><AlertDialogDescription>Essa ação é irreversível e excluirá a organização e todos os seus dados.</AlertDialogDescription></AlertDialogHeader>
-                                                <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteOrganization(org.id)} className={buttonVariants({ variant: "destructive" })}>Sim, excluir</AlertDialogAction></AlertDialogFooter>
-                                            </AlertDialogContent>
-                                        </AlertDialog>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                     <Tabs defaultValue="organizations">
+                        <TabsList>
+                            <TabsTrigger value="organizations">Organizações</TabsTrigger>
+                            <TabsTrigger value="plans">Planos</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="organizations" className="mt-4">
+                            <Table>
+                                <TableHeader><TableRow><TableHead>Organização</TableHead><TableHead>Proprietário</TableHead><TableHead>Status Pag.</TableHead><TableHead>Próx. Venc.</TableHead><TableHead>Acessar</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
+                                <TableBody>
+                                    {loading ? (
+                                        <TableRow>
+                                            <TableCell colSpan={6} className="h-24 text-center">
+                                                <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : organizations.map((org) => (
+                                        <TableRow key={org.id}>
+                                            <TableCell className="font-medium">{org.name}</TableCell>
+                                            <TableCell>{org.owner?.name || 'N/A'}</TableCell>
+                                            <TableCell>{getStatusBadge(org.paymentStatus)}</TableCell>
+                                            <TableCell>
+                                                {org.subscription?.paymentRecords
+                                                    ?.filter(p => p.status === 'pending')
+                                                    .sort((a,b) => toDate(a.date)!.getTime() - toDate(b.date)!.getTime())
+                                                    [0] 
+                                                    ? format(toDate(org.subscription.paymentRecords.find(p => p.status === 'pending')!.date)!, 'dd/MM/yyyy') 
+                                                    : <Badge variant="outline">N/A</Badge>
+                                                }
+                                            </TableCell>
+                                            <TableCell>
+                                                <Button variant="outline" size="sm" onClick={() => startImpersonation(org.id)}>
+                                                    <LogIn className="mr-2 h-4 w-4"/>
+                                                    Acessar Painel
+                                                </Button>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <AlertDialog>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end">
+                                                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                                                            <DropdownMenuSeparator />
+                                                             <div className="p-2">
+                                                                <Select defaultValue={org.paymentStatus} onValueChange={(s: PaymentStatus) => handleStatusChange(org.id, s)}>
+                                                                    <SelectTrigger><SelectValue placeholder="Mudar Status" /></SelectTrigger>
+                                                                    <SelectContent><SelectItem value="active">Ativo</SelectItem><SelectItem value="overdue">Vencido</SelectItem><SelectItem value="locked">Bloqueado</SelectItem></SelectContent>
+                                                                </Select>
+                                                             </div>
+                                                            <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'subscription')}><DollarSign className="mr-2 h-4 w-4" /> Gerenciar Assinatura</DropdownMenuItem>
+                                                            <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'users')}><Users className="mr-2 h-4 w-4" /> Gerenciar Usuários</DropdownMenuItem>
+                                                            <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'profiles')}><Pencil className="mr-2 h-4 w-4" /> Gerenciar Perfis</DropdownMenuItem>
+                                                            <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'modules')}><SlidersHorizontal className="mr-2 h-4 w-4" /> Gerenciar Módulos</DropdownMenuItem>
+                                                            <DropdownMenuSeparator />
+                                                             <AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Excluir Organização</DropdownMenuItem></AlertDialogTrigger>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader><AlertDialogTitle>Excluir "{org.name}"?</AlertDialogTitle><AlertDialogDescription>Essa ação é irreversível e excluirá a organização e todos os seus dados.</AlertDialogDescription></AlertDialogHeader>
+                                                        <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteOrganization(org.id)} className={buttonVariants({ variant: "destructive" })}>Sim, excluir</AlertDialogAction></AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </TabsContent>
+                         <TabsContent value="plans" className="mt-4">
+                            <PricingPlansSettings />
+                        </TabsContent>
+                    </Tabs>
                 </CardContent>
             </Card>
              {selectedOrg && <ModulesSettingsDialog organization={selectedOrg} isOpen={isModuleDialogOpen} onOpenChange={setIsModuleDialogOpen} />}
@@ -802,3 +995,127 @@ function SuperAdminPage() {
 }
 
 export default SuperAdminPage;
+
+```
+  </change>
+  <change>
+    <file>/home/builder/work/src/app/pricing/page.tsx</file>
+    <content><![CDATA[
+
+'use client';
+
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { db } from '@/lib/firebase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import type { PricingPlan } from '@/lib/types';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Check, Loader2, MessageCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Icons } from '@/components/ui/icons';
+import { Badge } from '@/components/ui/badge';
+
+export default function PricingPage() {
+    const [plans, setPlans] = useState<PricingPlan[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchPlans = async () => {
+            try {
+                const q = query(collection(db, 'pricingPlans'), where('isDeleted', '!=', true));
+                const querySnapshot = await getDocs(q);
+                const plansData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PricingPlan));
+                setPlans(plansData.sort((a,b) => a.price - b.price));
+            } catch (error) {
+                console.error("Error fetching pricing plans: ", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchPlans();
+    }, []);
+
+    return (
+        <div className="bg-background text-foreground min-h-screen">
+             <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur-sm">
+                <div className="container flex h-16 items-center justify-between">
+                    <Link href="/" className="flex items-center gap-2">
+                        <Icons.logo className="h-8 w-8 text-primary"/>
+                        <span className="text-xl font-bold">Stokio</span>
+                    </Link>
+                    <nav>
+                        <Button asChild variant="outline">
+                            <Link href="/login">Entrar</Link>
+                        </Button>
+                    </nav>
+                </div>
+            </header>
+
+            <main className="container py-12 md:py-24">
+                 <div className="mx-auto mb-12 max-w-3xl text-center">
+                    <h1 className="text-4xl font-extrabold tracking-tight lg:text-5xl">
+                        Escolha o Plano Perfeito para o seu Negócio
+                    </h1>
+                    <p className="mt-4 text-lg text-muted-foreground">
+                        Planos simples e transparentes que crescem com você. Sem taxas escondidas.
+                    </p>
+                </div>
+                
+                 {loading ? (
+                    <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+                        <Skeleton className="h-96 w-full"/>
+                        <Skeleton className="h-96 w-full"/>
+                        <Skeleton className="h-96 w-full"/>
+                    </div>
+                ) : plans.length > 0 ? (
+                    <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+                        {plans.map(plan => (
+                             <Card key={plan.id} className={cn("flex flex-col", plan.isFeatured && "border-primary ring-2 ring-primary")}>
+                                <CardHeader>
+                                    {plan.isFeatured && <div className="text-center mb-2"><Badge>Mais Popular</Badge></div>}
+                                    <CardTitle>{plan.name}</CardTitle>
+                                    <CardDescription>{plan.description}</CardDescription>
+                                </CardHeader>
+                                <CardContent className="flex-grow space-y-6">
+                                    <div className="flex items-baseline justify-center">
+                                        <span className="text-4xl font-bold">R${plan.price.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                        <span className="text-muted-foreground">/mês</span>
+                                    </div>
+                                    <ul className="space-y-3">
+                                        {plan.features.map((feature, index) => (
+                                            <li key={index} className="flex items-center gap-2">
+                                                <Check className="h-5 w-5 text-green-500" />
+                                                <span className="text-muted-foreground">{feature}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </CardContent>
+                                <CardFooter>
+                                    <Button asChild className="w-full" size="lg" variant={plan.isFeatured ? 'default' : 'outline'}>
+                                        <Link href="/signup">Começar Agora</Link>
+                                    </Button>
+                                </CardFooter>
+                            </Card>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-16">
+                        <h2 className="text-2xl font-semibold">Nossos planos estão sendo preparados</h2>
+                        <p className="mt-2 text-muted-foreground">
+                            Para saber mais sobre as condições e contratar, entre em contato conosco.
+                        </p>
+                        <Button asChild size="lg" className="mt-6">
+                            <a href="https://wa.me/5596981131536" target="_blank" rel="noopener noreferrer">
+                                <MessageCircle className="mr-2"/>
+                                Falar no WhatsApp
+                            </a>
+                        </Button>
+                    </div>
+                )}
+            </main>
+        </div>
+    );
+}

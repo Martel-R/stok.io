@@ -1,5 +1,4 @@
 
-
 'use client';
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
@@ -317,7 +316,7 @@ function GeneralReport() {
                 <CardHeader>
                     <div className="flex flex-col md:flex-row justify-between gap-4 no-print">
                          <div className="flex flex-wrap gap-2">
-                            <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
+                            <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedIds} />
                             <DateRangePicker date={dateRange} onSelect={setDateRange} />
                         </div>
                          <div className="flex gap-2">
@@ -1819,3 +1818,4 @@ function DateRangePicker({ date, onSelect, className }: { date: DateRange | unde
     </div>
   )
 }
+

@@ -1,5 +1,4 @@
 
-
 'use client';
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
@@ -11,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart, Book, Activity, Package, ArrowDownCircle, PackageCheck } from 'lucide-react';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Sale, Branch, User, PaymentDetail, Product, StockEntry, PaymentCondition, Combo, Kit, Organization, Expense } from '@/lib/types';
+import type { Sale, Branch, User, PaymentDetail, Product, StockEntry, PaymentCondition, Combo, Kit, Organization, Expense, SaleItem } from '@/lib/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -29,6 +28,7 @@ import { Separator } from '@/components/ui/separator';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from "recharts";
 import Image from 'next/image';
 
+const formatCurrency = (value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function ReportPrintHeader({ organization, period }: { organization: Organization | undefined, period: string }) {
     return (
@@ -157,50 +157,47 @@ function GeneralReport() {
         const productMap = new Map<string, { id: string; name: string, quantity: number, originalValue: number, finalValue: number }>();
 
         filteredData.sales.forEach(sale => {
-            (sale.items || []).forEach((item: any) => {
-                 if (item.type === 'product') {
-                     const product = products.find(p => p.id === item.id);
-                     if (product && product.price && item.quantity) {
-                        const value = item.quantity * product.price;
+            (sale.items || []).forEach((item: SaleItem) => {
+                 if (item.type === 'product' || item.type === 'service') {
+                     if (item.price && item.quantity) {
+                        const value = item.quantity * item.price;
                         processProduct(productMap, item.id, item.name, item.quantity, value, value);
                      }
                  } else if (item.type === 'kit') {
-                     const originalKitPrice = (item.chosenProducts || []).reduce((sum: number, p: any) => sum + (p.price || 0), 0);
+                     const originalKitPrice = (item.chosenProducts || []).reduce((sum, p) => sum + (p.price || 0), 0);
                      let discountRatio = 1;
                      if (originalKitPrice > 0 && typeof item.total === 'number' && !isNaN(item.total)) {
                          discountRatio = item.total / originalKitPrice;
                      }
                      if (isNaN(discountRatio)) discountRatio = 1;
                      
-                     (item.chosenProducts || []).forEach((p: any) => {
-                         const product = products.find(prod => prod.id === p.id);
-                         if (product && p.price) {
+                     (item.chosenProducts || []).forEach((p) => {
+                         if (p.price) {
                              const originalValue = item.quantity * p.price;
                              const finalValue = originalValue * discountRatio;
                              processProduct(productMap, p.id, p.name, item.quantity, originalValue, finalValue);
                          }
                      });
                  } else if (item.type === 'combo') {
-                    let discountRatio = 1;
-                    if (item.originalPrice > 0 && typeof item.finalPrice === 'number' && !isNaN(item.finalPrice)) {
-                        discountRatio = item.finalPrice / item.originalPrice;
-                    }
-                    if (isNaN(discountRatio)) discountRatio = 1;
-                    
-                    (item.products || []).forEach((p: any) => {
-                         const product = products.find(prod => prod.id === p.productId);
-                         if (product && p.productPrice && p.quantity && item.quantity) {
-                           const originalValue = item.quantity * p.quantity * p.productPrice;
-                           const finalValue = originalValue * discountRatio;
-                           processProduct(productMap, p.productId, p.productName, p.quantity * item.quantity, originalValue, finalValue);
-                         }
-                     })
+                   let discountRatio = 1;
+                   if (item.originalPrice > 0 && typeof item.finalPrice === 'number' && !isNaN(item.finalPrice)) {
+                       discountRatio = item.finalPrice / item.originalPrice;
+                   }
+                   if (isNaN(discountRatio)) discountRatio = 1;
+                   
+                   (item.products || []).forEach((p) => {
+                        if (p.productPrice && p.quantity && item.quantity) {
+                          const originalValue = item.quantity * p.quantity * p.productPrice;
+                          const finalValue = originalValue * discountRatio;
+                          processProduct(productMap, p.productId, p.productName, p.quantity * item.quantity, originalValue, finalValue);
+                        }
+                    })
                  }
             });
         });
         
         return Array.from(productMap.values()).sort((a,b) => b.quantity - a.quantity);
-    }, [filteredData.sales, products, combos, kits]);
+    }, [filteredData.sales]);
 
      const productTotals = useMemo(() => {
         return productsSold.reduce((acc, p) => {
@@ -213,8 +210,6 @@ function GeneralReport() {
 
     if (loading) return <Skeleton className="h-[500px] w-full" />;
     
-    const formatCurrency = (value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
     const exportToPDF = () => {
         const doc = new jsPDF();
         const dateStr = `Período: ${format(dateRange?.from || new Date(), 'dd/MM/yy')} a ${format(dateRange?.to || new Date(), 'dd/MM/yy')}`;
@@ -321,7 +316,7 @@ function GeneralReport() {
                 <CardHeader>
                     <div className="flex flex-col md:flex-row justify-between gap-4 no-print">
                          <div className="flex flex-wrap gap-2">
-                            <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
+                            <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedIds} />
                             <DateRangePicker date={dateRange} onSelect={setDateRange} />
                         </div>
                          <div className="flex gap-2">
@@ -476,7 +471,7 @@ function SalesReport() {
     const [loading, setLoading] = useState(true);
     const [sales, setSales] = useState<Sale[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
-    const [users, setUsers] = useState<User[]>([]);
+    const [paymentConditions, setPaymentConditions] = useState<PaymentCondition[]>([]);
 
     // Filter states
     const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
@@ -495,12 +490,12 @@ function SalesReport() {
                 const orgId = user.organizationId;
                 const salesQuery = query(collection(db, 'sales'), where('organizationId', '==', orgId));
                 const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', orgId));
-                const usersQuery = query(collection(db, 'users'), where('organizationId', '==', orgId));
+                const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', orgId));
 
-                const [salesSnap, branchesSnap, usersSnap] = await Promise.all([
+                const [salesSnap, branchesSnap, conditionsSnap] = await Promise.all([
                     getDocs(salesQuery),
                     getDocs(branchesQuery),
-                    getDocs(usersQuery),
+                    getDocs(conditionsQuery),
                 ]);
 
                 const salesData = salesSnap.docs.map(doc => {
@@ -513,7 +508,7 @@ function SalesReport() {
                 
                 setSales(salesData);
                 setBranches(branchesData);
-                setUsers(usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
+                setPaymentConditions(conditionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition)));
                 
                 setSelectedBranchIds(branchesData.map(b => b.id));
 
@@ -548,19 +543,80 @@ function SalesReport() {
         }).sort((a, b) => b.date.getTime() - a.date.getTime());
     }, [sales, dateRange, selectedBranchIds, selectedCashierIds]);
     
-    const totalFilteredRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
+    const totals = useMemo(() => {
+        const summary = {
+            grossRevenue: 0,
+            netRevenue: 0,
+            totalFees: 0,
+            payments: new Map<string, { name: string; gross: number; net: number; fee: number; }>(),
+        };
+
+        filteredSales.forEach(sale => {
+            summary.grossRevenue += sale.total;
+            let saleFee = 0;
+            (sale.payments || []).forEach(p => {
+                const condition = paymentConditions.find(c => c.id === p.conditionId);
+                const fee = condition ? (condition.feeType === 'percentage' ? p.amount * (condition.fee / 100) : condition.fee) : 0;
+                saleFee += fee;
+                
+                const typeName = condition?.name || 'Desconhecido';
+                const existing = summary.payments.get(typeName) || { name: typeName, gross: 0, net: 0, fee: 0 };
+                existing.gross += p.amount;
+                existing.net += (p.amount - fee);
+                existing.fee += fee;
+                summary.payments.set(typeName, existing);
+            });
+            summary.totalFees += saleFee;
+        });
+
+        summary.netRevenue = summary.grossRevenue - summary.totalFees;
+        return summary;
+
+    }, [filteredSales, paymentConditions]);
+    
 
     const formatPayments = (payments: PaymentDetail[]) => {
         if (!payments) return 'N/A';
         return payments.map(p => {
             const installments = p.installments > 1 ? ` (${p.installments}x)` : '';
-            return `${p.conditionName}${installments}: R$ ${p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+            return `${p.conditionName}${installments}: ${formatCurrency(p.amount)}`;
         }).join('; ');
     };
 
     const exportToPDF = () => {
         const doc = new jsPDF();
-        doc.text("Relatório de Vendas", 14, 16);
+        const dateStr = `Período: ${format(dateRange?.from || new Date(), 'dd/MM/yy')} a ${format(dateRange?.to || new Date(), 'dd/MM/yy')}`;
+        
+        if (user?.organization?.branding?.logoUrl) {
+            doc.addImage(user.organization.branding.logoUrl, 'PNG', 14, 10, 20, 20);
+            doc.text("Relatório de Vendas", 40, 16);
+            doc.setFontSize(10);
+            doc.text(dateStr, 40, 22);
+        } else {
+            doc.text("Relatório de Vendas", 14, 16);
+            doc.setFontSize(10);
+            doc.text(dateStr, 14, 22);
+        }
+
+        autoTable(doc, {
+            head: [['Totais Gerais', '']],
+            body: [
+                ['Receita Bruta', formatCurrency(totals.grossRevenue)],
+                ['Total de Taxas', `-${formatCurrency(totals.totalFees)}`],
+                ['Receita Líquida', formatCurrency(totals.netRevenue)],
+            ],
+            startY: 30
+        });
+
+         autoTable(doc, {
+            head: [['Pagamento', 'Bruto', 'Líquido']],
+            body: Array.from(totals.payments.values()).map(p => [
+                p.name,
+                formatCurrency(p.gross),
+                formatCurrency(p.net),
+            ]),
+        });
+        
         autoTable(doc, {
             head: [['Data', 'Filial', 'Vendedor', 'Itens', 'Pagamentos', 'Total']],
             body: filteredSales.map(s => [
@@ -569,9 +625,8 @@ function SalesReport() {
                 s.cashier,
                 s.items.map(item => `${item.quantity}x ${item.name}`).join(', '),
                 formatPayments(s.payments),
-                `R$ ${s.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                formatCurrency(s.total)
             ]),
-            startY: 20
         });
         doc.save('relatorio_vendas.pdf');
     };
@@ -598,7 +653,8 @@ function SalesReport() {
     }
 
     return (
-        <Card>
+        <Card className="printable-area">
+            <ReportPrintHeader organization={user?.organization} period={periodString} />
             <CardHeader className="no-print">
                 <div className="flex flex-col md:flex-row justify-between gap-4">
                      <div className="flex flex-wrap gap-2">
@@ -620,11 +676,44 @@ function SalesReport() {
                 </div>
             </CardHeader>
             <CardContent>
+                <Card className="mb-6">
+                    <CardHeader>
+                        <CardTitle>Resumo Financeiro do Período</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                            <h3 className="font-semibold">Totais Gerais</h3>
+                             <p>Receita Bruta: <span className="font-bold">{formatCurrency(totals.grossRevenue)}</span></p>
+                             <p>Total de Taxas: <span className="font-bold text-destructive">-{formatCurrency(totals.totalFees)}</span></p>
+                             <p>Receita Líquida: <span className="font-bold text-green-600">{formatCurrency(totals.netRevenue)}</span></p>
+                        </div>
+                        <div className="space-y-2">
+                            <h3 className="font-semibold">Recebimentos por Forma de Pagamento</h3>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Método</TableHead>
+                                        <TableHead className="text-right">Bruto</TableHead>
+                                        <TableHead className="text-right">Líquido</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                     {Array.from(totals.payments.values()).map(p => (
+                                        <TableRow key={p.name}>
+                                            <TableCell>{p.name}</TableCell>
+                                            <TableCell className="text-right">{formatCurrency(p.gross)}</TableCell>
+                                            <TableCell className="text-right">{formatCurrency(p.net)}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </CardContent>
+                </Card>
                 <div className="mb-4 font-semibold no-print">
-                   Exibindo {filteredSales.length} de {sales.length} vendas. Total Filtrado: R$ {totalFilteredRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                   Exibindo {filteredSales.length} de {sales.length} vendas.
                 </div>
-                <div className="printable-area">
-                    <ReportPrintHeader organization={user?.organization} period={periodString} />
+                <div>
                     <Table>
                         <TableHeader>
                             <TableRow>
@@ -657,11 +746,11 @@ function SalesReport() {
                                     <TableCell>
                                         {sale.payments?.map(p => (
                                             <div key={p.conditionId} className="text-xs">
-                                                {p.conditionName} ({p.installments}x): <span className="font-medium">R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                                {p.conditionName} ({p.installments}x): <span className="font-medium">{formatCurrency(p.amount)}</span>
                                             </div>
                                         ))}
                                     </TableCell>
-                                    <TableCell className="text-right font-medium">R$ {sale.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
+                                    <TableCell className="text-right font-medium">{formatCurrency(sale.total)}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -994,7 +1083,7 @@ function LowStockReport() {
                     </TableHeader>
                     <TableBody>
                         {lowStockData.map(product => (
-                            <TableRow key={product.name} className={product.totalStock <= 0 ? "text-destructive font-bold" : "text-yellow-600"}>
+                            <TableRow key={product.name} className={cn(product.totalStock <= 0 ? "text-destructive font-bold" : "text-yellow-600")}>
                                 <TableCell className="font-medium">{product.name}</TableCell>
                                 <TableCell className="text-right">{product.lowStockThreshold}</TableCell>
                                 <TableCell className="text-right font-semibold">{product.totalStock}</TableCell>
@@ -1134,9 +1223,6 @@ function FinancialSummaryReport() {
             return acc;
         }, { salesCount: 0, grossRevenue: 0, netRevenue: 0, totalExpenses: 0, netProfit: 0 });
     }, [financialData]);
-
-
-    const formatCurrency = (value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     const exportToPDF = () => {
          const doc = new jsPDF({ orientation: "landscape" });
@@ -1294,32 +1380,30 @@ function ABCCurveReport() {
         const productRevenue = new Map<string, { name: string, total: number }>();
 
         filteredSales.forEach(sale => {
-            sale.items.forEach((item: any) => {
+            sale.items.forEach((item: SaleItem) => {
                 if (!item || isNaN(item.quantity)) return;
 
                 if (item.type === 'product') {
-                    const product = products.find(p => p.id === item.id);
-                    if (product && !isNaN(product.price)) {
+                    if (!isNaN(item.price)) {
                         const current = productRevenue.get(item.name) || { name: item.name, total: 0 };
-                        current.total += item.quantity * product.price;
+                        current.total += item.quantity * item.price;
                         productRevenue.set(item.name, current);
                     }
-                } else if (item.type === 'combo' && item.products && !isNaN(item.originalPrice) && item.finalPrice) {
+                } else if (item.type === 'combo') {
                     let ratio = (item.originalPrice > 0 && !isNaN(item.finalPrice)) ? item.finalPrice / item.originalPrice : 1;
                     if(isNaN(ratio)) ratio = 1;
-                    item.products.forEach((p: any) => {
-                        const productInfo = products.find(prod => prod.id === p.productId);
-                        if(productInfo && !isNaN(productInfo.price) && !isNaN(p.quantity)) {
+                    item.products.forEach((p) => {
+                        if(!isNaN(p.productPrice) && !isNaN(p.quantity)) {
                            const current = productRevenue.get(p.productName) || { name: p.productName, total: 0 };
-                           current.total += p.quantity * item.quantity * productInfo.price * ratio;
+                           current.total += p.quantity * item.quantity * p.productPrice * ratio;
                            productRevenue.set(p.productName, current);
                         }
                     });
-                } else if (item.type === 'kit' && item.chosenProducts && !isNaN(item.total)) {
-                     const originalPrice = item.chosenProducts.reduce((sum: number, p: any) => sum + (p.price || 0), 0);
+                } else if (item.type === 'kit') {
+                     const originalPrice = item.chosenProducts.reduce((sum, p) => sum + (p.price || 0), 0);
                      let ratio = (originalPrice > 0 && !isNaN(item.total)) ? item.total / originalPrice : 1;
                      if(isNaN(ratio)) ratio = 1;
-                     item.chosenProducts.forEach((p: any) => {
+                     item.chosenProducts.forEach((p) => {
                          if (!isNaN(p.price)) {
                              const current = productRevenue.get(p.name) || { name: p.name, total: 0 };
                              current.total += item.quantity * p.price * ratio;
@@ -1413,7 +1497,7 @@ function ABCCurveReport() {
                             abcData.map(item => (
                                 <TableRow key={item.name}>
                                     <TableCell className="font-medium">{item.name}</TableCell>
-                                    <TableCell className="text-right">R$ {item.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
+                                    <TableCell className="text-right">{formatCurrency(item.total)}</TableCell>
                                     <TableCell className="text-right">{item.percentage.toFixed(2)}%</TableCell>
                                     <TableCell className="text-right">{item.cumulativePercentage.toFixed(2)}%</TableCell>
                                     <TableCell className="text-center">

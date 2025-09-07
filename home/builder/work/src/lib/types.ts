@@ -238,9 +238,39 @@ export interface PaymentDetail {
 
 export type SaleStatus = 'completed' | 'cancelled';
 
+export interface SaleItemProduct {
+  id: string;
+  name: string;
+  quantity: number;
+  price: number;
+  total: number;
+  type: 'product' | 'service';
+}
+
+export interface SaleItemKit {
+  id: string;
+  name: string;
+  quantity: number;
+  total: number;
+  type: 'kit';
+  chosenProducts: { id: string; name: string; price: number; }[];
+}
+
+export interface SaleItemCombo {
+  id: string;
+  name: string;
+  quantity: number;
+  originalPrice: number;
+  finalPrice: number;
+  type: 'combo';
+  products: { productId: string; productName: string; quantity: number; productPrice: number }[];
+}
+
+export type SaleItem = SaleItemProduct | SaleItemKit | SaleItemCombo;
+
 export interface Sale {
   id:string;
-  items: any[]; // Simplified for historical data viewing
+  items: SaleItem[];
   total: number;
   date: Date;
   cashier: string;
@@ -347,11 +377,14 @@ export interface PaymentRecord {
 }
 
 export interface Subscription {
+    planId?: string;
     planName: string;
     price: number;
     startDate: any; // Timestamp
     endDate: any; // Timestamp
     paymentRecords: PaymentRecord[];
+    maxBranches: number;
+    maxUsers: number;
 }
 
 
@@ -376,8 +409,20 @@ export interface Expense {
     notes?: string;
     supplierId?: string;
     supplierName?: string;
-    nfeNumber?: string;
     userId: string;
     userName: string;
+    nfeNumber?: string;
+    isDeleted?: boolean;
+}
+
+export interface PricingPlan {
+    id: string;
+    name: string;
+    price: number;
+    description: string;
+    features: string[];
+    maxBranches: number;
+    maxUsers: number;
+    isFeatured?: boolean;
     isDeleted?: boolean;
 }

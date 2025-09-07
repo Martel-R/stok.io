@@ -3,9 +3,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart, CalendarIcon, DollarSign, Package, Users, Trophy, TrendingUp } from 'lucide-react';
+import { BarChart, CalendarIcon, DollarSign, Package, Users, Trophy, TrendingUp, AlertTriangle } from 'lucide-react';
 import { Bar, BarChart as RechartsBarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts';
-import { addDays, format, fromUnixTime, startOfDay, endOfDay, eachDayOfInterval } from 'date-fns';
+import { addDays, format, fromUnixTime, startOfDay, endOfDay, eachDayOfInterval, isBefore } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
+import Link from 'next/link';
 
 
 // Helper para converter Timestamps do Firebase
@@ -44,7 +45,7 @@ export default function DashboardPage() {
 
         setLoadingData(true);
 
-        const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
+        const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id), where('isDeleted', '==', false));
         const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
         const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
 
@@ -59,12 +60,11 @@ export default function DashboardPage() {
         });
 
         const unsubscribeStockEntries = onSnapshot(stockEntriesQuery, (snapshot) => {
-            const entriesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockEntry));
+            const entriesData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, date: (doc.data().date as Timestamp).toDate() } as StockEntry));
             setAllStockEntries(entriesData);
         });
         
-        // This combines listeners, might need a more robust way to handle loading state
-        const timer = setTimeout(() => setLoadingData(false), 1500); // Give time for all listeners to fire
+        const timer = setTimeout(() => setLoadingData(false), 1500); 
 
         return () => {
             unsubscribeProducts();
@@ -84,7 +84,7 @@ export default function DashboardPage() {
     const totalRevenue = filteredSales.reduce((acc, sale) => acc + sale.total, 0);
     const totalSalesCount = filteredSales.length;
     const averageTicket = totalSalesCount > 0 ? totalRevenue / totalSalesCount : 0;
-    const totalProducts = allProducts.length;
+    const totalProducts = allProducts.filter(p => !p.isDeleted).length;
 
     const totalStock = useMemo(() => {
         const salableProductIds = new Set(allProducts.filter(p => p.isSalable).map(p => p.id));
@@ -94,6 +94,34 @@ export default function DashboardPage() {
                 const quantity = typeof entry.quantity === 'number' ? entry.quantity : 0;
                 return sum + quantity;
             }, 0);
+    }, [allStockEntries, allProducts]);
+
+    const expiringLotsCount = useMemo(() => {
+        const activePerishableProductIds = new Set(
+            allProducts.filter(p => p.isPerishable && !p.isDeleted).map(p => p.id)
+        );
+        const lotMap = new Map<string, { quantity: number; expirationDate: Date }>();
+        const fifteenDaysFromNow = addDays(new Date(), 15);
+
+        // Process only entries for active, perishable products with an expiration date
+        allStockEntries.forEach(entry => {
+            if (activePerishableProductIds.has(entry.productId) && entry.expirationDate) {
+                const expirationDate = (entry.expirationDate as Timestamp).toDate();
+                const lotKey = `${entry.productId}-${format(expirationDate, 'yyyy-MM-dd')}`;
+                const currentLot = lotMap.get(lotKey) || { quantity: 0, expirationDate };
+                currentLot.quantity += entry.quantity;
+                lotMap.set(lotKey, currentLot);
+            }
+        });
+        
+        let count = 0;
+        lotMap.forEach(lot => {
+            if (lot.quantity > 0 && isBefore(lot.expirationDate, fifteenDaysFromNow)) {
+                count++;
+            }
+        });
+
+        return count;
     }, [allStockEntries, allProducts]);
 
 
@@ -244,15 +272,6 @@ export default function DashboardPage() {
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total de Produtos</CardTitle>
-                        <Package className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{totalProducts}</div>
-                    </CardContent>
-                </Card>
-                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Estoque Comerciável</CardTitle>
                         <Package className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
@@ -260,6 +279,20 @@ export default function DashboardPage() {
                         <div className="text-2xl font-bold">{totalStock.toLocaleString('pt-BR')}</div>
                     </CardContent>
                 </Card>
+                 {expiringLotsCount > 0 && (
+                    <Link href="/dashboard/reports?tab=expiration">
+                        <Card className="border-destructive text-destructive hover:bg-destructive/5">
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                <CardTitle className="text-sm font-medium">Lotes a Vencer</CardTitle>
+                                <AlertTriangle className="h-4 w-4" />
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-bold">{expiringLotsCount}</div>
+                                <p className="text-xs">Vencidos ou nos próximos 15 dias.</p>
+                            </CardContent>
+                        </Card>
+                    </Link>
+                )}
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
@@ -277,7 +310,7 @@ export default function DashboardPage() {
                                         backgroundColor: 'hsl(var(--background))',
                                         borderColor: 'hsl(var(--border))',
                                     }}
-                                    formatter={(value: number) => [`R$${value.toLocaleString('pt-BR')}`, "Vendas"]}
+                                    formatter={(value: number) => [`R$${value.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, "Vendas"]}
                                 />
                                 <Legend />
                                 <Bar dataKey="Vendas" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
@@ -304,7 +337,7 @@ export default function DashboardPage() {
                                     <div className="ml-4 flex-1 space-y-1">
                                         <p className="text-sm font-medium leading-none">{name}</p>
                                     </div>
-                                    <div className="font-medium">R${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                                    <div className="font-medium">R${total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                                 </div>
                             )) : (
                                 <p className="text-sm text-muted-foreground text-center">Nenhuma venda registrada no período para ranking.</p>
@@ -315,5 +348,4 @@ export default function DashboardPage() {
             </div>
         </div>
     );
-
-    
+}

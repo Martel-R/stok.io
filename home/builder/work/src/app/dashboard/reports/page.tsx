@@ -1,4 +1,5 @@
 
+
 'use client';
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
@@ -10,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Lock, Printer, FileDown, Calendar as CalendarIcon, Filter, TrendingUp, AlertTriangle, FileBarChart, Book, Activity, Package, ArrowDownCircle, PackageCheck } from 'lucide-react';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Sale, Branch, User, PaymentDetail, Product, StockEntry, PaymentCondition, Combo, Kit, Organization, Expense, SaleItem } from '@/lib/types';
+import type { Sale, Branch, User, PaymentDetail, Product, StockEntry, PaymentCondition, Combo, Kit, Organization, Expense } from '@/lib/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -157,21 +158,21 @@ function GeneralReport() {
         const productMap = new Map<string, { id: string; name: string, quantity: number, originalValue: number, finalValue: number }>();
 
         filteredData.sales.forEach(sale => {
-            (sale.items || []).forEach((item: SaleItem) => {
+            (sale.items || []).forEach((item: any) => {
                  if (item.type === 'product' || item.type === 'service') {
                      if (item.price && item.quantity) {
                         const value = item.quantity * item.price;
                         processProduct(productMap, item.id, item.name, item.quantity, value, value);
                      }
                  } else if (item.type === 'kit') {
-                     const originalKitPrice = (item.chosenProducts || []).reduce((sum, p) => sum + (p.price || 0), 0);
+                     const originalKitPrice = (item.chosenProducts || []).reduce((sum: number, p: any) => sum + (p.price || 0), 0);
                      let discountRatio = 1;
                      if (originalKitPrice > 0 && typeof item.total === 'number' && !isNaN(item.total)) {
                          discountRatio = item.total / originalKitPrice;
                      }
                      if (isNaN(discountRatio)) discountRatio = 1;
                      
-                     (item.chosenProducts || []).forEach((p) => {
+                     (item.chosenProducts || []).forEach((p: any) => {
                          if (p.price) {
                              const originalValue = item.quantity * p.price;
                              const finalValue = originalValue * discountRatio;
@@ -185,7 +186,7 @@ function GeneralReport() {
                    }
                    if (isNaN(discountRatio)) discountRatio = 1;
                    
-                   (item.products || []).forEach((p) => {
+                   (item.products || []).forEach((p: any) => {
                         if (p.productPrice && p.quantity && item.quantity) {
                           const originalValue = item.quantity * p.quantity * p.productPrice;
                           const finalValue = originalValue * discountRatio;
@@ -197,7 +198,7 @@ function GeneralReport() {
         });
         
         return Array.from(productMap.values()).sort((a,b) => b.quantity - a.quantity);
-    }, [filteredData.sales]);
+    }, [filteredData.sales, products, combos, kits]);
 
      const productTotals = useMemo(() => {
         return productsSold.reduce((acc, p) => {
@@ -316,7 +317,7 @@ function GeneralReport() {
                 <CardHeader>
                     <div className="flex flex-col md:flex-row justify-between gap-4 no-print">
                          <div className="flex flex-wrap gap-2">
-                            <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedIds} />
+                            <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
                             <DateRangePicker date={dateRange} onSelect={setDateRange} />
                         </div>
                          <div className="flex gap-2">
@@ -653,8 +654,7 @@ function SalesReport() {
     }
 
     return (
-        <Card className="printable-area">
-            <ReportPrintHeader organization={user?.organization} period={periodString} />
+        <Card>
             <CardHeader className="no-print">
                 <div className="flex flex-col md:flex-row justify-between gap-4">
                      <div className="flex flex-wrap gap-2">
@@ -675,7 +675,8 @@ function SalesReport() {
                     </div>
                 </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="printable-area">
+                <ReportPrintHeader organization={user?.organization} period={periodString} />
                 <Card className="mb-6">
                     <CardHeader>
                         <CardTitle>Resumo Financeiro do Período</CardTitle>
@@ -1380,7 +1381,7 @@ function ABCCurveReport() {
         const productRevenue = new Map<string, { name: string, total: number }>();
 
         filteredSales.forEach(sale => {
-            sale.items.forEach((item: SaleItem) => {
+            sale.items.forEach((item: any) => {
                 if (!item || isNaN(item.quantity)) return;
 
                 if (item.type === 'product') {
@@ -1392,7 +1393,7 @@ function ABCCurveReport() {
                 } else if (item.type === 'combo') {
                     let ratio = (item.originalPrice > 0 && !isNaN(item.finalPrice)) ? item.finalPrice / item.originalPrice : 1;
                     if(isNaN(ratio)) ratio = 1;
-                    item.products.forEach((p) => {
+                    item.products.forEach((p: any) => {
                         if(!isNaN(p.productPrice) && !isNaN(p.quantity)) {
                            const current = productRevenue.get(p.productName) || { name: p.productName, total: 0 };
                            current.total += p.quantity * item.quantity * p.productPrice * ratio;
@@ -1400,10 +1401,10 @@ function ABCCurveReport() {
                         }
                     });
                 } else if (item.type === 'kit') {
-                     const originalPrice = item.chosenProducts.reduce((sum, p) => sum + (p.price || 0), 0);
+                     const originalPrice = item.chosenProducts.reduce((sum: number, p: any) => sum + (p.price || 0), 0);
                      let ratio = (originalPrice > 0 && !isNaN(item.total)) ? item.total / originalPrice : 1;
                      if(isNaN(ratio)) ratio = 1;
-                     item.chosenProducts.forEach((p) => {
+                     item.chosenProducts.forEach((p: any) => {
                          if (!isNaN(p.price)) {
                              const current = productRevenue.get(p.name) || { name: p.name, total: 0 };
                              current.total += item.quantity * p.price * ratio;

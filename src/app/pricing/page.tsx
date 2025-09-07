@@ -8,7 +8,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 import type { PricingPlan } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Check, Loader2 } from 'lucide-react';
+import { Check, Loader2, MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Icons } from '@/components/ui/icons';
@@ -67,7 +67,7 @@ export default function PricingPage() {
                         <Skeleton className="h-96 w-full"/>
                         <Skeleton className="h-96 w-full"/>
                     </div>
-                ) : (
+                ) : plans.length > 0 ? (
                     <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
                         {plans.map(plan => (
                              <Card key={plan.id} className={cn("flex flex-col", plan.isFeatured && "border-primary ring-2 ring-primary")}>
@@ -97,6 +97,19 @@ export default function PricingPage() {
                                 </CardFooter>
                             </Card>
                         ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-16">
+                        <h2 className="text-2xl font-semibold">Nossos planos estão sendo preparados</h2>
+                        <p className="mt-2 text-muted-foreground">
+                            Para saber mais sobre as condições e contratar, entre em contato conosco.
+                        </p>
+                        <Button asChild size="lg" className="mt-6">
+                            <a href="https://wa.me/5596981131536" target="_blank" rel="noopener noreferrer">
+                                <MessageCircle className="mr-2"/>
+                                Falar no WhatsApp
+                            </a>
+                        </Button>
                     </div>
                 )}
             </main>

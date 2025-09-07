@@ -1,5 +1,4 @@
 
-
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/auth';
@@ -46,7 +45,7 @@ export default function DashboardPage() {
 
         setLoadingData(true);
 
-        const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id));
+        const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id), where('isDeleted', '==', false));
         const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
         const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
 

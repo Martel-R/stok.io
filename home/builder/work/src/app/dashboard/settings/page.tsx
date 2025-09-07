@@ -118,14 +118,18 @@ function UsersTable() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
     const { toast } = useToast();
-    const { createUser, user: adminUser } = useAuth();
+    const { createUser, user: adminUser, deleteUser } = useAuth();
+    
+    const userCount = useMemo(() => users.length, [users]);
+    const maxUsers = adminUser?.organization?.subscription?.maxUsers || 1;
+    const canAddUser = userCount < maxUsers;
 
     useEffect(() => {
         if (!adminUser?.organizationId) {
             setLoading(false);
             return;
         }
-        const qUsers = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId));
+        const qUsers = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
         const qProfiles = query(collection(db, 'permissionProfiles'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
         
         const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
@@ -157,6 +161,10 @@ function UsersTable() {
     }
 
     const openNewDialog = () => {
+        if(!canAddUser) {
+            toast({ title: 'Limite de usuários atingido', description: `Seu plano atual permite até ${maxUsers} usuários.`, variant: 'destructive'});
+            return;
+        }
         setEditingUser(undefined);
         setIsFormOpen(true);
     }
@@ -195,8 +203,17 @@ function UsersTable() {
         setIsFormOpen(false);
     };
 
-    const handleDelete = (userId: string) => {
-        toast({ title: 'Funcionalidade não implementada', description: 'A exclusão de usuários deve ser feita a partir de um ambiente seguro.', variant: 'destructive'});
+    const handleDelete = async (userToDelete: User) => {
+        if (userToDelete.id === adminUser?.id) {
+            toast({title: 'Ação não permitida', description: 'Você não pode excluir sua própria conta.', variant: 'destructive'});
+            return;
+        }
+        const { success, error } = await deleteUser(userToDelete.id);
+        if (success) {
+            toast({ title: 'Usuário excluído com sucesso!' });
+        } else {
+            toast({ title: 'Erro ao excluir usuário', description: error, variant: 'destructive' });
+        }
     };
 
     return (
@@ -205,7 +222,7 @@ function UsersTable() {
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                     <div>
                         <CardTitle>Usuários</CardTitle>
-                        <CardDescription>Gerencie as permissões dos usuários da sua organização.</CardDescription>
+                        <CardDescription>Gerencie as permissões dos usuários da sua organização. ({userCount} de {maxUsers} usuários)</CardDescription>
                     </div>
                      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                         <DialogTrigger asChild>
@@ -258,20 +275,20 @@ function UsersTable() {
                                             <DropdownMenuContent align="end">
                                                 <DropdownMenuItem onClick={() => openEditDialog(user)}>Editar</DropdownMenuItem>
                                                 <AlertDialogTrigger asChild>
-                                                    <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive">Excluir</DropdownMenuItem>
+                                                    <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" disabled={user.id === adminUser?.id}>Excluir</DropdownMenuItem>
                                                 </AlertDialogTrigger>
                                             </DropdownMenuContent>
                                             </DropdownMenu>
                                             <AlertDialogContent>
                                                 <AlertDialogHeader>
-                                                    <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
+                                                    <AlertDialogTitle>Excluir usuário?</AlertDialogTitle>
                                                     <AlertDialogDescription>
-                                                        Essa ação não pode ser desfeita. A exclusão de usuários é uma funcionalidade restrita.
+                                                        Esta ação irá desativar a conta do usuário, impedindo o login. O registro será mantido para fins históricos.
                                                     </AlertDialogDescription>
                                                 </AlertDialogHeader>
                                                 <AlertDialogFooter>
                                                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                    <AlertDialogAction onClick={() => handleDelete(user.id)} className={buttonVariants({ variant: "destructive" })}>Confirmar</AlertDialogAction>
+                                                    <AlertDialogAction onClick={() => handleDelete(user)} className={buttonVariants({ variant: "destructive" })}>Confirmar Exclusão</AlertDialogAction>
                                                 </AlertDialogFooter>
                                             </AlertDialogContent>
                                          </AlertDialog>
@@ -294,6 +311,10 @@ function BranchesSettings() {
     const [editingBranch, setEditingBranch] = useState<Branch | undefined>(undefined);
     const { toast } = useToast();
 
+    const branchCount = branches.length;
+    const maxBranches = currentUser?.organization?.subscription?.maxBranches || 1;
+    const canAddBranch = branchCount < maxBranches;
+
     useEffect(() => {
         if (!currentUser?.organizationId) return;
         const q = query(collection(db, 'users'), where('organizationId', '==', currentUser.organizationId));
@@ -310,11 +331,15 @@ function BranchesSettings() {
     }
 
     const openNewDialog = () => {
+        if(!canAddBranch) {
+            toast({ title: 'Limite de filiais atingido', description: `Seu plano atual permite até ${maxBranches} filiais.`, variant: 'destructive'});
+            return;
+        }
         setEditingBranch(undefined);
         setIsFormOpen(true);
     }
 
-    const handleSave = async (branchData: Omit<Branch, 'id' | 'organizationId'>) => {
+    const handleSave = async (branchData: Omit<Branch, 'id' | 'organizationId' | 'isDeleted'>) => {
         if (!currentUser?.organizationId) {
              toast({ title: 'Erro de permissão', description: 'Organização do usuário não encontrada.', variant: 'destructive' });
              return;
@@ -356,7 +381,7 @@ function BranchesSettings() {
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                     <div>
                         <CardTitle>Filiais</CardTitle>
-                        <CardDescription>Gerencie as unidades de negócio da sua empresa.</CardDescription>
+                        <CardDescription>Gerencie as unidades de negócio da sua empresa. ({branchCount} de {maxBranches} filiais)</CardDescription>
                     </div>
                     <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                         <DialogTrigger asChild>
@@ -442,10 +467,10 @@ function BranchesSettings() {
     );
 }
 
-function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users: User[]; onSave: (data: Omit<Branch, 'id' | 'organizationId'>) => void; onDone: () => void }) {
+function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users: User[]; onSave: (data: Omit<Branch, 'id' | 'organizationId' | 'isDeleted'>) => void; onDone: () => void }) {
     const { user: currentUser } = useAuth();
     const [formData, setFormData] = useState(
-        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], taxRate: 8, isDeleted: false }
+        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], taxRate: 8 }
     );
     const [open, setOpen] = useState(false);
 
@@ -465,7 +490,7 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData as Omit<Branch, 'id' | 'organizationId'>);
+        onSave(formData as Omit<Branch, 'id' | 'organizationId' | 'isDeleted'>);
         onDone();
     };
 
@@ -635,10 +660,10 @@ function PaymentConditions() {
 
     useEffect(() => {
         if (!user?.organizationId) return;
-        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId), where('isDeleted', '==', false));
+        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition));
-            setConditions(data.filter(c => !c.isDeleted));
+            setConditions(data);
             setLoading(false);
         });
         return () => unsubscribe();
@@ -1527,6 +1552,7 @@ function SuppliersSettings() {
                     <TableHeader>
                         <TableRow>
                             <TableHead>Nome</TableHead>
+                            <TableHead>CNPJ</TableHead>
                             <TableHead>Contato</TableHead>
                             <TableHead>Telefone</TableHead>
                             <TableHead>Email</TableHead>
@@ -1534,10 +1560,11 @@ function SuppliersSettings() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {loading ? <TableRow><TableCell colSpan={5}><Skeleton className="h-5"/></TableCell></TableRow> :
+                        {loading ? <TableRow><TableCell colSpan={6}><Skeleton className="h-5"/></TableCell></TableRow> :
                         suppliers.map(s => (
                             <TableRow key={s.id}>
                                 <TableCell>{s.name}</TableCell>
+                                <TableCell>{s.cnpj || '-'}</TableCell>
                                 <TableCell>{s.contactName}</TableCell>
                                 <TableCell>{s.phone}</TableCell>
                                 <TableCell>{s.email}</TableCell>
@@ -1620,14 +1647,39 @@ function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Suppl
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-                <Input name="name" value={formData.name || ''} onChange={handleChange} placeholder="Nome do Fornecedor" required />
-                <Input name="contactName" value={formData.contactName || ''} onChange={handleChange} placeholder="Nome do Contato" />
+                <div className="space-y-2">
+                    <Label htmlFor="name">Nome do Fornecedor</Label>
+                    <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} required />
+                </div>
+                 <div className="space-y-2">
+                    <Label htmlFor="cnpj">CNPJ</Label>
+                    <Input id="cnpj" name="cnpj" value={formData.cnpj || ''} onChange={handleChange} />
+                </div>
             </div>
              <div className="grid grid-cols-2 gap-4">
-                <Input name="phone" value={formData.phone || ''} onChange={handleChange} placeholder="Telefone" />
-                <Input name="email" type="email" value={formData.email || ''} onChange={handleChange} placeholder="Email" />
+                <div className="space-y-2">
+                    <Label htmlFor="contactName">Nome do Contato</Label>
+                    <Input id="contactName" name="contactName" value={formData.contactName || ''} onChange={handleChange} />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="ie">Inscrição Estadual</Label>
+                    <Input id="ie" name="ie" value={formData.ie || ''} onChange={handleChange} />
+                </div>
             </div>
-            <Input name="address" value={formData.address || ''} onChange={handleChange} placeholder="Endereço" />
+             <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label htmlFor="phone">Telefone</Label>
+                    <Input id="phone" name="phone" value={formData.phone || ''} onChange={handleChange} />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input id="email" type="email" value={formData.email || ''} onChange={handleChange} />
+                </div>
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="address">Endereço</Label>
+                <Input id="address" name="address" value={formData.address || ''} onChange={handleChange} />
+            </div>
             
             <div className="space-y-2">
                 <Label>Produtos Vinculados (nesta filial)</Label>

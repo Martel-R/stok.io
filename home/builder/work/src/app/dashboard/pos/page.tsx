@@ -1,9 +1,10 @@
 
+
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType, StockEntry, Kit, Attendance, AttendanceItem, Customer, SaleStatus } from '@/lib/types';
+import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType, StockEntry, Kit, Attendance, AttendanceItem, Customer, SaleStatus, ComboDiscountRule } from '@/lib/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -193,7 +194,7 @@ function CheckoutModal({
   isOpen,
   onOpenChange,
   cart,
-  grandTotal,
+  subtotal,
   onCheckout,
   paymentConditions,
   attendanceId,
@@ -202,15 +203,58 @@ function CheckoutModal({
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   cart: CartItem[];
-  grandTotal: number;
+  subtotal: number;
   onCheckout: (payments: PaymentDetail[], attendanceId?: string, customerId?: string) => Promise<void>;
   paymentConditions: PaymentCondition[];
   attendanceId?: string;
   customerId?: string;
 }) {
+  const { currentBranch } = useAuth();
   const [payments, setPayments] = useState<PaymentDetail[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
+
+  const getComboPriceWithDiscount = (combo: Combo, paymentConditionId?: string): number => {
+    const applicableRule = combo.discountRules.find(rule => rule.paymentConditionIds?.includes(paymentConditionId || '')) || combo.discountRules.find(rule => !rule.paymentConditionIds || rule.paymentConditionIds.length === 0);
+
+    if (applicableRule) {
+      if (applicableRule.discountType === 'percentage') {
+        return combo.originalPrice * (1 - (applicableRule.discountValue / 100));
+      } else {
+        return combo.originalPrice - applicableRule.discountValue;
+      }
+    }
+    return combo.finalPrice;
+  };
+
+  const { totalDiscount, grandTotal } = useMemo(() => {
+    let currentSubtotal = 0;
+    let currentTotalDiscount = 0;
+
+    const firstPaymentConditionId = payments[0]?.conditionId;
+
+    cart.forEach(item => {
+        if (item.itemType === 'product') {
+            currentSubtotal += (item.price || 0) * item.quantity;
+        } else if (item.itemType === 'combo') {
+            const discountedPrice = getComboPriceWithDiscount(item, firstPaymentConditionId);
+            currentSubtotal += discountedPrice * item.quantity;
+            currentTotalDiscount += (item.originalPrice - discountedPrice) * item.quantity;
+        } else if (item.itemType === 'kit') {
+            currentSubtotal += item.total * item.quantity;
+            const originalPrice = item.chosenProducts.reduce((sum, p) => sum + p.price, 0);
+            currentTotalDiscount += (originalPrice - item.total) * item.quantity;
+        } else if (item.itemType === 'service') {
+            currentSubtotal += item.total;
+        }
+    });
+    
+    const tax = currentSubtotal * ((currentBranch?.taxRate || 0) / 100);
+    const finalTotal = currentSubtotal + tax;
+
+    return { totalDiscount: currentTotalDiscount, grandTotal: finalTotal };
+
+  }, [cart, payments, paymentConditions, currentBranch?.taxRate]);
 
   const paidAmount = useMemo(() => payments.reduce((acc, p) => acc + p.amount, 0), [payments]);
   const remainingAmount = useMemo(() => grandTotal - paidAmount, [grandTotal, paidAmount]);
@@ -271,7 +315,7 @@ function CheckoutModal({
 
   const handleSubmit = async () => {
     if (Math.abs(remainingAmount) > 0.01) {
-      toast({ title: 'Valor não bate', description: `A soma dos pagamentos deve ser igual ao total. Faltam R$${remainingAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, variant: 'destructive' });
+      toast({ title: 'Valor não bate', description: `A soma dos pagamentos deve ser igual ao total. Faltam R$${remainingAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, variant: 'destructive' });
       return;
     }
     setIsProcessing(true);
@@ -287,7 +331,7 @@ function CheckoutModal({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Finalizar Compra</DialogTitle>
-          <DialogDescription>Selecione as formas de pagamento para o total de <span className="font-bold">R${grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></DialogDescription>
+          <DialogDescription>Selecione as formas de pagamento para o total de <span className="font-bold">R${grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
           {payments.map((payment, index) => {
@@ -340,7 +384,7 @@ function CheckoutModal({
                         <SelectContent>
                             {Array.from({ length: maxInstallments }, (_, i) => i + 1).map(i => (
                                 <SelectItem key={i} value={String(i)}>
-                                    {i}x de R$ {(payment.amount / i).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                    {i}x de R$ {(payment.amount / i).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </SelectItem>
                             ))}
                         </SelectContent>
@@ -369,9 +413,9 @@ function CheckoutModal({
         </div>
         <DialogFooter className="grid grid-cols-2 gap-4">
             <div className="text-left">
-                <p>Total Pago: <span className="font-bold">R${paidAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></p>
+                <p>Total Pago: <span className="font-bold">R${paidAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></p>
                 <p className={remainingAmount !== 0 ? 'text-destructive' : ''}>
-                    Restante: <span className="font-bold">R${remainingAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    Restante: <span className="font-bold">R${remainingAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </p>
             </div>
             <Button onClick={handleSubmit} disabled={isProcessing}>
@@ -438,7 +482,7 @@ function PendingAttendancesTab({ onSelect }: { onSelect: (attendance: Attendance
                                 </p>
                             </div>
                             <div className="text-right">
-                                <p className="font-bold text-lg">R$ {att.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                <p className="font-bold text-lg">R$ {att.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                 <Button size="sm" onClick={() => onSelect(att)}>Pagar</Button>
                             </div>
                         </div>
@@ -493,7 +537,7 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                                         </div>
                                     </TableCell>
                                     <TableCell>{sale.cashier}</TableCell>
-                                    <TableCell className="text-right">R${sale.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
+                                    <TableCell className="text-right">R${sale.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                     <TableCell className="text-center">
                                        {user?.enabledModules?.pos?.delete && sale.status !== 'cancelled' && (
                                             <DropdownMenu>
@@ -640,7 +684,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                                             </Badge>
                                             <Image src={p.imageUrl} alt={p.name} width={80} height={80} className="mx-auto rounded-md" data-ai-hint="product image"/>
                                             <p className="text-sm font-medium mt-1">{p.name}</p>
-                                            <p className="text-xs text-muted-foreground">R$ {p.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                            <p className="text-xs text-muted-foreground">R$ {p.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                         </CardContent>
                                     </Card>
                                 ))}
@@ -662,7 +706,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
                                                 <Image src={p.imageUrl} alt={p.name} width={40} height={40} className="rounded-md" data-ai-hint="product image"/>
                                                 <div>
                                                     <p className="font-medium">{p.name}</p>
-                                                    <p className="text-xs text-muted-foreground">R$ {p.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                                    <p className="text-xs text-muted-foreground">R$ {p.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
@@ -871,43 +915,6 @@ export default function POSPage() {
   const removeFromCart = (itemId: string, itemType: CartItem['itemType']) => {
       setCart(cart => cart.filter(item => !(item.id === itemId && item.itemType === itemType)));
   }
-
-  const { subtotal, totalDiscount } = useMemo(() => {
-    return cart.reduce(
-        (acc, item) => {
-            let itemTotal;
-            let itemOriginalTotal;
-
-            if (item.itemType === 'product') {
-                const price = (item as ProductWithStock).price || (item as AttendanceItem).price || 0;
-                itemTotal = price * item.quantity;
-                itemOriginalTotal = itemTotal;
-            } else if (item.itemType === 'combo') {
-                itemTotal = item.finalPrice * item.quantity;
-                itemOriginalTotal = item.originalPrice * item.quantity;
-            } else if (item.itemType === 'kit') {
-                const originalPrice = item.chosenProducts.reduce((sum, p) => sum + p.price, 0);
-                itemTotal = item.total * item.quantity;
-                itemOriginalTotal = originalPrice * item.quantity;
-            } else if (item.itemType === 'service') {
-                itemTotal = item.total;
-                itemOriginalTotal = itemTotal;
-            }
-            else {
-                itemTotal = 0;
-                itemOriginalTotal = 0;
-            }
-            
-            acc.subtotal += itemTotal;
-            acc.totalDiscount += (itemOriginalTotal - itemTotal);
-            return acc;
-        },
-        { subtotal: 0, totalDiscount: 0 }
-    );
-  }, [cart]);
-
-  const tax = subtotal * ((currentBranch?.taxRate || 0) / 100);
-  const grandTotal = subtotal + tax;
   
   const handleCheckout = async (payments: PaymentDetail[], attendanceId?: string, customerId?: string) => {
       if (cart.length === 0) {
@@ -990,7 +997,6 @@ export default function POSPage() {
             return baseItem;
         });
 
-        // Create one consolidated sale document
         const saleRef = doc(collection(db, "sales"));
         const saleData: Omit<Sale, 'id'> = {
             items: saleItems,
@@ -1004,9 +1010,8 @@ export default function POSPage() {
             ...(attendanceId && { attendanceId: attendanceId }),
             ...(customerId && { customerId: customerId }),
         };
-        batch.set(saleRef, { ...saleData, date: saleDate }); // Use server timestamp for sale as well
+        batch.set(saleRef, { ...saleData, date: saleDate });
         
-        // If it's a payment for an attendance, update its status
         if (attendanceId) {
             const attendanceRef = doc(db, 'attendances', attendanceId);
             batch.update(attendanceRef, { paymentStatus: 'paid' });
@@ -1014,7 +1019,7 @@ export default function POSPage() {
 
         await batch.commit();
 
-        toast({ title: 'Compra finalizada com sucesso!', description: `Total: R$${grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`});
+        toast({ title: 'Compra finalizada com sucesso!', description: `Total: R$${grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`});
         handleClearCart();
 
       } catch (error) {
@@ -1058,7 +1063,6 @@ export default function POSPage() {
         const batch = writeBatch(db);
         const saleDate = serverTimestamp();
 
-        // Revert stock
         for (const item of sale.items) {
             if (item.type === 'product') {
                  const entry: Omit<StockEntry, 'id'> = {
@@ -1098,7 +1102,7 @@ export default function POSPage() {
                      const entry: Omit<StockEntry, 'id'> = {
                         productId: product.id,
                         productName: product.name,
-                        quantity: 1 * item.quantity, // Each chosen product is one unit
+                        quantity: 1 * item.quantity,
                         type: 'cancellation',
                         date: saleDate,
                         userId: user.id,
@@ -1112,7 +1116,6 @@ export default function POSPage() {
             }
         }
 
-        // Update sale status
         const saleRef = doc(db, 'sales', sale.id);
         batch.update(saleRef, { status: 'cancelled' as SaleStatus });
 
@@ -1138,6 +1141,27 @@ export default function POSPage() {
         </Card>
     )
   }
+
+  const { subtotal, grandTotal } = useMemo(() => {
+    let currentSubtotal = cart.reduce((acc, item) => {
+        let itemTotal;
+        if (item.itemType === 'product' || item.itemType === 'service') {
+            itemTotal = (item.price || 0) * item.quantity;
+        } else if (item.itemType === 'combo') {
+            itemTotal = item.finalPrice * item.quantity;
+        } else if (item.itemType === 'kit') {
+            itemTotal = item.total * item.quantity;
+        } else {
+            itemTotal = 0;
+        }
+        return acc + itemTotal;
+    }, 0);
+    
+    const tax = currentSubtotal * ((currentBranch?.taxRate || 0) / 100);
+    const finalTotal = currentSubtotal + tax;
+    return { subtotal: currentSubtotal, grandTotal: finalTotal };
+  }, [cart, currentBranch?.taxRate]);
+
 
   const getCartItemPrice = (item: CartItem) => {
       switch (item.itemType) {
@@ -1212,7 +1236,7 @@ export default function POSPage() {
                                 <CardContent className="p-2 flex flex-col items-center justify-center">
                                     <Image src={product.imageUrl} alt={product.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="product image"/>
                                     <p className="font-semibold text-sm mt-2 text-center">{product.name}</p>
-                                    <p className="text-xs text-muted-foreground">R${product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                    <p className="text-xs text-muted-foreground">R${product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                 </CardContent>
                                 </Card>
                             ))}
@@ -1237,7 +1261,7 @@ export default function POSPage() {
                                 <CardContent className="p-2 flex flex-col items-center justify-center">
                                     <Image src={combo.imageUrl} alt={combo.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="combo offer"/>
                                     <p className="font-semibold text-sm mt-2 text-center">{combo.name}</p>
-                                    <p className="text-xs text-muted-foreground">R${combo.finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                    <p className="text-xs text-muted-foreground">R${combo.finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                 </CardContent>
                                 </Card>
                             ))}
@@ -1310,10 +1334,10 @@ export default function POSPage() {
                                     </p>
                                     <p className="text-sm text-muted-foreground">
                                         {item.itemType === 'kit'
-                                            ? `Total do Kit: R$${item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                                            ? `Total do Kit: R$${item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                                             : item.itemType === 'service'
-                                            ? `Serviço: R$${item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-                                            : `R$${getCartItemPrice(item).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} x ${item.quantity}`
+                                            ? `Serviço: R$${item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                            : `R$${getCartItemPrice(item).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} x ${item.quantity}`
                                         }
                                     </p>
                                     {item.itemType === 'kit' && (
@@ -1324,7 +1348,7 @@ export default function POSPage() {
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <p className="font-semibold">
-                                        R$${(getCartItemPrice(item) * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        R$${(getCartItemPrice(item) * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </p>
                                     {!currentAttendanceId && (
                                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFromCart(item.id, item.itemType)}>
@@ -1339,21 +1363,20 @@ export default function POSPage() {
             </ScrollArea>
           </CardContent>
           <CardFooter className="flex-col !p-6 border-t">
-             <div className="w-full space-y-2">
-                 {totalDiscount > 0 && (
-                     <div className="flex justify-between text-destructive">
-                         <p>Descontos</p>
-                         <p>-R${totalDiscount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                     </div>
-                 )}
-                 <div className="flex justify-between"><p>Subtotal</p><p>R${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>
-                 <div className="flex justify-between"><p>Imposto ({currentBranch?.taxRate || 0}%)</p><p>R${tax.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>
-                 <div className="flex justify-between font-bold text-lg"><p>Total</p><p>R${grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>
-             </div>
-             <Button className="w-full mt-4" size="lg" onClick={() => setIsCheckoutModalOpen(true)} disabled={cart.length === 0}>
-                 <CreditCard className="mr-2 h-4 w-4" />
-                 Finalizar Compra
-             </Button>
+             <CheckoutModal
+                isOpen={isCheckoutModalOpen}
+                onOpenChange={setIsCheckoutModalOpen}
+                cart={cart}
+                subtotal={subtotal}
+                onCheckout={handleCheckout}
+                paymentConditions={paymentConditions}
+                attendanceId={currentAttendanceId}
+                customerId={selectedCustomer?.id}
+            />
+            <Button className="w-full mt-4" size="lg" onClick={() => setIsCheckoutModalOpen(true)} disabled={cart.length === 0}>
+                <CreditCard className="mr-2 h-4 w-4" />
+                Finalizar Compra (R$ {grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+            </Button>
           </CardFooter>
         </Card>
       </div>
@@ -1367,16 +1390,6 @@ export default function POSPage() {
             onConfirm={(chosen) => handleKitSelection(selectedKit, chosen)}
         />
     )}
-    <CheckoutModal
-      isOpen={isCheckoutModalOpen}
-      onOpenChange={setIsCheckoutModalOpen}
-      cart={cart}
-      grandTotal={grandTotal}
-      onCheckout={handleCheckout}
-      paymentConditions={paymentConditions}
-      attendanceId={currentAttendanceId}
-      customerId={selectedCustomer?.id}
-    />
      <BarcodeScannerModal
         isOpen={isScannerOpen}
         onOpenChange={setIsScannerOpen}

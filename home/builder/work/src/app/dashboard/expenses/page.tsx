@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { Expense, Supplier } from '@/lib/types';
 import { MoreHorizontal, PlusCircle, ArrowDownCircle, Lock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -72,6 +72,8 @@ function ExpenseForm({ expense, suppliers, onSave, onDone }: { expense?: Expense
         onDone();
     };
 
+    const displayDate = formData.date instanceof Timestamp ? formData.date.toDate() : formData.date;
+
     return (
         <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-4">
             <div className="space-y-2">
@@ -89,11 +91,11 @@ function ExpenseForm({ expense, suppliers, onSave, onDone }: { expense?: Expense
                         <PopoverTrigger asChild>
                             <Button variant="outline" className="w-full justify-start text-left font-normal">
                                 <CalendarIcon className="mr-2 h-4 w-4" />
-                                {formData.date ? format(new Date(formData.date), 'PPP', { locale: ptBR }) : <span>Escolha uma data</span>}
+                                {displayDate ? format(displayDate, 'PPP', { locale: ptBR }) : <span>Escolha uma data</span>}
                             </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0">
-                            <Calendar mode="single" selected={formData.date ? new Date(formData.date) : undefined} onSelect={handleDateChange} initialFocus />
+                            <Calendar mode="single" selected={displayDate} onSelect={handleDateChange} initialFocus />
                         </PopoverContent>
                     </Popover>
                 </div>
@@ -152,14 +154,21 @@ export default function ExpensesPage() {
             return;
         }
 
-        const expensesQuery = query(collection(db, 'expenses'), where("branchId", "==", currentBranch.id));
+        const expensesQuery = query(collection(db, 'expenses'), where("branchId", "==", currentBranch.id), where('isDeleted', '!=', true));
         const expensesUnsub = onSnapshot(expensesQuery, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense));
-            setExpenses(data.sort((a, b) => new Date(b.date.seconds * 1000).getTime() - new Date(a.date.seconds * 1000).getTime()));
+            const data = snapshot.docs.map(doc => {
+                const expenseData = doc.data();
+                return { 
+                    id: doc.id, 
+                    ...expenseData,
+                    date: expenseData.date instanceof Timestamp ? expenseData.date.toDate() : new Date()
+                } as Expense;
+            });
+            setExpenses(data.sort((a, b) => (b.date as Date).getTime() - (a.date as Date).getTime()));
             setLoading(false);
         });
 
-        const suppliersQuery = query(collection(db, 'suppliers'), where("organizationId", "==", user.organizationId));
+        const suppliersQuery = query(collection(db, 'suppliers'), where("organizationId", "==", user.organizationId), where('isDeleted', '!=', true));
         const suppliersUnsub = onSnapshot(suppliersQuery, snapshot => {
             setSuppliers(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as Supplier)))
         });
@@ -184,6 +193,7 @@ export default function ExpensesPage() {
                     branchId: currentBranch.id,
                     userId: user.id,
                     userName: user.name,
+                    isDeleted: false,
                 });
                 toast({ title: 'Despesa adicionada com sucesso!' });
             }
@@ -196,7 +206,7 @@ export default function ExpensesPage() {
 
     const handleDelete = async (id: string) => {
         try {
-            await deleteDoc(doc(db, "expenses", id));
+            await updateDoc(doc(db, "expenses", id), { isDeleted: true });
             toast({ title: 'Despesa excluída com sucesso!', variant: 'destructive' });
         } catch (error) {
             toast({ title: 'Erro ao excluir despesa', variant: 'destructive' });
@@ -281,11 +291,11 @@ export default function ExpensesPage() {
                     ) : expenses.length > 0 ? (
                         expenses.map((expense) => (
                             <TableRow key={expense.id}>
-                                <TableCell>{format(new Date(expense.date.seconds * 1000), 'dd/MM/yyyy')}</TableCell>
+                                <TableCell>{format(expense.date as Date, 'dd/MM/yyyy')}</TableCell>
                                 <TableCell className="font-medium">{expense.description}</TableCell>
                                 <TableCell>{expense.category}</TableCell>
                                 <TableCell>{expense.supplierName || 'N/A'}</TableCell>
-                                <TableCell className="text-right">R$ {expense.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
+                                <TableCell className="text-right">R$ {expense.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                 <TableCell className="text-center">
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>

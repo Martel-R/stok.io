@@ -13,9 +13,12 @@ import { useAuth } from '@/lib/auth';
 import type { Product, Branch, StockEntry, StockEntryType } from '@/lib/types';
 import { db } from '@/lib/firebase';
 import { writeBatch, collection, doc, serverTimestamp, getDocs, query, where, limit } from 'firebase/firestore';
-import { Check, ChevronsUpDown } from 'lucide-react';
+import { Check, ChevronsUpDown, Calendar as CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DialogFooter } from './ui/dialog';
+import { Calendar } from './ui/calendar';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 interface StockMovementFormProps {
     type: 'entry' | 'adjustment' | 'transfer';
@@ -31,6 +34,7 @@ export function StockMovementForm({ type, products, branches = [], onDone }: Sto
     const [quantity, setQuantity] = useState(1);
     const [notes, setNotes] = useState('');
     const [destinationBranch, setDestinationBranch] = useState<Branch | null>(null);
+    const [expirationDate, setExpirationDate] = useState<Date | undefined>();
     const [openProductPopover, setOpenProductPopover] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -63,6 +67,7 @@ export function StockMovementForm({ type, products, branches = [], onDone }: Sto
                  productsRef, 
                  where('branchId', '==', destinationBranch.id), 
                  where('name', '==', selectedProduct.name),
+                 where('isDeleted', '!=', true),
                  limit(1)
              );
             
@@ -75,7 +80,8 @@ export function StockMovementForm({ type, products, branches = [], onDone }: Sto
                 batch.set(newProductRef, {
                     ...productToCopy,
                     branchId: destinationBranch.id,
-                    organizationId: user.organizationId
+                    organizationId: user.organizationId,
+                    isDeleted: false,
                 });
                 destinationProductId = newProductRef.id;
             } else {
@@ -98,6 +104,7 @@ export function StockMovementForm({ type, products, branches = [], onDone }: Sto
             organizationId: user.organizationId,
             notes: type === 'transfer' ? `Para: ${destinationBranch!.name}` : notes,
             ...(type === 'transfer' && { relatedBranchId: destinationBranch!.id, relatedBranchName: destinationBranch!.name }),
+            ...(expirationDate && { expirationDate }),
         };
         batch.set(doc(collection(db, 'stockEntries')), outgoingEntry);
 
@@ -116,6 +123,7 @@ export function StockMovementForm({ type, products, branches = [], onDone }: Sto
                 notes: `De: ${currentBranch.name}`,
                 relatedBranchId: currentBranch.id,
                 relatedBranchName: currentBranch.name,
+                 ...(expirationDate && { expirationDate }),
             };
             batch.set(doc(collection(db, 'stockEntries')), incomingEntry);
         }
@@ -169,16 +177,34 @@ export function StockMovementForm({ type, products, branches = [], onDone }: Sto
                 </Popover>
             </div>
 
-            <div>
-                <Label htmlFor="quantity">Quantidade</Label>
-                <Input
-                    id="quantity"
-                    type="number"
-                    min="1"
-                    value={quantity}
-                    onChange={e => setQuantity(parseInt(e.target.value, 10) || 1)}
-                    required
-                />
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <Label htmlFor="quantity">Quantidade</Label>
+                    <Input
+                        id="quantity"
+                        type="number"
+                        min="1"
+                        value={quantity}
+                        onChange={e => setQuantity(parseInt(e.target.value, 10) || 1)}
+                        required
+                    />
+                </div>
+                 {type === 'entry' && selectedProduct?.isPerishable && (
+                     <div>
+                        <Label>Data de Validade</Label>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {expirationDate ? format(expirationDate, 'PPP', { locale: ptBR }) : <span>Escolha a data</span>}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                                <Calendar mode="single" selected={expirationDate} onSelect={setExpirationDate} initialFocus />
+                            </PopoverContent>
+                        </Popover>
+                    </div>
+                )}
             </div>
 
             {type === 'transfer' && (

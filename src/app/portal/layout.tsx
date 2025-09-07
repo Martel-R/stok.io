@@ -16,17 +16,27 @@ import { Icons } from '@/components/icons';
 
 function PortalNav() {
     const pathname = usePathname();
+    const { user } = useAuth();
+    
     const navItems = [
-        { href: '/portal', label: 'Início', icon: LayoutDashboard },
-        { href: '/portal/request-appointment', label: 'Solicitar Agendamento', icon: Calendar },
-        { href: '/portal/appointments', label: 'Meus Agendamentos', icon: History },
-        { href: '/portal/anamnesis', label: 'Anamnese', icon: FileText },
-        { href: '/portal/profile', label: 'Meu Perfil', icon: User },
+        { href: '/portal', label: 'Início', icon: LayoutDashboard, module: 'customers' },
+        { href: '/portal/request-appointment', label: 'Solicitar Agendamento', icon: Calendar, module: 'appointments' },
+        { href: '/portal/appointments', label: 'Meus Agendamentos', icon: History, module: 'appointments' },
+        { href: '/portal/anamnesis', label: 'Anamnese', icon: FileText, module: 'customers' },
+        { href: '/portal/profile', label: 'Meu Perfil', icon: User, module: 'customers' },
     ];
+
+    const canViewModule = (module: string) => {
+        if (!user?.enabledModules) return false;
+        const moduleKey = module as keyof typeof user.enabledModules;
+        return user.enabledModules[moduleKey]?.view ?? false;
+    }
 
     return (
         <nav className="grid items-start gap-2">
-            {navItems.map((item) => (
+            {navItems
+                .filter(item => canViewModule(item.module))
+                .map((item) => (
                  <Link
                     key={item.href}
                     href={item.href}

@@ -12,8 +12,6 @@ import { Icons } from '@/components/ui/icons';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
-import { cn } from '@/lib/utils';
 
 export default function SignupPage() {
   const { signup, loading } = useAuth();

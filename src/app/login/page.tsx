@@ -6,16 +6,11 @@ import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Icons } from '@/components/icons';
+import { Icons } from '@/components/ui/icons';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
-import { Separator } from '@/components/ui/separator';
-import Image from 'next/image';
-import { cn } from '@/lib/utils';
-
 
 export default function LoginPage() {
   const { login, loginWithGoogle, loading, cancelLogin } = useAuth();
@@ -52,19 +47,8 @@ export default function LoginPage() {
     cancelLogin();
   }
 
-  const quickLogin = async (userEmail: string) => {
-    const success = await login(userEmail, 'password');
-     if (!success) {
-      toast({
-        title: 'Falha no Login',
-        description: 'Não foi possível fazer login com o perfil selecionado.',
-        variant: 'destructive',
-      });
-    }
-  }
-
   return (
-    <div className="w-full h-screen flex items-center justify-center p-4">
+    <div className="w-full h-screen flex items-center justify-center bg-muted p-4">
         <div className="mx-auto grid w-[380px] max-w-full gap-6 rounded-lg border bg-background p-6 shadow-lg sm:p-8">
           <div className="grid gap-2 text-center">
             <div className="flex items-center justify-center text-lg font-medium">

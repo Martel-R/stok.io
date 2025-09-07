@@ -1,4 +1,5 @@
 
+
 'use client';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -67,6 +68,7 @@ export function StockMovementForm({ type, products, branches = [], onDone }: Sto
                  productsRef, 
                  where('branchId', '==', destinationBranch.id), 
                  where('name', '==', selectedProduct.name),
+                 where('isDeleted', '!=', true),
                  limit(1)
              );
             
@@ -74,12 +76,13 @@ export function StockMovementForm({ type, products, branches = [], onDone }: Sto
             
             if (existingProductSnap.empty) {
                 // Product does not exist, create it in the destination branch
-                const { id, branchId, organizationId, ...productToCopy } = selectedProduct as any; // 'stock' is not part of Product type
+                const { id, stock, branchId, organizationId, ...productToCopy } = selectedProduct as any; 
                 const newProductRef = doc(collection(db, 'products'));
                 batch.set(newProductRef, {
                     ...productToCopy,
                     branchId: destinationBranch.id,
-                    organizationId: user.organizationId
+                    organizationId: user.organizationId,
+                    isDeleted: false,
                 });
                 destinationProductId = newProductRef.id;
             } else {

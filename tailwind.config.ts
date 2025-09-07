@@ -1,3 +1,4 @@
+
 import type { Config } from 'tailwindcss';
 
 const { fontFamily } = require("tailwindcss/defaultTheme")
@@ -105,4 +106,3 @@ export default {
   },
   plugins: [require('tailwindcss-animate'), require('@tailwindcss/typography')],
 } satisfies Config;
-

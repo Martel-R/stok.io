@@ -319,7 +319,7 @@ function GeneralReport() {
                 <CardHeader>
                     <div className="flex flex-col md:flex-row justify-between gap-4 no-print">
                          <div className="flex flex-wrap gap-2">
-                            <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedIds} />
+                            <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
                             <DateRangePicker date={dateRange} onSelect={setDateRange} />
                         </div>
                          <div className="flex gap-2">

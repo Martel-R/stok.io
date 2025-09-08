@@ -1,8 +1,9 @@
 
+
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { initializeFirestore, CACHE_SIZE_UNLIMITED, persistentLocalCache, memoryLocalCache } from "firebase/firestore";
+import { initializeFirestore, CACHE_SIZE_UNLIMITED, memoryLocalCache, persistentLocalCache } from "firebase/firestore";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 import { getStorage } from "firebase/storage";
 
@@ -32,7 +33,7 @@ const storage = getStorage(app);
 if (typeof window !== 'undefined') {
   const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
   // Ensure the key is not a placeholder and has a reasonable length before initializing
-  if (recaptchaSiteKey && recaptchaSiteKey !== 'SUA_CHAVE_RECAPTCHA_AQUI' && recaptchaSiteKey.length > 10) {
+  if (recaptchaSiteKey && recaptchaSiteKey.length > 20 && !recaptchaSiteKey.includes('SUA_CHAVE')) {
     try {
       initializeAppCheck(app, {
         provider: new ReCaptchaV3Provider(recaptchaSiteKey),
@@ -41,10 +42,10 @@ if (typeof window !== 'undefined') {
     } catch (error) {
       console.error("Failed to initialize App Check. This may be due to an invalid or unconfigured reCAPTCHA key in your Firebase project settings.", error);
     }
+  } else {
+    console.warn("App Check not initialized. NEXT_PUBLIC_RECAPTCHA_SITE_KEY is missing or invalid.");
   }
 }
 
 
 export { app, auth, db, storage };
-
-

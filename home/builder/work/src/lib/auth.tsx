@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React from 'react';
@@ -143,122 +142,106 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   React.useEffect(() => {
-    let unsubscribers: Unsubscribe[] = [];
-
     const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      unsubscribers.forEach(unsub => unsub());
-      unsubscribers = [];
-      setLoading(true);
+        setLoading(true);
 
-      if (firebaseUser) {
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        
+        if (!firebaseUser) {
+            setUser(null);
+            setOrganizations([]);
+            setBranches([]);
+            setPaymentConditions([]);
+            setCurrentBranchState(null);
+            setLoading(false);
+            return;
+        }
+
+        const userDocSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
         if (!userDocSnap.exists() || userDocSnap.data().isDeleted) {
-          setUser(null); setLoading(false); return;
+            await signOut(auth); // Sign out if user doc doesn't exist or is deleted
+            setUser(null);
+            setLoading(false);
+            return;
         }
 
         const baseUser = { id: userDocSnap.id, ...userDocSnap.data() } as User;
         const isSuperAdmin = baseUser.email === process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL;
         const impersonatedOrgId = localStorage.getItem('impersonatedOrgId');
         const isImpersonating = isSuperAdmin && !!impersonatedOrgId;
-
         const effectiveOrgId = isImpersonating ? impersonatedOrgId : baseUser.organizationId;
-        
-        let userData: UserWithOrg = { ...baseUser, isImpersonating };
 
+        // Super Admin non-impersonating flow
         if (isSuperAdmin && !isImpersonating) {
-            const unsub = onSnapshot(collection(db, 'organizations'), (snapshot) => {
-                setOrganizations(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Organization)));
-                setUser({ ...userData, enabledModules: defaultPermissions });
-                setBranches([]);
-                setPaymentConditions([]);
-                setCurrentBranchState(null);
-                setLoading(false);
-            });
-            unsubscribers.push(unsub);
+            const orgsSnapshot = await getDocs(collection(db, 'organizations'));
+            setOrganizations(orgsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Organization)));
+            setUser({ ...baseUser, enabledModules: defaultPermissions, isImpersonating });
+            setBranches([]);
+            setPaymentConditions([]);
+            setCurrentBranchState(null);
+            setLoading(false);
             return;
         }
 
+        // Standard user or impersonating admin flow
         if (effectiveOrgId) {
             await runDataIntegrityCheck(effectiveOrgId);
 
-            const unsubOrg = onSnapshot(doc(db, 'organizations', effectiveOrgId), async (orgDoc) => {
-                if (!orgDoc.exists()) {
-                    setUser(null); setLoading(false); return;
-                }
-                
-                const orgData = { id: orgDoc.id, ...orgDoc.data() } as Organization;
-                const profilesSnap = await getDocs(query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId)));
-                const profiles = profilesSnap.docs.map(p => ({ id: p.id, ...p.data() } as PermissionProfile));
-                
-                const orgModules = orgData.enabledModules || {};
-                let finalPermissions: Partial<EnabledModules> = {};
+            const orgDoc = await getDoc(doc(db, 'organizations', effectiveOrgId));
+            if (!orgDoc.exists()) {
+                setUser(null); setLoading(false); return;
+            }
+            const orgData = { id: orgDoc.id, ...orgDoc.data() } as Organization;
 
-                if (isImpersonating || baseUser.role === 'admin') {
+            const profilesSnap = await getDocs(query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId)));
+            const profiles = profilesSnap.docs.map(p => ({ id: p.id, ...p.data() } as PermissionProfile));
+            
+            const orgModules = orgData.enabledModules || {};
+            let finalPermissions: Partial<EnabledModules> = {};
+
+            if (isImpersonating || baseUser.role === 'admin') {
+                Object.keys(orgModules).forEach(key => {
+                    const moduleKey = key as keyof EnabledModules;
+                    if (orgModules[moduleKey]) finalPermissions[moduleKey] = { view: true, edit: true, delete: true };
+                });
+            } else {
+                const userProfile = profiles.find(p => p.id === baseUser.role);
+                if (userProfile?.permissions) {
                     Object.keys(orgModules).forEach(key => {
                         const moduleKey = key as keyof EnabledModules;
-                        if (orgModules[moduleKey]) {
-                            finalPermissions[moduleKey] = { view: true, edit: true, delete: true };
-                        }
+                        if (orgModules[moduleKey]) finalPermissions[moduleKey] = userProfile.permissions[moduleKey] || { view: false, edit: false, delete: false };
                     });
-                } else {
-                    const userProfile = profiles.find(p => p.id === baseUser.role);
-                    if (userProfile?.permissions) {
-                        Object.keys(orgModules).forEach(key => {
-                            const moduleKey = key as keyof EnabledModules;
-                            if (orgModules[moduleKey]) {
-                                finalPermissions[moduleKey] = userProfile.permissions[moduleKey] || { view: false, edit: false, delete: false };
-                            }
-                        });
-                    }
                 }
-                
-                userData = { ...userData, organization: orgData, enabledModules: finalPermissions as EnabledModules, paymentStatus: orgData.paymentStatus };
-                setUser(userData);
+            }
 
-                const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '==', false));
-                const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '==', false));
+            const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '==', false));
+            const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '==', false));
 
-                const [branchSnap, conditionsSnap] = await Promise.all([
-                    getDocs(branchesQuery),
-                    getDocs(conditionsQuery)
-                ]);
+            const [branchSnap, conditionsSnap] = await Promise.all([getDocs(branchesQuery), getDocs(conditionsQuery)]);
 
-                const allOrgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
-                const userBranches = isImpersonating || baseUser.role === 'admin' ? allOrgBranches : allOrgBranches.filter(b => b.userIds.includes(baseUser.id));
-                setBranches(userBranches);
-                
-                const storedBranchId = localStorage.getItem('currentBranchId');
-                const storedBranch = userBranches.find(b => b.id === storedBranchId);
+            const allOrgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
+            const userBranches = isImpersonating || baseUser.role === 'admin' ? allOrgBranches : allOrgBranches.filter(b => b.userIds.includes(baseUser.id));
+            setBranches(userBranches);
+            setPaymentConditions(conditionsSnap.docs.map(d => ({id: d.id, ...d.data()}) as PaymentCondition));
+            
+            const storedBranchId = localStorage.getItem('currentBranchId');
+            const storedBranch = userBranches.find(b => b.id === storedBranchId);
+            const newCurrentBranch = storedBranch || userBranches[0] || null;
+            setCurrentBranchState(newCurrentBranch);
+            if (newCurrentBranch) {
+                localStorage.setItem('currentBranchId', newCurrentBranch.id);
+            } else {
+                localStorage.removeItem('currentBranchId');
+            }
 
-                if (storedBranch) {
-                    setCurrentBranchState(storedBranch);
-                } else if (userBranches.length > 0) {
-                    setCurrentBranchState(userBranches[0]);
-                    localStorage.setItem('currentBranchId', userBranches[0].id);
-                } else {
-                    setCurrentBranchState(null);
-                    localStorage.removeItem('currentBranchId');
-                }
-                
-                setPaymentConditions(conditionsSnap.docs.map(doc => ({id: doc.id, ...doc.data()}) as PaymentCondition));
-
-                setLoading(false);
-            });
-            unsubscribers.push(unsubOrg);
+            // Set user state at the very end
+            setUser({ ...baseUser, organization: orgData, enabledModules: finalPermissions as EnabledModules, paymentStatus: orgData.paymentStatus, isImpersonating });
         } else {
-            setUser(null); setLoading(false);
+            setUser(null);
         }
-      } else {
-        setUser(null); setOrganizations([]); setBranches([]); setPaymentConditions([]); setCurrentBranchState(null); setLoading(false);
-      }
+
+        setLoading(false);
     });
 
-    return () => {
-      authUnsubscribe();
-      unsubscribers.forEach(unsub => unsub());
-    };
+    return () => authUnsubscribe();
   }, []);
   
   const signup = async (email: string, pass: string, name: string): Promise<{ success: boolean; error?: string, isFirstUser?: boolean }> => {
@@ -399,7 +382,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return { success: false, error: errorMessage };
     }
-  };
+  }
   
   const deleteUser = async (userId: string): Promise<{ success: boolean; error?: string; }> => {
       if (!user) {
@@ -676,4 +659,3 @@ export const useAuth = () => {
   }
   return context;
 };
-

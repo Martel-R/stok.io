@@ -599,7 +599,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { success: true };
     } catch (error: any) {
       console.error("Password Reset Error:", error);
-      let message = "Ocorreu um erro desconhecido.";
+      let message = "Ocorreu um erro.";
       if (error.code === 'auth/user-not-found') {
           message = "Nenhum usuário encontrado com este e-mail.";
       }

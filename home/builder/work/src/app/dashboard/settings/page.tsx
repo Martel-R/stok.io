@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import * as React from 'react';
@@ -129,7 +127,7 @@ function UsersTable() {
             setLoading(false);
             return;
         }
-        const qUsers = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
+        const qUsers = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '==', false));
         const qProfiles = query(collection(db, 'permissionProfiles'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
         
         const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
@@ -1704,4 +1702,3 @@ function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Suppl
         </form>
     );
 }
-

@@ -380,7 +380,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             avatar: getRandomAvatar(),
             organizationId: organizationId,
             isDeleted: false,
-            ...(customerId && { customerId: customerId }),
+            ...(customerId && { customerId }),
         };
         
         await setDoc(doc(db, "users", firebaseUser.uid), newUser);

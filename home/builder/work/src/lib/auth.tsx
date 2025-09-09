@@ -380,7 +380,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             avatar: getRandomAvatar(),
             organizationId: organizationId,
             isDeleted: false,
-            ...(customerId && { customerId }),
+            ...(customerId && { customerId: customerId }),
         };
         
         await setDoc(doc(db, "users", firebaseUser.uid), newUser);
@@ -399,8 +399,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return { success: false, error: errorMessage };
     }
-  }
-
+  };
+  
   const deleteUser = async (userId: string): Promise<{ success: boolean; error?: string; }> => {
       if (!user) {
           return { success: false, error: "Usuário não autenticado." };
@@ -422,7 +422,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error("Error deleting user:", error);
           return { success: false, error: "Ocorreu um erro ao excluir o usuário." };
       }
-  }
+  };
 
 
   const login = async (email: string, pass: string): Promise<boolean> => {
@@ -599,7 +599,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { success: true };
     } catch (error: any) {
       console.error("Password Reset Error:", error);
-      let message = "Ocorreu um erro.";
+      let message = "Ocorreu um erro desconhecido.";
       if (error.code === 'auth/user-not-found') {
           message = "Nenhum usuário encontrado com este e-mail.";
       }

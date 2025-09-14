@@ -36,6 +36,7 @@ import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { PermissionProfileForm } from '@/components/permission-profile-form';
 import { format } from 'date-fns';
+import { logUserActivity } from '@/lib/logging';
 
 
 const availableAvatars = [
@@ -49,7 +50,7 @@ const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availa
 
 function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: PermissionProfile[]; onSave: (user: Partial<User>) => void; onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<User>>(
-        user || { name: '', email: '', role: '', avatar: getRandomAvatar() }
+        user || { name: '', email: '', role: '', avatar: getRandomAvatar(), isDeleted: false }
     );
 
     useEffect(() => {
@@ -129,24 +130,31 @@ function UsersTable() {
             setLoading(false);
             return;
         }
-        const qUsers = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
+        const qUsers = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId));
         const qProfiles = query(collection(db, 'permissionProfiles'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
         
         const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
-            const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as User[];
+            const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
             setUsers(usersData);
             setLoading(false);
+        }, (error) => {
+            console.error("Error fetching users:", error);
+            setLoading(false);
+            toast({ title: 'Erro ao carregar usuários', variant: 'destructive'});
         });
 
         const unsubscribeProfiles = onSnapshot(qProfiles, (snapshot) => {
              setProfiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile)));
+        }, (error) => {
+            console.error("Error fetching profiles:", error);
+            toast({ title: 'Erro ao carregar perfis de permissão', variant: 'destructive'});
         });
 
         return () => {
             unsubscribeUsers();
             unsubscribeProfiles();
         }
-    }, [adminUser]);
+    }, [adminUser, toast]);
 
     const getProfileName = (roleId: string) => {
         const profile = profiles.find(p => p.id === roleId);
@@ -244,6 +252,7 @@ function UsersTable() {
                             <TableHead>Nome</TableHead>
                             <TableHead>Email</TableHead>
                             <TableHead>Perfil</TableHead>
+                            <TableHead>Status</TableHead>
                             <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -254,15 +263,21 @@ function UsersTable() {
                                     <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                                     <TableCell><Skeleton className="h-5 w-48" /></TableCell>
                                     <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                                    <TableCell><Skeleton className="h-6 w-20" /></TableCell>
                                     <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto rounded-full" /></TableCell>
                                 </TableRow>
                             ))
-                        ) : (
+                        ) : users.length > 0 ? (
                             users.map((user) => (
-                                <TableRow key={user.id}>
+                                <TableRow key={user.id} className={user.isDeleted ? 'text-muted-foreground' : ''}>
                                     <TableCell className="font-medium">{user.name}</TableCell>
                                     <TableCell>{user.email}</TableCell>
                                     <TableCell>{getProfileName(user.role)}</TableCell>
+                                    <TableCell>
+                                        <Badge variant={user.isDeleted ? 'outline' : 'default'}>
+                                            {user.isDeleted ? 'Inativo' : 'Ativo'}
+                                        </Badge>
+                                    </TableCell>
                                     <TableCell className="text-right">
                                          <AlertDialog>
                                             <DropdownMenu>
@@ -295,6 +310,10 @@ function UsersTable() {
                                     </TableCell>
                                 </TableRow>
                             ))
+                        ) : (
+                             <TableRow>
+                                <TableCell colSpan={5} className="text-center">Nenhum usuário encontrado.</TableCell>
+                            </TableRow>
                         )}
                     </TableBody>
                 </Table>
@@ -470,7 +489,7 @@ function BranchesSettings() {
 function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users: User[]; onSave: (data: Omit<Branch, 'id' | 'organizationId' | 'isDeleted'>) => void; onDone: () => void }) {
     const { user: currentUser } = useAuth();
     const [formData, setFormData] = useState(
-        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], taxRate: 8 }
+        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], taxRate: 8, isDeleted: false }
     );
     const [open, setOpen] = useState(false);
 
@@ -808,7 +827,7 @@ function AnamnesisQuestionForm({
     onSave: (data: Partial<AnamnesisQuestion>) => void; 
     onDone: () => void 
 }) {
-    const [formData, setFormData] = useState<Partial<AnamnesisQuestion>>(question || { label: '', type: 'text' });
+    const [formData, setFormData] = useState<Partial<AnamnesisQuestion>>(question || { label: '', type: 'text', isDeleted: false });
     
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData(prev => ({ ...prev, label: e.target.value }));
@@ -930,7 +949,7 @@ function AnamnesisSettings() {
         setIsFormOpen(true);
     }
 
-    const handleImport = async (importedQuestions: Omit<AnamnesisQuestion, 'id' | 'organizationId' | 'order'>[]) => {
+    const handleImport = async (importedQuestions: Omit<AnamnesisQuestion, 'id' | 'organizationId' | 'order' | 'isDeleted'>[]) => {
       if (!user?.organizationId) {
           toast({ title: 'Organização não encontrada', variant: 'destructive' });
           return;
@@ -943,6 +962,7 @@ function AnamnesisSettings() {
               ...q,
               organizationId: user.organizationId,
               order: baseOrder + index,
+              isDeleted: false,
           });
       });
       try {
@@ -1612,7 +1632,7 @@ export default function SettingsPage() {
 
 
 function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Supplier; products: Product[]; onSave: (data: Partial<Supplier>, productsToLink: string[], productsToUnlink: string[]) => void; onDone: () => void }) {
-    const [formData, setFormData] = useState<Partial<Supplier>>(supplier || { name: '', contactName: '', phone: '', email: '', address: '' });
+    const [formData, setFormData] = useState<Partial<Supplier>>(supplier || { name: '', contactName: '', phone: '', email: '', address: '', isDeleted: false });
     const [linkedProductIds, setLinkedProductIds] = useState<string[]>([]);
     const [initialLinkedProductIds, setInitialLinkedProductIds] = useState<string[]>([]);
 
@@ -1622,7 +1642,7 @@ function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Suppl
             setLinkedProductIds(currentlyLinked);
             setInitialLinkedProductIds(currentlyLinked);
         }
-         setFormData(supplier || { name: '', contactName: '', phone: '', email: '', address: '' });
+         setFormData(supplier || { name: '', contactName: '', phone: '', email: '', address: '', isDeleted: false });
     }, [supplier, products]);
     
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1704,3 +1724,6 @@ function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Suppl
         </form>
     );
 }
+
+    
+

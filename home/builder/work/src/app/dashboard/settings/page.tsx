@@ -36,6 +36,7 @@ import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { PermissionProfileForm } from '@/components/permission-profile-form';
 import { format } from 'date-fns';
+import { logUserActivity } from '@/lib/logging';
 
 
 const availableAvatars = [
@@ -49,7 +50,7 @@ const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availa
 
 function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: PermissionProfile[]; onSave: (user: Partial<User>) => void; onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<User>>(
-        user || { name: '', email: '', role: '', avatar: getRandomAvatar() }
+        user || { name: '', email: '', role: '', avatar: getRandomAvatar(), isDeleted: false }
     );
 
     useEffect(() => {
@@ -482,7 +483,7 @@ function BranchesSettings() {
 function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users: User[]; onSave: (data: Omit<Branch, 'id' | 'organizationId' | 'isDeleted'>) => void; onDone: () => void }) {
     const { user: currentUser } = useAuth();
     const [formData, setFormData] = useState(
-        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], taxRate: 8 }
+        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], taxRate: 8, isDeleted: false }
     );
     const [open, setOpen] = useState(false);
 
@@ -820,7 +821,7 @@ function AnamnesisQuestionForm({
     onSave: (data: Partial<AnamnesisQuestion>) => void; 
     onDone: () => void 
 }) {
-    const [formData, setFormData] = useState<Partial<AnamnesisQuestion>>(question || { label: '', type: 'text' });
+    const [formData, setFormData] = useState<Partial<AnamnesisQuestion>>(question || { label: '', type: 'text', isDeleted: false });
     
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData(prev => ({ ...prev, label: e.target.value }));
@@ -942,7 +943,7 @@ function AnamnesisSettings() {
         setIsFormOpen(true);
     }
 
-    const handleImport = async (importedQuestions: Omit<AnamnesisQuestion, 'id' | 'organizationId' | 'order'>[]) => {
+    const handleImport = async (importedQuestions: Omit<AnamnesisQuestion, 'id' | 'organizationId' | 'order' | 'isDeleted'>[]) => {
       if (!user?.organizationId) {
           toast({ title: 'Organização não encontrada', variant: 'destructive' });
           return;
@@ -955,6 +956,7 @@ function AnamnesisSettings() {
               ...q,
               organizationId: user.organizationId,
               order: baseOrder + index,
+              isDeleted: false,
           });
       });
       try {
@@ -1624,7 +1626,7 @@ export default function SettingsPage() {
 
 
 function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Supplier; products: Product[]; onSave: (data: Partial<Supplier>, productsToLink: string[], productsToUnlink: string[]) => void; onDone: () => void }) {
-    const [formData, setFormData] = useState<Partial<Supplier>>(supplier || { name: '', contactName: '', phone: '', email: '', address: '' });
+    const [formData, setFormData] = useState<Partial<Supplier>>(supplier || { name: '', contactName: '', phone: '', email: '', address: '', isDeleted: false });
     const [linkedProductIds, setLinkedProductIds] = useState<string[]>([]);
     const [initialLinkedProductIds, setInitialLinkedProductIds] = useState<string[]>([]);
 
@@ -1634,7 +1636,7 @@ function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Suppl
             setLinkedProductIds(currentlyLinked);
             setInitialLinkedProductIds(currentlyLinked);
         }
-         setFormData(supplier || { name: '', contactName: '', phone: '', email: '', address: '' });
+         setFormData(supplier || { name: '', contactName: '', phone: '', email: '', address: '', isDeleted: false });
     }, [supplier, products]);
     
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

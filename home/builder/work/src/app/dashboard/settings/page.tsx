@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -131,11 +130,11 @@ function UsersTable() {
             return;
         }
 
-        const qUsers = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
+        const qUsers = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId));
         const qProfiles = query(collection(db, 'permissionProfiles'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
         
         const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
-            const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as User[];
+            const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)).filter(user => !user.isDeleted);
             setUsers(usersData);
             setLoading(false);
         }, (error) => {
@@ -1718,3 +1717,5 @@ function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Suppl
         </form>
     );
 }
+
+    

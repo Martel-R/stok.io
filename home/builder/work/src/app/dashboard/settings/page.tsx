@@ -129,6 +129,7 @@ function UsersTable() {
             setLoading(false);
             return;
         }
+
         const qUsers = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
         const qProfiles = query(collection(db, 'permissionProfiles'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
         
@@ -136,17 +137,24 @@ function UsersTable() {
             const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as User[];
             setUsers(usersData);
             setLoading(false);
+        }, (error) => {
+            console.error("Error fetching users:", error);
+            setLoading(false);
+            toast({ title: 'Erro ao carregar usuários', variant: 'destructive'});
         });
 
         const unsubscribeProfiles = onSnapshot(qProfiles, (snapshot) => {
              setProfiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile)));
+        }, (error) => {
+            console.error("Error fetching profiles:", error);
+            toast({ title: 'Erro ao carregar perfis de permissão', variant: 'destructive'});
         });
 
         return () => {
             unsubscribeUsers();
             unsubscribeProfiles();
         }
-    }, [adminUser]);
+    }, [adminUser, toast]);
 
     const getProfileName = (roleId: string) => {
         const profile = profiles.find(p => p.id === roleId);
@@ -257,7 +265,7 @@ function UsersTable() {
                                     <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto rounded-full" /></TableCell>
                                 </TableRow>
                             ))
-                        ) : (
+                        ) : users.length > 0 ? (
                             users.map((user) => (
                                 <TableRow key={user.id}>
                                     <TableCell className="font-medium">{user.name}</TableCell>
@@ -295,6 +303,10 @@ function UsersTable() {
                                     </TableCell>
                                 </TableRow>
                             ))
+                        ) : (
+                             <TableRow>
+                                <TableCell colSpan={4} className="text-center">Nenhum usuário encontrado.</TableCell>
+                            </TableRow>
                         )}
                     </TableBody>
                 </Table>

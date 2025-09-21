@@ -13,7 +13,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn, Tags } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn, Tags, KeyRound } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -43,7 +43,7 @@ const toDate = (date: any): Date | undefined => {
 };
 
 function PlanForm({ plan, onSave, onDone }: { plan?: PricingPlan, onSave: (data: Partial<PricingPlan>) => void, onDone: () => void }) {
-    const [formData, setFormData] = useState<Partial<PricingPlan>>(plan || { name: '', price: 0, description: '', features: [], maxBranches: 1, maxUsers: 1, isFeatured: false });
+    const [formData, setFormData] = useState<Partial<PricingPlan>>(plan || { name: '', price: 0, description: '', features: [], maxBranches: 1, maxUsers: 1, isFeatured: false, isDeleted: false });
     const [featureInput, setFeatureInput] = useState('');
 
     const handleFeatureAdd = () => {
@@ -98,6 +98,10 @@ function PlanForm({ plan, onSave, onDone }: { plan?: PricingPlan, onSave: (data:
                 <Switch id="isFeatured" checked={formData.isFeatured} onCheckedChange={c => setFormData(p => ({...p, isFeatured: c}))} />
                 <Label htmlFor="isFeatured">Marcar como plano em destaque?</Label>
             </div>
+             <div className="flex items-center space-x-2">
+                <Switch id="isActive" checked={!formData.isDeleted} onCheckedChange={c => setFormData(p => ({...p, isDeleted: !c}))} />
+                <Label htmlFor="isActive">Plano Ativo (visível na página de preços)</Label>
+            </div>
             <DialogFooter>
                 <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
                 <Button type="submit">Salvar Plano</Button>
@@ -114,7 +118,7 @@ function PricingPlansSettings() {
     const { toast } = useToast();
 
     useEffect(() => {
-        const q = query(collection(db, 'pricingPlans'), where('isDeleted', '!=', true));
+        const q = query(collection(db, 'pricingPlans'));
         const unsub = onSnapshot(q, snap => {
             setPlans(snap.docs.map(d => ({id: d.id, ...d.data()}) as PricingPlan).sort((a,b) => a.price - b.price));
             setLoading(false);
@@ -128,7 +132,7 @@ function PricingPlansSettings() {
                 await updateDoc(doc(db, 'pricingPlans', editingPlan.id), data);
                 toast({title: 'Plano atualizado!'});
             } else {
-                await addDoc(collection(db, 'pricingPlans'), {...data, isDeleted: false });
+                await addDoc(collection(db, 'pricingPlans'), {...data, isDeleted: data.isDeleted === undefined ? false : data.isDeleted });
                 toast({title: 'Plano criado!'});
             }
             setIsFormOpen(false);
@@ -137,9 +141,9 @@ function PricingPlansSettings() {
         }
     }
     
-    const handleDelete = async (id: string) => {
-        await updateDoc(doc(db, 'pricingPlans', id), { isDeleted: true });
-        toast({title: 'Plano excluído', variant: 'destructive'});
+    const togglePlanStatus = async (plan: PricingPlan) => {
+        await updateDoc(doc(db, 'pricingPlans', plan.id), { isDeleted: !plan.isDeleted });
+        toast({title: `Plano ${!plan.isDeleted ? 'desativado' : 'ativado'} com sucesso.`});
     }
 
     return (
@@ -163,11 +167,12 @@ function PricingPlansSettings() {
                             <TableHead>Preço</TableHead>
                             <TableHead>Limites</TableHead>
                             <TableHead>Destaque</TableHead>
+                            <TableHead>Status</TableHead>
                             <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {loading ? <TableRow><TableCell colSpan={5}><Skeleton className="h-5 w-full"/></TableCell></TableRow> :
+                        {loading ? <TableRow><TableCell colSpan={6}><Skeleton className="h-5 w-full"/></TableCell></TableRow> :
                         plans.map(plan => (
                             <TableRow key={plan.id}>
                                 <TableCell className="font-semibold">{plan.name}</TableCell>
@@ -179,12 +184,15 @@ function PricingPlansSettings() {
                                     </div>
                                 </TableCell>
                                 <TableCell>{plan.isFeatured ? <Badge>Sim</Badge> : 'Não'}</TableCell>
+                                <TableCell>
+                                    <Badge variant={!plan.isDeleted ? "secondary" : "outline"} className={cn(!plan.isDeleted && 'bg-green-100 text-green-800')}>
+                                        {!plan.isDeleted ? "Ativo" : "Inativo"}
+                                    </Badge>
+                                </TableCell>
                                 <TableCell className="text-right">
+                                    <Switch checked={!plan.isDeleted} onCheckedChange={() => togglePlanStatus(plan)} aria-label="Ativar/Desativar Plano" />
                                     <Button variant="ghost" size="icon" onClick={() => { setEditingPlan(plan); setIsFormOpen(true);}}>
                                         <Pencil className="h-4 w-4"/>
-                                    </Button>
-                                    <Button variant="ghost" size="icon" onClick={() => handleDelete(plan.id)}>
-                                        <Trash2 className="h-4 w-4 text-destructive"/>
                                     </Button>
                                 </TableCell>
                             </TableRow>
@@ -650,7 +658,7 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
 
 function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: OrgWithUser | null, isOpen: boolean, onOpenChange: (open: boolean) => void }) {
     const { toast } = useToast();
-    const { createUser } = useAuth();
+    const { createUser, resetUserPassword } = useAuth();
     const [users, setUsers] = useState<User[]>([]);
     const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
     const [loading, setLoading] = useState(true);
@@ -689,6 +697,15 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
         setIsFormOpen(false);
     };
 
+    const handleResetPassword = async (email: string) => {
+        const { success, error } = await resetUserPassword(email);
+        if (success) {
+            toast({ title: 'E-mail de redefinição enviado!' });
+        } else {
+            toast({ title: 'Erro ao redefinir senha', description: error, variant: 'destructive' });
+        }
+    };
+
     if (!isOpen || !organization) return null;
 
     return (
@@ -711,7 +728,15 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
                                     <TableCell>{u.email}</TableCell>
                                     <TableCell><Badge variant="secondary">{getProfileName(u.role)}</Badge></TableCell>
                                     <TableCell className="text-right">
-                                        <Button variant="ghost" size="sm" onClick={() => { setEditingUser(u); setIsFormOpen(true); }}>Editar</Button>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal /></Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent>
+                                                <DropdownMenuItem onSelect={() => { setEditingUser(u); setIsFormOpen(true); }}>Editar</DropdownMenuItem>
+                                                <DropdownMenuItem onSelect={() => handleResetPassword(u.email)}>Redefinir Senha</DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
                                     </TableCell>
                                 </TableRow>
                              ))
@@ -987,3 +1012,4 @@ function SuperAdminPage() {
 }
 
 export default SuperAdminPage;
+

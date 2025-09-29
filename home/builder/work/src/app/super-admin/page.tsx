@@ -13,7 +13,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn, Tags } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn, Tags, KeyRound } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -658,12 +658,13 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
 
 function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: OrgWithUser | null, isOpen: boolean, onOpenChange: (open: boolean) => void }) {
     const { toast } = useToast();
-    const { createUser } = useAuth();
+    const { createUser, resetUserPassword, forceSetUserPassword } = useAuth();
     const [users, setUsers] = useState<User[]>([]);
     const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
+    const [passwordUser, setPasswordUser] = useState<User | undefined>(undefined);
 
     useEffect(() => {
         if (!isOpen || !organization) return;
@@ -697,6 +698,26 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
         setIsFormOpen(false);
     };
 
+    const handleResetPassword = async (email: string) => {
+        const { success, error } = await resetUserPassword(email);
+        if (success) {
+            toast({ title: 'E-mail de redefinição enviado!' });
+        } else {
+            toast({ title: 'Erro ao redefinir senha', description: error, variant: 'destructive' });
+        }
+    };
+    
+    const handleSetPassword = async (userId: string, newPass: string) => {
+        const { success, error } = await forceSetUserPassword(userId, newPass);
+        if (success) {
+            toast({ title: 'Senha do usuário alterada com sucesso!' });
+            setPasswordUser(undefined);
+        } else {
+            toast({ title: 'Erro ao alterar senha', description: error, variant: 'destructive' });
+        }
+    };
+
+
     if (!isOpen || !organization) return null;
 
     return (
@@ -719,7 +740,16 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
                                     <TableCell>{u.email}</TableCell>
                                     <TableCell><Badge variant="secondary">{getProfileName(u.role)}</Badge></TableCell>
                                     <TableCell className="text-right">
-                                        <Button variant="ghost" size="sm" onClick={() => { setEditingUser(u); setIsFormOpen(true); }}>Editar</Button>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal /></Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent>
+                                                <DropdownMenuItem onSelect={() => { setEditingUser(u); setIsFormOpen(true); }}>Editar</DropdownMenuItem>
+                                                <DropdownMenuItem onSelect={() => handleResetPassword(u.email)}>Redefinir Senha (E-mail)</DropdownMenuItem>
+                                                <DropdownMenuItem onSelect={() => setPasswordUser(u)}>Forçar Nova Senha</DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
                                     </TableCell>
                                 </TableRow>
                              ))
@@ -735,6 +765,56 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
                          </DialogContent>
                      </Dialog>
                  )}
+                 {passwordUser && (
+                    <SetPasswordDialog 
+                        user={passwordUser}
+                        onSave={handleSetPassword}
+                        onDone={() => setPasswordUser(undefined)}
+                    />
+                 )}
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+function SetPasswordDialog({ user, onSave, onDone }: { user: User, onSave: (userId: string, newPass: string) => void, onDone: () => void}) {
+    const [password, setPassword] = useState('');
+    const [confirm, setConfirm] = useState('');
+    const { toast } = useToast();
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (password.length < 6) {
+            toast({title: 'Senha muito curta', description: 'A senha deve ter no mínimo 6 caracteres.', variant: 'destructive'});
+            return;
+        }
+        if (password !== confirm) {
+            toast({title: 'Senhas não coincidem', variant: 'destructive'});
+            return;
+        }
+        onSave(user.id, password);
+    }
+    
+    return (
+        <Dialog open={true} onOpenChange={onDone}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Forçar Nova Senha para {user.name}</DialogTitle>
+                </DialogHeader>
+                 <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+                     <div className="space-y-2">
+                        <Label htmlFor="new-password">Nova Senha</Label>
+                        <Input id="new-password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+                    </div>
+                     <div className="space-y-2">
+                        <Label htmlFor="confirm-password">Confirmar Nova Senha</Label>
+                        <Input id="confirm-password" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required />
+                    </div>
+                     <DialogFooter>
+                        <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
+                        <Button type="submit">Definir Senha</Button>
+                    </DialogFooter>
+                 </form>
             </DialogContent>
         </Dialog>
     )
@@ -996,126 +1076,3 @@ function SuperAdminPage() {
 
 export default SuperAdminPage;
 
-```
-  </change>
-  <change>
-    <file>/home/builder/work/src/app/pricing/page.tsx</file>
-    <content><![CDATA[
-
-'use client';
-
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { db } from '@/lib/firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import type { PricingPlan } from '@/lib/types';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Check, Loader2, MessageCircle } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Icons } from '@/components/ui/icons';
-import { Badge } from '@/components/ui/badge';
-
-export default function PricingPage() {
-    const [plans, setPlans] = useState<PricingPlan[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        const fetchPlans = async () => {
-            try {
-                const q = query(collection(db, 'pricingPlans'), where('isDeleted', '!=', true));
-                const querySnapshot = await getDocs(q);
-                const plansData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PricingPlan));
-                setPlans(plansData.sort((a,b) => a.price - b.price));
-            } catch (error) {
-                console.error("Error fetching pricing plans: ", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchPlans();
-    }, []);
-
-    return (
-        <div className="bg-background text-foreground min-h-screen">
-             <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur-sm">
-                <div className="container flex h-16 items-center justify-between">
-                    <Link href="/" className="flex items-center gap-2">
-                        <Icons.logo className="h-8 w-8 text-primary"/>
-                        <span className="text-xl font-bold">Stokio</span>
-                    </Link>
-                    <nav>
-                        <Button asChild variant="outline">
-                            <Link href="/login">Entrar</Link>
-                        </Button>
-                    </nav>
-                </div>
-            </header>
-
-            <main className="container py-12 md:py-24">
-                 <div className="mx-auto mb-12 max-w-3xl text-center">
-                    <h1 className="text-4xl font-extrabold tracking-tight lg:text-5xl">
-                        Escolha o Plano Perfeito para o seu Negócio
-                    </h1>
-                    <p className="mt-4 text-lg text-muted-foreground">
-                        Planos simples e transparentes que crescem com você. Sem taxas escondidas.
-                    </p>
-                </div>
-                
-                 {loading ? (
-                    <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-                        <Skeleton className="h-96 w-full"/>
-                        <Skeleton className="h-96 w-full"/>
-                        <Skeleton className="h-96 w-full"/>
-                    </div>
-                ) : plans.length > 0 ? (
-                    <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-                        {plans.map(plan => (
-                             <Card key={plan.id} className={cn("flex flex-col", plan.isFeatured && "border-primary ring-2 ring-primary")}>
-                                <CardHeader>
-                                    {plan.isFeatured && <div className="text-center mb-2"><Badge>Mais Popular</Badge></div>}
-                                    <CardTitle>{plan.name}</CardTitle>
-                                    <CardDescription>{plan.description}</CardDescription>
-                                </CardHeader>
-                                <CardContent className="flex-grow space-y-6">
-                                    <div className="flex items-baseline justify-center">
-                                        <span className="text-4xl font-bold">R${plan.price.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
-                                        <span className="text-muted-foreground">/mês</span>
-                                    </div>
-                                    <ul className="space-y-3">
-                                        {plan.features.map((feature, index) => (
-                                            <li key={index} className="flex items-center gap-2">
-                                                <Check className="h-5 w-5 text-green-500" />
-                                                <span className="text-muted-foreground">{feature}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </CardContent>
-                                <CardFooter>
-                                    <Button asChild className="w-full" size="lg" variant={plan.isFeatured ? 'default' : 'outline'}>
-                                        <Link href="/signup">Começar Agora</Link>
-                                    </Button>
-                                </CardFooter>
-                            </Card>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="text-center py-16">
-                        <h2 className="text-2xl font-semibold">Nossos planos estão sendo preparados</h2>
-                        <p className="mt-2 text-muted-foreground">
-                            Para saber mais sobre as condições e contratar, entre em contato conosco.
-                        </p>
-                        <Button asChild size="lg" className="mt-6">
-                            <a href="https://wa.me/5596981131536" target="_blank" rel="noopener noreferrer">
-                                <MessageCircle className="mr-2"/>
-                                Falar no WhatsApp
-                            </a>
-                        </Button>
-                    </div>
-                )}
-            </main>
-        </div>
-    );
-}

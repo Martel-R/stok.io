@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -49,7 +50,7 @@ const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availa
 
 function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: PermissionProfile[]; onSave: (user: Partial<User>) => void; onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<User>>(
-        user || { name: '', email: '', role: '', avatar: getRandomAvatar(), isDeleted: false }
+        user || { name: '', email: '', role: '', avatar: getRandomAvatar(), isDeleted: false, password: '' }
     );
 
     useEffect(() => {
@@ -89,6 +90,12 @@ function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: P
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" name="email" type="email" value={formData.email || ''} onChange={handleChange} required disabled={isEditing}/>
             </div>
+            {!isEditing && (
+                 <div>
+                    <Label htmlFor="password">Senha</Label>
+                    <Input id="password" name="password" type="password" value={formData.password || ''} onChange={handleChange} required minLength={6} />
+                </div>
+            )}
             <div>
                 <Label htmlFor="role">Perfil</Label>
                  <Select value={formData.role} onValueChange={handleRoleChange}>
@@ -130,11 +137,11 @@ function UsersTable() {
             return;
         }
 
-        const qUsers = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '==', false));
+        const qUsers = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId));
         const qProfiles = query(collection(db, 'permissionProfiles'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
         
         const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
-            const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)).filter(user => !user.isDeleted);
+            const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
             setUsers(usersData);
             setLoading(false);
         }, (error) => {
@@ -197,10 +204,12 @@ function UsersTable() {
                      userToSave.email, 
                      userToSave.name, 
                      userToSave.role, 
-                     adminUser.organizationId
+                     adminUser.organizationId,
+                     undefined,
+                     userToSave.password
                  );
                  if (success) {
-                     toast({title: "Usuário criado!", description: "Um e-mail para definição de senha foi enviado."});
+                     toast({title: "Usuário criado!", description: "A conta foi criada com a senha definida."});
                  } else {
                      toast({title: "Erro ao criar usuário", description: error, variant: "destructive"});
                  }
@@ -213,7 +222,7 @@ function UsersTable() {
 
     const handleDelete = async (userToDelete: User) => {
         if (userToDelete.id === adminUser?.id) {
-            toast({title: 'Ação não permitida', description: 'Você não pode excluir sua própria conta.', variant: 'destructive'});
+            toast({title: 'Ação não permitida', description: 'Você не pode excluir sua própria conta.', variant: 'destructive'});
             return;
         }
         const { success, error } = await deleteUser(userToDelete.id);
@@ -1421,7 +1430,7 @@ function SettingsPageContent() {
                         <CardTitle className="flex items-center justify-center gap-2"><Lock /> Acesso Negado</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <p>Você não tem permissão para acessar a página de configurações.</p>
+                        <p>Você не tem permissão para acessar a página de configurações.</p>
                     </CardContent>
                 </Card>
             </div>
@@ -1724,3 +1733,4 @@ function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Suppl
         </form>
     );
 }
+

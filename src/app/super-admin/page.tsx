@@ -718,15 +718,14 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
     );
 }
 
-function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: OrgWithUser | null, isOpen: boolean, onOpenChange: (open: boolean) => void }) {
+function OrgUsersDialog({ organization, isOpen, onOpenChange, onForceSetPassword }: { organization: OrgWithUser | null, isOpen: boolean, onOpenChange: (open: boolean) => void, onForceSetPassword: (user: User) => void }) {
     const { toast } = useToast();
-    const { createUser, resetUserPassword, forceSetUserPassword } = useAuth();
+    const { createUser, resetUserPassword } = useAuth();
     const [users, setUsers] = useState<User[]>([]);
     const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
-    const [passwordUser, setPasswordUser] = useState<User | undefined>(undefined);
 
     useEffect(() => {
         if (!isOpen || !organization) return;
@@ -769,17 +768,6 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
         }
     };
     
-    const handleSetPassword = async (userId: string, newPass: string) => {
-        const { success, error } = await forceSetUserPassword(userId, newPass);
-        if (success) {
-            toast({ title: 'Senha do usuário alterada com sucesso!' });
-            setPasswordUser(undefined);
-        } else {
-            toast({ title: 'Erro ao alterar senha', description: error, variant: 'destructive' });
-        }
-    };
-
-
     if (!isOpen || !organization) return null;
 
     return (
@@ -809,7 +797,7 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
                                             <DropdownMenuContent>
                                                 <DropdownMenuItem onSelect={() => { setEditingUser(u); setIsFormOpen(true); }}>Editar</DropdownMenuItem>
                                                 <DropdownMenuItem onSelect={() => handleResetPassword(u.email)}>Redefinir Senha (E-mail)</DropdownMenuItem>
-                                                <DropdownMenuItem onSelect={() => setPasswordUser(u)}>Forçar Nova Senha</DropdownMenuItem>
+                                                <DropdownMenuItem onSelect={() => onForceSetPassword(u)}>Forçar Nova Senha</DropdownMenuItem>
                                             </DropdownMenuContent>
                                         </DropdownMenu>
                                     </TableCell>
@@ -826,13 +814,6 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
                              <UserForm user={editingUser} profiles={profiles} onSave={handleSaveUser} onDone={() => setIsFormOpen(false)} />
                          </DialogContent>
                      </Dialog>
-                 )}
-                 {passwordUser && (
-                    <SetPasswordDialog 
-                        user={passwordUser}
-                        onSave={handleSetPassword}
-                        onDone={() => setPasswordUser(undefined)}
-                    />
                  )}
             </DialogContent>
         </Dialog>
@@ -975,6 +956,7 @@ function SuperAdminPage() {
     const [organizations, setOrganizations] = useState<OrgWithUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedOrg, setSelectedOrg] = useState<OrgWithUser | null>(null);
+    const [passwordUser, setPasswordUser] = useState<User | undefined>(undefined);
     const [isModuleDialogOpen, setIsModuleDialogOpen] = useState(false);
     const [isUsersDialogOpen, setIsUsersDialogOpen] = useState(false);
     const [isProfilesDialogOpen, setIsProfilesDialogOpen] = useState(false);
@@ -1036,6 +1018,16 @@ function SuperAdminPage() {
         if (type === 'users') setIsUsersDialogOpen(true);
         if (type === 'profiles') setIsProfilesDialogOpen(true);
         if (type === 'subscription') setIsSubscriptionDialogOpen(true);
+    };
+
+    const handleSetPassword = async (userId: string, newPass: string) => {
+        const { success, error } = await forceSetUserPassword(userId, newPass);
+        if (success) {
+            toast({ title: 'Senha do usuário alterada com sucesso!' });
+            setPasswordUser(undefined);
+        } else {
+            toast({ title: 'Erro ao alterar senha', description: error, variant: 'destructive' });
+        }
     };
 
     if (authLoading || !user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
@@ -1129,12 +1121,14 @@ function SuperAdminPage() {
                 </CardContent>
             </Card>
              {selectedOrg && <ModulesSettingsDialog organization={selectedOrg} isOpen={isModuleDialogOpen} onOpenChange={setIsModuleDialogOpen} />}
-             {selectedOrg && <OrgUsersDialog organization={selectedOrg} isOpen={isUsersDialogOpen} onOpenChange={setIsUsersDialogOpen} />}
+             {selectedOrg && <OrgUsersDialog organization={selectedOrg} isOpen={isUsersDialogOpen} onOpenChange={setIsUsersDialogOpen} onForceSetPassword={(user) => setPasswordUser(user)} />}
              {selectedOrg && <OrgProfilesDialog organization={selectedOrg} isOpen={isProfilesDialogOpen} onOpenChange={setIsProfilesDialogOpen} />}
              {selectedOrg && <SubscriptionDialog organization={selectedOrg} isOpen={isSubscriptionDialogOpen} onOpenChange={setIsSubscriptionDialogOpen} adminUser={user}/>}
+             {passwordUser && <SetPasswordDialog user={passwordUser} onSave={handleSetPassword} onDone={() => setPasswordUser(undefined)} />}
         </div>
     );
 }
 
 export default SuperAdminPage;
+
 

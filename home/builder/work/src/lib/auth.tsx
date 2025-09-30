@@ -361,7 +361,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const tempApp = initializeApp(tempAppConfig, tempAppName);
         const tempAuthInstance = getAuth_local(tempApp);
 
-        const userCredential = await createUserWithEmailAndPassword_local(tempAuthInstance, email, password || Math.random().toString(36).slice(-10));
+        const finalPassword = password || Math.random().toString(36).slice(-10);
+        const userCredential = await createUserWithEmailAndPassword_local(tempAuthInstance, email, finalPassword);
         const firebaseUser = userCredential.user;
 
         const newUser: User = {

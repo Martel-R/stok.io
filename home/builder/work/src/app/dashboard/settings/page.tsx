@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -49,7 +50,7 @@ const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availa
 
 function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: PermissionProfile[]; onSave: (user: Partial<User>) => void; onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<User>>(
-        user || { name: '', email: '', role: '', avatar: getRandomAvatar(), isDeleted: false }
+        user || { name: '', email: '', role: '', avatar: getRandomAvatar(), isDeleted: false, password: '' }
     );
 
     useEffect(() => {
@@ -89,6 +90,12 @@ function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: P
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" name="email" type="email" value={formData.email || ''} onChange={handleChange} required disabled={isEditing}/>
             </div>
+            {!isEditing && (
+                 <div>
+                    <Label htmlFor="password">Senha</Label>
+                    <Input id="password" name="password" type="password" value={formData.password || ''} onChange={handleChange} required minLength={6} />
+                </div>
+            )}
             <div>
                 <Label htmlFor="role">Perfil</Label>
                  <Select value={formData.role} onValueChange={handleRoleChange}>
@@ -134,7 +141,7 @@ function UsersTable() {
         const qProfiles = query(collection(db, 'permissionProfiles'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
         
         const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
-            const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)).filter(user => !user.isDeleted);
+            const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
             setUsers(usersData);
             setLoading(false);
         }, (error) => {
@@ -197,10 +204,12 @@ function UsersTable() {
                      userToSave.email, 
                      userToSave.name, 
                      userToSave.role, 
-                     adminUser.organizationId
+                     adminUser.organizationId,
+                     undefined,
+                     userToSave.password
                  );
                  if (success) {
-                     toast({title: "Usuário criado!", description: "Um e-mail para definição de senha foi enviado."});
+                     toast({title: "Usuário criado!", description: "A conta foi criada com a senha definida."});
                  } else {
                      toast({title: "Erro ao criar usuário", description: error, variant: "destructive"});
                  }
@@ -252,6 +261,7 @@ function UsersTable() {
                             <TableHead>Nome</TableHead>
                             <TableHead>Email</TableHead>
                             <TableHead>Perfil</TableHead>
+                            <TableHead>Status</TableHead>
                             <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -262,6 +272,7 @@ function UsersTable() {
                                     <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                                     <TableCell><Skeleton className="h-5 w-48" /></TableCell>
                                     <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                                    <TableCell><Skeleton className="h-6 w-20" /></TableCell>
                                     <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto rounded-full" /></TableCell>
                                 </TableRow>
                             ))
@@ -271,6 +282,11 @@ function UsersTable() {
                                     <TableCell className="font-medium">{user.name}</TableCell>
                                     <TableCell>{user.email}</TableCell>
                                     <TableCell>{getProfileName(user.role)}</TableCell>
+                                    <TableCell>
+                                        <Badge variant={user.isDeleted ? 'outline' : 'default'}>
+                                            {user.isDeleted ? 'Inativo' : 'Ativo'}
+                                        </Badge>
+                                    </TableCell>
                                     <TableCell className="text-right">
                                          <AlertDialog>
                                             <DropdownMenu>
@@ -305,7 +321,7 @@ function UsersTable() {
                             ))
                         ) : (
                              <TableRow>
-                                <TableCell colSpan={4} className="text-center">Nenhum usuário encontrado.</TableCell>
+                                <TableCell colSpan={5} className="text-center">Nenhum usuário encontrado.</TableCell>
                             </TableRow>
                         )}
                     </TableBody>
@@ -1717,5 +1733,3 @@ function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Suppl
         </form>
     );
 }
-
-    

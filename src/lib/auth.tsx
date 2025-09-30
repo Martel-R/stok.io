@@ -42,6 +42,7 @@ interface AuthContextType {
   changeUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean, error?: string }>;
   sendPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
   resetUserPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
+  forceSetUserPassword: (userId: string, newPass: string) => Promise<{ success: boolean; error?: string; }>;
   updateOrganizationModules: (modules: EnabledModules) => Promise<void>;
   updateOrganizationBranding: (branding: BrandingSettings) => Promise<void>;
   logout: () => void;
@@ -224,8 +225,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           finalUserData = { ...finalUserData, organization: orgData, enabledModules: finalPermissions as EnabledModules, paymentStatus: orgData.paymentStatus };
           setUser(finalUserData);
 
-          const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '==', false));
-          const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '==', false));
+          const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
+          const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
 
           const [branchSnap, conditionsSnap] = await Promise.all([getDocs(branchesQuery), getDocs(conditionsQuery)]);
 
@@ -622,6 +623,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
   };
 
+    const forceSetUserPassword = async (userId: string, newPass: string): Promise<{ success: boolean; error?: string; }> => {
+        // THIS IS A MOCK. In a real application, this would be a call to a secure Cloud Function.
+        // The Cloud Function would use the Firebase Admin SDK's `updateUser` method.
+        if (user?.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
+            return { success: false, error: "Apenas Super Admins podem forçar a alteração de senha." };
+        }
+        console.warn(`MOCK: A senha do usuário ${userId} seria alterada para "${newPass}" em um ambiente de produção.`);
+        // To simulate a successful operation without actual implementation:
+        return new Promise(resolve => {
+            setTimeout(() => {
+                resolve({ success: true });
+            }, 500);
+        });
+    };
+
 
   const updateOrganizationModules = async (modules: EnabledModules) => {
     if (!user?.organizationId) {
@@ -677,7 +693,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, resetUserPassword, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations, paymentConditions, deleteUser }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, resetUserPassword, forceSetUserPassword, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations, paymentConditions, deleteUser }}>
       {children}
     </AuthContext.Provider>
   );
@@ -690,3 +706,4 @@ export const useAuth = () => {
   }
   return context;
 };
+

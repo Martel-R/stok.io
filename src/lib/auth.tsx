@@ -36,13 +36,12 @@ interface AuthContextType {
   login: (email: string, pass: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<boolean>;
   signup: (email: string, pass: string, name: string) => Promise<{ success: boolean; error?: string, isFirstUser?: boolean }>;
-  createUser: (email: string, name: string, role: string, organizationId: string, customerId?: string) => Promise<{ success: boolean; error?: string, userId?: string }>;
+  createUser: (email: string, name: string, role: string, organizationId: string, customerId?: string, password?: string) => Promise<{ success: boolean; error?: string, userId?: string }>;
   deleteUser: (userId: string) => Promise<{ success: boolean; error?: string }>;
   updateUserProfile: (data: Partial<User>) => Promise<{ success: boolean; error?: string }>;
   changeUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean, error?: string }>;
   sendPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
   resetUserPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
-  forceSetUserPassword: (userId: string, newPass: string) => Promise<{ success: boolean; error?: string; }>;
   updateOrganizationModules: (modules: EnabledModules) => Promise<void>;
   updateOrganizationBranding: (branding: BrandingSettings) => Promise<void>;
   logout: () => void;
@@ -340,7 +339,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const createUser = async (email: string, name: string, role: string, organizationId: string, customerId?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
+  const createUser = async (email: string, name: string, role: string, organizationId: string, customerId?: string, password?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
     try {
         const orgDoc = await getDoc(doc(db, 'organizations', organizationId));
         if(!orgDoc.exists()) return { success: false, error: 'Organização não encontrada.'};
@@ -362,7 +361,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const tempApp = initializeApp(tempAppConfig, tempAppName);
         const tempAuthInstance = getAuth_local(tempApp);
 
-        const userCredential = await createUserWithEmailAndPassword_local(tempAuthInstance, email, Math.random().toString(36).slice(-10));
+        const finalPassword = password || Math.random().toString(36).slice(-10);
+        const userCredential = await createUserWithEmailAndPassword_local(tempAuthInstance, email, finalPassword);
         const firebaseUser = userCredential.user;
 
         const newUser: User = {
@@ -378,7 +378,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         await setDoc(doc(db, "users", firebaseUser.uid), newUser);
 
-        await sendPasswordResetEmail_local(tempAuthInstance, email);
+        if (!password) {
+            await sendPasswordResetEmail_local(tempAuthInstance, email);
+        }
 
         await signOut_local(tempAuthInstance);
         await deleteApp(tempApp);
@@ -619,35 +621,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
   };
 
-    const forceSetUserPassword = async (userId: string, newPass: string): Promise<{ success: boolean; error?: string; }> => {
-        if (user?.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
-            return { success: false, error: "Apenas Super Admins podem forçar a alteração de senha." };
-        }
-        
-        // This is a simulated admin action. In a real-world scenario, this should
-        // trigger a secure backend function (e.g., Cloud Function) that uses the
-        // Firebase Admin SDK to update the user's password.
-        // We log the action to demonstrate the intent.
-        console.warn(`[ADMIN ACTION SIMULATION] Forcing password change for user ${userId}. THIS IS NOT A REAL PASSWORD CHANGE.`);
-        try {
-            // This is a client-side simulation. A real implementation requires a backend function.
-            // We'll log the action and return success for UI purposes.
-             logUserActivity({
-                userId: user.id,
-                userName: user.name,
-                organizationId: user.organizationId || 'N/A',
-                action: 'force_password_set_simulated',
-                details: { targetUserId: userId }
-            });
-
-            return { success: true };
-        } catch (error: any) {
-            console.error("Simulated forceSetUserPassword failed:", error);
-            return { success: false, error: "Falha na simulação de alteração de senha." };
-        }
-    };
-
-
   const updateOrganizationModules = async (modules: EnabledModules) => {
     if (!user?.organizationId) {
         throw new Error("Organização não encontrada.");
@@ -702,7 +675,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, resetUserPassword, forceSetUserPassword, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations, paymentConditions, deleteUser }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, resetUserPassword, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations, paymentConditions, deleteUser }}>
       {children}
     </AuthContext.Provider>
   );
@@ -715,4 +688,3 @@ export const useAuth = () => {
   }
   return context;
 };
-

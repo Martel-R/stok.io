@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -135,7 +134,7 @@ function UsersTable() {
         const qProfiles = query(collection(db, 'permissionProfiles'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
         
         const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
-            const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+            const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)).filter(user => !user.isDeleted);
             setUsers(usersData);
             setLoading(false);
         }, (error) => {
@@ -270,7 +269,7 @@ function UsersTable() {
                             ))
                         ) : users.length > 0 ? (
                             users.map((user) => (
-                                <TableRow key={user.id} className={user.isDeleted ? 'text-muted-foreground' : ''}>
+                                <TableRow key={user.id}>
                                     <TableCell className="font-medium">{user.name}</TableCell>
                                     <TableCell>{user.email}</TableCell>
                                     <TableCell>{getProfileName(user.role)}</TableCell>
@@ -1725,5 +1724,3 @@ function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Suppl
         </form>
     );
 }
-
-    

@@ -1,5 +1,4 @@
 
-
 // src/app/super-admin/page.tsx
 'use client';
 import * as React from 'react';
@@ -33,6 +32,78 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 type OrgWithUser = Organization & { owner?: User };
+
+const availableAvatars = [
+    'https://placehold.co/100x100.png?text=🦊',
+    'https://placehold.co/100x100.png?text=🦉',
+    'https://placehold.co/100x100.png?text=🐻',
+    'https://placehold.co/100x100.png?text=🦁',
+    'https://placehold.co/100x100.png?text=🦄',
+];
+const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availableAvatars.length)];
+
+function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: PermissionProfile[]; onSave: (user: Partial<User>) => void; onDone: () => void }) {
+    const [formData, setFormData] = useState<Partial<User>>(
+        user || { name: '', email: '', role: '', avatar: getRandomAvatar(), isDeleted: false }
+    );
+
+    useEffect(() => {
+        if (!user && profiles.length > 0) {
+            // Default to the first profile if creating a new user
+            setFormData(prev => ({ ...prev, role: profiles[0].id }));
+        }
+        if (user) {
+             setFormData(user);
+        }
+    }, [user, profiles]);
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setFormData((prev) => ({ ...prev, [name]: value }));
+    };
+
+    const handleRoleChange = (roleId: string) => {
+        setFormData(prev => ({...prev, role: roleId}));
+    }
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData as User);
+        onDone();
+    };
+    
+    const isEditing = !!user;
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+                <Label htmlFor="name">Nome do Usuário</Label>
+                <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} required />
+            </div>
+            <div>
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" name="email" type="email" value={formData.email || ''} onChange={handleChange} required disabled={isEditing}/>
+            </div>
+            <div>
+                <Label htmlFor="role">Perfil</Label>
+                 <Select value={formData.role} onValueChange={handleRoleChange}>
+                    <SelectTrigger id="role">
+                        <SelectValue placeholder="Selecione um perfil" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {profiles.map(profile => (
+                            <SelectItem key={profile.id} value={profile.id}>{profile.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+            <DialogFooter>
+                 <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
+                 <Button type="submit">Salvar Usuário</Button>
+            </DialogFooter>
+        </form>
+    );
+}
 
 // Helper to safely convert a Firestore Timestamp or a JS Date to a JS Date
 const toDate = (date: any): Date | undefined => {
@@ -658,12 +729,13 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
 
 function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: OrgWithUser | null, isOpen: boolean, onOpenChange: (open: boolean) => void }) {
     const { toast } = useToast();
-    const { createUser, resetUserPassword } = useAuth();
+    const { createUser, resetUserPassword, forceSetUserPassword } = useAuth();
     const [users, setUsers] = useState<User[]>([]);
     const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
+    const [passwordUser, setPasswordUser] = useState<User | undefined>(undefined);
 
     useEffect(() => {
         if (!isOpen || !organization) return;
@@ -705,6 +777,17 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
             toast({ title: 'Erro ao redefinir senha', description: error, variant: 'destructive' });
         }
     };
+    
+    const handleSetPassword = async (userId: string, newPass: string) => {
+        const { success, error } = await forceSetUserPassword(userId, newPass);
+        if (success) {
+            toast({ title: 'Senha do usuário alterada com sucesso!' });
+            setPasswordUser(undefined);
+        } else {
+            toast({ title: 'Erro ao alterar senha', description: error, variant: 'destructive' });
+        }
+    };
+
 
     if (!isOpen || !organization) return null;
 
@@ -734,7 +817,8 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent>
                                                 <DropdownMenuItem onSelect={() => { setEditingUser(u); setIsFormOpen(true); }}>Editar</DropdownMenuItem>
-                                                <DropdownMenuItem onSelect={() => handleResetPassword(u.email)}>Redefinir Senha</DropdownMenuItem>
+                                                <DropdownMenuItem onSelect={() => handleResetPassword(u.email)}>Redefinir Senha (E-mail)</DropdownMenuItem>
+                                                <DropdownMenuItem onSelect={() => setPasswordUser(u)}>Forçar Nova Senha</DropdownMenuItem>
                                             </DropdownMenuContent>
                                         </DropdownMenu>
                                     </TableCell>
@@ -752,6 +836,56 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
                          </DialogContent>
                      </Dialog>
                  )}
+                 {passwordUser && (
+                    <SetPasswordDialog 
+                        user={passwordUser}
+                        onSave={handleSetPassword}
+                        onDone={() => setPasswordUser(undefined)}
+                    />
+                 )}
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+function SetPasswordDialog({ user, onSave, onDone }: { user: User, onSave: (userId: string, newPass: string) => void, onDone: () => void}) {
+    const [password, setPassword] = useState('');
+    const [confirm, setConfirm] = useState('');
+    const { toast } = useToast();
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (password.length < 6) {
+            toast({title: 'Senha muito curta', description: 'A senha deve ter no mínimo 6 caracteres.', variant: 'destructive'});
+            return;
+        }
+        if (password !== confirm) {
+            toast({title: 'Senhas não coincidem', variant: 'destructive'});
+            return;
+        }
+        onSave(user.id, password);
+    }
+    
+    return (
+        <Dialog open={true} onOpenChange={onDone}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Forçar Nova Senha para {user.name}</DialogTitle>
+                </DialogHeader>
+                 <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+                     <div className="space-y-2">
+                        <Label htmlFor="new-password">Nova Senha</Label>
+                        <Input id="new-password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+                    </div>
+                     <div className="space-y-2">
+                        <Label htmlFor="confirm-password">Confirmar Nova Senha</Label>
+                        <Input id="confirm-password" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required />
+                    </div>
+                     <DialogFooter>
+                        <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
+                        <Button type="submit">Definir Senha</Button>
+                    </DialogFooter>
+                 </form>
             </DialogContent>
         </Dialog>
     )
@@ -1012,3 +1146,4 @@ function SuperAdminPage() {
 }
 
 export default SuperAdminPage;
+

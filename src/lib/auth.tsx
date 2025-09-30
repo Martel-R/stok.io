@@ -628,17 +628,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // trigger a secure backend function (e.g., Cloud Function) that uses the
         // Firebase Admin SDK to update the user's password.
         // We log the action to demonstrate the intent.
-        console.log(`[ADMIN ACTION] Forcing password change for user ${userId}.`);
+        console.warn(`[ADMIN ACTION SIMULATION] Forcing password change for user ${userId}. THIS IS NOT A REAL PASSWORD CHANGE.`);
         try {
-            // As we cannot directly call the Admin SDK from the client, we cannot
-            // truly set the password here. This will return a success message
-            // for the UI, but the password is not changed in Firebase Auth.
-            // A real implementation requires a backend function.
+            // This is a client-side simulation. A real implementation requires a backend function.
+            // We'll log the action and return success for UI purposes.
              logUserActivity({
                 userId: user.id,
                 userName: user.name,
-                organizationId: user.organizationId,
-                action: 'force_password_set',
+                organizationId: user.organizationId || 'N/A',
+                action: 'force_password_set_simulated',
                 details: { targetUserId: userId }
             });
 

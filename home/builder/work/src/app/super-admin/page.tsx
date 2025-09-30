@@ -13,7 +13,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn, Tags, KeyRound } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn, Tags } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -41,6 +41,74 @@ const toDate = (date: any): Date | undefined => {
     if (date instanceof Timestamp) return date.toDate();
     return undefined;
 };
+
+function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: PermissionProfile[]; onSave: (user: Partial<User>) => void; onDone: () => void }) {
+    const [formData, setFormData] = useState<Partial<User>>(
+        user || { name: '', email: '', role: '', password: '', avatar: 'https://placehold.co/100x100.png?text=👤', isDeleted: false }
+    );
+
+    useEffect(() => {
+        if (!user && profiles.length > 0) {
+            setFormData(prev => ({ ...prev, role: profiles[0].id }));
+        }
+        if (user) {
+             setFormData(user);
+        }
+    }, [user, profiles]);
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setFormData((prev) => ({ ...prev, [name]: value }));
+    };
+
+    const handleRoleChange = (roleId: string) => {
+        setFormData(prev => ({...prev, role: roleId}));
+    }
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData as User);
+        onDone();
+    };
+    
+    const isEditing = !!user;
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+                <Label htmlFor="name">Nome do Usuário</Label>
+                <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} required />
+            </div>
+            <div>
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" name="email" type="email" value={formData.email || ''} onChange={handleChange} required disabled={isEditing}/>
+            </div>
+            {!isEditing && (
+                 <div>
+                    <Label htmlFor="password">Senha</Label>
+                    <Input id="password" name="password" type="password" value={formData.password || ''} onChange={handleChange} required minLength={6} />
+                </div>
+            )}
+            <div>
+                <Label htmlFor="role">Perfil</Label>
+                 <Select value={formData.role} onValueChange={handleRoleChange}>
+                    <SelectTrigger id="role">
+                        <SelectValue placeholder="Selecione um perfil" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {profiles.map(profile => (
+                            <SelectItem key={profile.id} value={profile.id}>{profile.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+            <DialogFooter>
+                 <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
+                 <Button type="submit">Salvar Usuário</Button>
+            </DialogFooter>
+        </form>
+    );
+}
 
 function PlanForm({ plan, onSave, onDone }: { plan?: PricingPlan, onSave: (data: Partial<PricingPlan>) => void, onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<PricingPlan>>(plan || { name: '', price: 0, description: '', features: [], maxBranches: 1, maxUsers: 1, isFeatured: false, isDeleted: false });
@@ -656,15 +724,14 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
     );
 }
 
-function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: OrgWithUser | null, isOpen: boolean, onOpenChange: (open: boolean) => void }) {
+function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: OrgWithUser | null; isOpen: boolean; onOpenChange: (open: boolean) => void }) {
     const { toast } = useToast();
-    const { createUser, resetUserPassword, forceSetUserPassword } = useAuth();
+    const { createUser } = useAuth();
     const [users, setUsers] = useState<User[]>([]);
     const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
-    const [passwordUser, setPasswordUser] = useState<User | undefined>(undefined);
 
     useEffect(() => {
         if (!isOpen || !organization) return;
@@ -691,33 +758,13 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
             await updateDoc(doc(db, "users", editingUser.id), { role: userToSave.role, name: userToSave.name });
             toast({ title: 'Usuário atualizado!' });
         } else {
-            const { success, error } = await createUser(userToSave.email!, userToSave.name!, userToSave.role!, organization.id);
+            const { success, error } = await createUser(userToSave.email!, userToSave.name!, userToSave.role!, organization.id, undefined, userToSave.password);
             if (success) toast({ title: 'Usuário criado!' });
             else toast({ title: 'Erro ao criar', description: error, variant: 'destructive' });
         }
         setIsFormOpen(false);
     };
-
-    const handleResetPassword = async (email: string) => {
-        const { success, error } = await resetUserPassword(email);
-        if (success) {
-            toast({ title: 'E-mail de redefinição enviado!' });
-        } else {
-            toast({ title: 'Erro ao redefinir senha', description: error, variant: 'destructive' });
-        }
-    };
     
-    const handleSetPassword = async (userId: string, newPass: string) => {
-        const { success, error } = await forceSetUserPassword(userId, newPass);
-        if (success) {
-            toast({ title: 'Senha do usuário alterada com sucesso!' });
-            setPasswordUser(undefined);
-        } else {
-            toast({ title: 'Erro ao alterar senha', description: error, variant: 'destructive' });
-        }
-    };
-
-
     if (!isOpen || !organization) return null;
 
     return (
@@ -740,16 +787,7 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
                                     <TableCell>{u.email}</TableCell>
                                     <TableCell><Badge variant="secondary">{getProfileName(u.role)}</Badge></TableCell>
                                     <TableCell className="text-right">
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal /></Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent>
-                                                <DropdownMenuItem onSelect={() => { setEditingUser(u); setIsFormOpen(true); }}>Editar</DropdownMenuItem>
-                                                <DropdownMenuItem onSelect={() => handleResetPassword(u.email)}>Redefinir Senha (E-mail)</DropdownMenuItem>
-                                                <DropdownMenuItem onSelect={() => setPasswordUser(u)}>Forçar Nova Senha</DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
+                                        <Button variant="ghost" size="sm" onClick={() => { setEditingUser(u); setIsFormOpen(true); }}>Editar</Button>
                                     </TableCell>
                                 </TableRow>
                              ))
@@ -765,56 +803,6 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
                          </DialogContent>
                      </Dialog>
                  )}
-                 {passwordUser && (
-                    <SetPasswordDialog 
-                        user={passwordUser}
-                        onSave={handleSetPassword}
-                        onDone={() => setPasswordUser(undefined)}
-                    />
-                 )}
-            </DialogContent>
-        </Dialog>
-    )
-}
-
-function SetPasswordDialog({ user, onSave, onDone }: { user: User, onSave: (userId: string, newPass: string) => void, onDone: () => void}) {
-    const [password, setPassword] = useState('');
-    const [confirm, setConfirm] = useState('');
-    const { toast } = useToast();
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (password.length < 6) {
-            toast({title: 'Senha muito curta', description: 'A senha deve ter no mínimo 6 caracteres.', variant: 'destructive'});
-            return;
-        }
-        if (password !== confirm) {
-            toast({title: 'Senhas não coincidem', variant: 'destructive'});
-            return;
-        }
-        onSave(user.id, password);
-    }
-    
-    return (
-        <Dialog open={true} onOpenChange={onDone}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Forçar Nova Senha para {user.name}</DialogTitle>
-                </DialogHeader>
-                 <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-                     <div className="space-y-2">
-                        <Label htmlFor="new-password">Nova Senha</Label>
-                        <Input id="new-password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
-                    </div>
-                     <div className="space-y-2">
-                        <Label htmlFor="confirm-password">Confirmar Nova Senha</Label>
-                        <Input id="confirm-password" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required />
-                    </div>
-                     <DialogFooter>
-                        <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
-                        <Button type="submit">Definir Senha</Button>
-                    </DialogFooter>
-                 </form>
             </DialogContent>
         </Dialog>
     )
@@ -1075,4 +1063,3 @@ function SuperAdminPage() {
 }
 
 export default SuperAdminPage;
-

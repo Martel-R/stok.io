@@ -36,13 +36,12 @@ interface AuthContextType {
   login: (email: string, pass: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<boolean>;
   signup: (email: string, pass: string, name: string) => Promise<{ success: boolean; error?: string, isFirstUser?: boolean }>;
-  createUser: (email: string, name: string, role: string, organizationId: string, customerId?: string) => Promise<{ success: boolean; error?: string, userId?: string }>;
+  createUser: (email: string, name: string, role: string, organizationId: string, customerId?: string, password?: string) => Promise<{ success: boolean; error?: string, userId?: string }>;
   deleteUser: (userId: string) => Promise<{ success: boolean; error?: string }>;
   updateUserProfile: (data: Partial<User>) => Promise<{ success: boolean; error?: string }>;
   changeUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean, error?: string }>;
   sendPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
   resetUserPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
-  forceSetUserPassword: (userId: string, newPass: string) => Promise<{ success: boolean; error?: string; }>;
   updateOrganizationModules: (modules: EnabledModules) => Promise<void>;
   updateOrganizationBranding: (branding: BrandingSettings) => Promise<void>;
   logout: () => void;
@@ -340,7 +339,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const createUser = async (email: string, name: string, role: string, organizationId: string, customerId?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
+  const createUser = async (email: string, name: string, role: string, organizationId: string, customerId?: string, password?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
     try {
         const orgDoc = await getDoc(doc(db, 'organizations', organizationId));
         if(!orgDoc.exists()) return { success: false, error: 'Organização não encontrada.'};
@@ -362,7 +361,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const tempApp = initializeApp(tempAppConfig, tempAppName);
         const tempAuthInstance = getAuth_local(tempApp);
 
-        const userCredential = await createUserWithEmailAndPassword_local(tempAuthInstance, email, Math.random().toString(36).slice(-10));
+        const userCredential = await createUserWithEmailAndPassword_local(tempAuthInstance, email, password || Math.random().toString(36).slice(-10));
         const firebaseUser = userCredential.user;
 
         const newUser: User = {
@@ -378,7 +377,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         await setDoc(doc(db, "users", firebaseUser.uid), newUser);
 
-        await sendPasswordResetEmail_local(tempAuthInstance, email);
+        if (!password) {
+            await sendPasswordResetEmail_local(tempAuthInstance, email);
+        }
 
         await signOut_local(tempAuthInstance);
         await deleteApp(tempApp);
@@ -603,10 +604,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetUserPassword = async (email: string) => {
-      // Note: This is a simplified client-side implementation.
-      // In a real production app, this should be a secure backend call (e.g., Cloud Function)
-      // that uses the Firebase Admin SDK to generate a password reset link or send an email.
-      // For this context, we will use the client-side `sendPasswordResetEmail` as a stand-in.
       if (!user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
           return { success: false, error: "Ação não permitida." };
       }
@@ -622,22 +619,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return { success: false, error: message };
       }
   };
-
-    const forceSetUserPassword = async (userId: string, newPass: string): Promise<{ success: boolean; error?: string; }> => {
-        // THIS IS A MOCK. In a real application, this would be a call to a secure Cloud Function.
-        // The Cloud Function would use the Firebase Admin SDK's `updateUser` method.
-        if (user?.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
-            return { success: false, error: "Apenas Super Admins podem forçar a alteração de senha." };
-        }
-        console.warn(`MOCK: A senha do usuário ${userId} seria alterada para "${newPass}" em um ambiente de produção.`);
-        // To simulate a successful operation without actual implementation:
-        return new Promise(resolve => {
-            setTimeout(() => {
-                resolve({ success: true });
-            }, 500);
-        });
-    };
-
 
   const updateOrganizationModules = async (modules: EnabledModules) => {
     if (!user?.organizationId) {
@@ -693,7 +674,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, resetUserPassword, forceSetUserPassword, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations, paymentConditions, deleteUser }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, resetUserPassword, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations, paymentConditions, deleteUser }}>
       {children}
     </AuthContext.Provider>
   );
@@ -706,4 +687,3 @@ export const useAuth = () => {
   }
   return context;
 };
-

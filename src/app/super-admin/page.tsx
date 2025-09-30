@@ -1,4 +1,5 @@
 
+
 // src/app/super-admin/page.tsx
 'use client';
 import * as React from 'react';
@@ -33,23 +34,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 type OrgWithUser = Organization & { owner?: User };
 
-const availableAvatars = [
-    'https://placehold.co/100x100.png?text=🦊',
-    'https://placehold.co/100x100.png?text=🦉',
-    'https://placehold.co/100x100.png?text=🐻',
-    'https://placehold.co/100x100.png?text=🦁',
-    'https://placehold.co/100x100.png?text=🦄',
-];
-const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availableAvatars.length)];
+// Helper to safely convert a Firestore Timestamp or a JS Date to a JS Date
+const toDate = (date: any): Date | undefined => {
+    if (!date) return undefined;
+    if (date instanceof Date) return date;
+    if (date instanceof Timestamp) return date.toDate();
+    return undefined;
+};
 
 function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: PermissionProfile[]; onSave: (user: Partial<User>) => void; onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<User>>(
-        user || { name: '', email: '', role: '', avatar: getRandomAvatar(), isDeleted: false }
+        user || { name: '', email: '', role: '', avatar: 'https://placehold.co/100x100.png?text=👤', isDeleted: false }
     );
 
     useEffect(() => {
         if (!user && profiles.length > 0) {
-            // Default to the first profile if creating a new user
             setFormData(prev => ({ ...prev, role: profiles[0].id }));
         }
         if (user) {
@@ -104,14 +103,6 @@ function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: P
         </form>
     );
 }
-
-// Helper to safely convert a Firestore Timestamp or a JS Date to a JS Date
-const toDate = (date: any): Date | undefined => {
-    if (!date) return undefined;
-    if (date instanceof Date) return date;
-    if (date instanceof Timestamp) return date.toDate();
-    return undefined;
-};
 
 function PlanForm({ plan, onSave, onDone }: { plan?: PricingPlan, onSave: (data: Partial<PricingPlan>) => void, onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<PricingPlan>>(plan || { name: '', price: 0, description: '', features: [], maxBranches: 1, maxUsers: 1, isFeatured: false, isDeleted: false });
@@ -979,7 +970,7 @@ function OrgProfilesDialog({ organization, isOpen, onOpenChange }: { organizatio
 }
 
 function SuperAdminPage() {
-    const { user, loading: authLoading, startImpersonation } = useAuth();
+    const { user, loading: authLoading, startImpersonation, forceSetUserPassword } = useAuth();
     const router = useRouter();
     const [organizations, setOrganizations] = useState<OrgWithUser[]>([]);
     const [loading, setLoading] = useState(true);

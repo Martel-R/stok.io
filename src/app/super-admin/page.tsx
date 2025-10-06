@@ -14,7 +14,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn, Tags, KeyRound, File, Upload } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn, Tags, KeyRound, File } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -388,22 +388,36 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
         }
     };
 
-    const handleSaveRecord = async (recordToSave: PaymentRecord) => {
+    const handleSaveRecord = async (recordToSave: PaymentRecord, boletoFile: File | null) => {
         if (!organization.subscription) return;
 
-        let updatedRecords;
-        const existingRecordIndex = organization.subscription.paymentRecords.findIndex(r => r.id === recordToSave.id);
+        let updatedRecord = { ...recordToSave };
 
+        if (boletoFile) {
+            try {
+                const filePath = `organizations/${organization.id}/boletos/${recordToSave.id}-${boletoFile.name}`;
+                const storageRef = ref(storage, filePath);
+                const snapshot = await uploadBytes(storageRef, boletoFile);
+                updatedRecord.boletoUrl = await getDownloadURL(snapshot.ref);
+            } catch (error) {
+                toast({ title: 'Erro ao fazer upload do boleto', variant: 'destructive' });
+                return;
+            }
+        }
+    
+        let updatedRecords;
+        const existingRecordIndex = organization.subscription.paymentRecords.findIndex(r => r.id === updatedRecord.id);
+    
         if (existingRecordIndex > -1) {
             updatedRecords = [...organization.subscription.paymentRecords];
-            updatedRecords[existingRecordIndex] = recordToSave;
+            updatedRecords[existingRecordIndex] = updatedRecord;
             toast({ title: 'Parcela atualizada!' });
         } else {
-            updatedRecords = [...(organization.subscription.paymentRecords || []), recordToSave];
+            updatedRecords = [...(organization.subscription.paymentRecords || []), updatedRecord];
             toast({ title: 'Nova parcela criada!' });
         }
-
-         try {
+    
+        try {
             await updateDoc(doc(db, 'organizations', organization.id), { 'subscription.paymentRecords': updatedRecords });
             setEditingRecord(null);
         } catch (error) {
@@ -545,7 +559,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                     <Dialog open={!!editingRecord} onOpenChange={(open) => !open && setEditingRecord(null)}>
                         <DialogContent>
                             <DialogHeader><DialogTitle>Editar Parcela</DialogTitle></DialogHeader>
-                            <EditRecordForm record={editingRecord} onSave={handleSaveRecord} onCancel={() => setEditingRecord(null)} />
+                            <EditRecordForm record={editingRecord} onSave={handleSaveRecord} onCancel={() => setEditingRecord(null)} organizationId={organization.id} />
                         </DialogContent>
                     </Dialog>
                 )}
@@ -555,23 +569,27 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                     isOpen={!!payingRecord}
                     onOpenChange={(open) => !open && setPayingRecord(null)}
                     onSave={handleRegisterPayment}
-                    organizationId={organization.id}
                 />
             </DialogContent>
         </Dialog>
     )
 }
 
-function EditRecordForm({record, onSave, onCancel}: {record: PaymentRecord, onSave: (r: PaymentRecord) => void, onCancel: () => void}) {
+function EditRecordForm({record, onSave, onCancel, organizationId}: {record: PaymentRecord, onSave: (r: PaymentRecord, file: File | null) => void, onCancel: () => void, organizationId: string}) {
     const [formData, setFormData] = useState(record);
+    const [boletoFile, setBoletoFile] = useState<File | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
 
     useEffect(() => {
         setFormData(record);
+        setBoletoFile(null);
     }, [record]);
     
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData);
+        setIsUploading(true);
+        await onSave(formData, boletoFile);
+        setIsUploading(false);
     }
     
     return (
@@ -588,29 +606,32 @@ function EditRecordForm({record, onSave, onCancel}: {record: PaymentRecord, onSa
                 <Input type="number" value={formData.amount} onChange={e => setFormData(p => ({...p, amount: parseFloat(e.target.value) || 0}))} />
             </div>
              <div className="space-y-2">
-                <Label>URL do Boleto (Opcional)</Label>
-                <Input value={formData.boletoUrl || ''} onChange={e => setFormData(p => ({...p, boletoUrl: e.target.value}))} />
+                <Label>Anexar Novo Boleto/Comprovante (Opcional)</Label>
+                <Input type="file" onChange={e => setBoletoFile(e.target.files?.[0] || null)} accept="application/pdf,image/*"/>
+                 {formData.boletoUrl && (
+                     <a href={formData.boletoUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-500 underline">Ver boleto atual</a>
+                 )}
             </div>
              <DialogFooter>
-                 <Button type="button" variant="ghost" onClick={onCancel}>Cancelar</Button>
-                 <Button type="submit">Salvar</Button>
+                 <Button type="button" variant="ghost" onClick={onCancel} disabled={isUploading}>Cancelar</Button>
+                 <Button type="submit" disabled={isUploading}>
+                    {isUploading && <Loader2 className="mr-2 animate-spin"/>}
+                    Salvar
+                 </Button>
             </DialogFooter>
         </form>
     );
 }
 
 function RegisterPaymentDialog({
-    record, isOpen, onOpenChange, onSave, organizationId
+    record, isOpen, onOpenChange, onSave
 }: {
     record: PaymentRecord | null,
     isOpen: boolean,
     onOpenChange: (open: boolean) => void,
     onSave: (record: PaymentRecord) => void,
-    organizationId: string;
 }) {
     const [formData, setFormData] = useState<Partial<PaymentRecord>>({});
-    const [boletoFile, setBoletoFile] = useState<File | null>(null);
-    const [isUploading, setIsUploading] = useState(false);
 
     useEffect(() => {
         if (record) {
@@ -621,40 +642,16 @@ function RegisterPaymentDialog({
                 paymentMethod: '',
                 notes: '',
             });
-            setBoletoFile(null);
         }
     }, [record]);
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files.length > 0) {
-            setBoletoFile(e.target.files[0]);
-        }
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsUploading(true);
-        let finalData = { ...formData };
-
-        if (boletoFile) {
-            try {
-                const filePath = `organizations/${organizationId}/boletos/${record!.id}-${boletoFile.name}`;
-                const storageRef = ref(storage, filePath);
-                const snapshot = await uploadBytes(storageRef, boletoFile);
-                const downloadURL = await getDownloadURL(snapshot.ref);
-                finalData.boletoUrl = downloadURL;
-            } catch (error) {
-                console.error("Error uploading boleto:", error);
-                setIsUploading(false);
-                return;
-            }
-        }
-
-        onSave(finalData as PaymentRecord);
-        setIsUploading(false);
-    };
 
     if (!isOpen || !record) return null;
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData as PaymentRecord);
+    };
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -688,19 +685,12 @@ function RegisterPaymentDialog({
                         <Input value={formData.paymentMethod || ''} onChange={e => setFormData(p => ({...p, paymentMethod: e.target.value}))} placeholder="Ex: PIX, Boleto, Cartão..."/>
                      </div>
                      <div className="space-y-2">
-                        <Label>Anexar Boleto/Comprovante</Label>
-                        <Input type="file" onChange={handleFileChange} accept="application/pdf,image/*" />
-                     </div>
-                     <div className="space-y-2">
                         <Label>Observações</Label>
                         <Textarea value={formData.notes || ''} onChange={e => setFormData(p => ({...p, notes: e.target.value}))} />
                      </div>
                     <DialogFooter>
-                        <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={isUploading}>Cancelar</Button>
-                        <Button type="submit" disabled={isUploading}>
-                            {isUploading && <Loader2 className="mr-2 animate-spin"/>}
-                            Confirmar Pagamento
-                        </Button>
+                        <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
+                        <Button type="submit">Confirmar Pagamento</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
@@ -774,10 +764,6 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
-    const [passwordUser, setPasswordUser] = useState<User | undefined>(undefined);
-
-    const [newPassword, setNewPassword] = useState('');
-    const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
     useEffect(() => {
         if (!isOpen || !organization) return;
@@ -810,7 +796,7 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: 
         }
         setIsFormOpen(false);
     };
-
+    
     const handleResetPassword = async (email: string) => {
         const { success, error } = await resetUserPassword(email);
         if (success) {
@@ -1126,3 +1112,6 @@ function SuperAdminPage() {
 }
 
 export default SuperAdminPage;
+
+
+    

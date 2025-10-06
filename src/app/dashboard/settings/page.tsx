@@ -16,7 +16,7 @@ import type { User, Branch, PaymentCondition, PaymentConditionType, Product, Ena
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash, Lock, Truck, ArrowDownCircle, Archive, DollarSign } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Trash2, Eye, EyeOff, Loader2, FileUp, ListChecks, Upload, Link as LinkIcon, Palette, SlidersHorizontal, Home, Users, Briefcase, Calendar, Package, Gift, Component, BarChart, ShoppingCart, Bot, FileText, Settings, View, Pencil, Trash, Lock, Truck, ArrowDownCircle, Archive, DollarSign, File } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -222,7 +222,7 @@ function UsersTable() {
 
     const handleDelete = async (userToDelete: User) => {
         if (userToDelete.id === adminUser?.id) {
-            toast({title: 'Ação não permitida', description: 'Você не pode excluir sua própria conta.', variant: 'destructive'});
+            toast({title: 'Ação não permitida', description: 'Você não pode excluir sua própria conta.', variant: 'destructive'});
             return;
         }
         const { success, error } = await deleteUser(userToDelete.id);
@@ -1387,6 +1387,7 @@ function SubscriptionSettings() {
                                 <TableHead>Valor</TableHead>
                                 <TableHead>Data Pag.</TableHead>
                                 <TableHead>Status</TableHead>
+                                <TableHead className="text-right">Ações</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1400,10 +1401,20 @@ function SubscriptionSettings() {
                                             {record.status === 'paid' ? 'Pago' : 'Pendente'}
                                         </Badge>
                                     </TableCell>
+                                     <TableCell className="text-right">
+                                        {record.boletoUrl && (
+                                            <Button variant="outline" size="sm" asChild>
+                                                <a href={record.boletoUrl} target="_blank" rel="noopener noreferrer">
+                                                    <File className="mr-2 h-4 w-4" />
+                                                    Ver Boleto
+                                                </a>
+                                            </Button>
+                                        )}
+                                    </TableCell>
                                 </TableRow>
                             )) : (
                                 <TableRow>
-                                    <TableCell colSpan={4} className="text-center h-24">
+                                    <TableCell colSpan={5} className="text-center h-24">
                                         Nenhum registro de pagamento encontrado.
                                     </TableCell>
                                 </TableRow>
@@ -1430,7 +1441,7 @@ function SettingsPageContent() {
                         <CardTitle className="flex items-center justify-center gap-2"><Lock /> Acesso Negado</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <p>Você не tem permissão para acessar a página de configurações.</p>
+                        <p>Você não tem permissão para acessar a página de configurações.</p>
                     </CardContent>
                 </Card>
             </div>
@@ -1733,4 +1744,3 @@ function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Suppl
         </form>
     );
 }
-

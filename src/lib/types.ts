@@ -373,6 +373,7 @@ export interface PaymentRecord {
     status: PaymentRecordStatus;
     recordedBy?: string; // User ID of admin who recorded it
     paymentMethod?: string;
+    boletoUrl?: string;
     notes?: string;
 }
 

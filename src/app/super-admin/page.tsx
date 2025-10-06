@@ -4,8 +4,9 @@
 'use client';
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { db } from '@/lib/firebase';
+import { db, storage } from '@/lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { Organization, User, PaymentStatus, EnabledModules, PermissionProfile, Subscription, PaymentRecord, PaymentRecordStatus, PricingPlan } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
@@ -13,7 +14,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn, Tags, KeyRound } from 'lucide-react';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn, Tags, KeyRound, File, Upload } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -41,6 +42,74 @@ const toDate = (date: any): Date | undefined => {
     if (date instanceof Timestamp) return date.toDate();
     return undefined;
 };
+
+function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: PermissionProfile[]; onSave: (user: Partial<User>) => void; onDone: () => void }) {
+    const [formData, setFormData] = useState<Partial<User>>(
+        user || { name: '', email: '', role: '', password: '', avatar: 'https://placehold.co/100x100.png?text=👤', isDeleted: false }
+    );
+
+    useEffect(() => {
+        if (!user && profiles.length > 0) {
+            setFormData(prev => ({ ...prev, role: profiles[0].id }));
+        }
+        if (user) {
+             setFormData(user);
+        }
+    }, [user, profiles]);
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setFormData((prev) => ({ ...prev, [name]: value }));
+    };
+
+    const handleRoleChange = (roleId: string) => {
+        setFormData(prev => ({...prev, role: roleId}));
+    }
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData as User);
+        onDone();
+    };
+    
+    const isEditing = !!user;
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+                <Label htmlFor="name">Nome do Usuário</Label>
+                <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} required />
+            </div>
+            <div>
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" name="email" type="email" value={formData.email || ''} onChange={handleChange} required disabled={isEditing}/>
+            </div>
+            {!isEditing && (
+                 <div>
+                    <Label htmlFor="password">Senha</Label>
+                    <Input id="password" name="password" type="password" value={formData.password || ''} onChange={handleChange} required minLength={6} />
+                </div>
+            )}
+            <div>
+                <Label htmlFor="role">Perfil</Label>
+                 <Select value={formData.role} onValueChange={handleRoleChange}>
+                    <SelectTrigger id="role">
+                        <SelectValue placeholder="Selecione um perfil" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {profiles.map(profile => (
+                            <SelectItem key={profile.id} value={profile.id}>{profile.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+            <DialogFooter>
+                 <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
+                 <Button type="submit">Salvar Usuário</Button>
+            </DialogFooter>
+        </form>
+    );
+}
 
 function PlanForm({ plan, onSave, onDone }: { plan?: PricingPlan, onSave: (data: Partial<PricingPlan>) => void, onDone: () => void }) {
     const [formData, setFormData] = useState<Partial<PricingPlan>>(plan || { name: '', price: 0, description: '', features: [], maxBranches: 1, maxUsers: 1, isFeatured: false, isDeleted: false });
@@ -441,6 +510,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal/></Button></DropdownMenuTrigger>
                                                             <DropdownMenuContent>
+                                                                {p.boletoUrl && <DropdownMenuItem asChild><a href={p.boletoUrl} target="_blank" rel="noopener noreferrer"><File className="mr-2 h-4 w-4" />Ver Boleto</a></DropdownMenuItem>}
                                                                 {p.status === 'pending' && <DropdownMenuItem onSelect={() => setPayingRecord(p)}>Registrar Pagamento</DropdownMenuItem>}
                                                                 <DropdownMenuItem onSelect={() => setEditingRecord(p)}>Editar</DropdownMenuItem>
                                                                 <AlertDialogTrigger asChild>
@@ -485,6 +555,7 @@ function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: {
                     isOpen={!!payingRecord}
                     onOpenChange={(open) => !open && setPayingRecord(null)}
                     onSave={handleRegisterPayment}
+                    organizationId={organization.id}
                 />
             </DialogContent>
         </Dialog>
@@ -516,6 +587,10 @@ function EditRecordForm({record, onSave, onCancel}: {record: PaymentRecord, onSa
                 <Label>Valor (R$)</Label>
                 <Input type="number" value={formData.amount} onChange={e => setFormData(p => ({...p, amount: parseFloat(e.target.value) || 0}))} />
             </div>
+             <div className="space-y-2">
+                <Label>URL do Boleto (Opcional)</Label>
+                <Input value={formData.boletoUrl || ''} onChange={e => setFormData(p => ({...p, boletoUrl: e.target.value}))} />
+            </div>
              <DialogFooter>
                  <Button type="button" variant="ghost" onClick={onCancel}>Cancelar</Button>
                  <Button type="submit">Salvar</Button>
@@ -525,14 +600,17 @@ function EditRecordForm({record, onSave, onCancel}: {record: PaymentRecord, onSa
 }
 
 function RegisterPaymentDialog({
-    record, isOpen, onOpenChange, onSave
+    record, isOpen, onOpenChange, onSave, organizationId
 }: {
     record: PaymentRecord | null,
     isOpen: boolean,
     onOpenChange: (open: boolean) => void,
     onSave: (record: PaymentRecord) => void,
+    organizationId: string;
 }) {
     const [formData, setFormData] = useState<Partial<PaymentRecord>>({});
+    const [boletoFile, setBoletoFile] = useState<File | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
 
     useEffect(() => {
         if (record) {
@@ -543,15 +621,40 @@ function RegisterPaymentDialog({
                 paymentMethod: '',
                 notes: '',
             });
+            setBoletoFile(null);
         }
     }, [record]);
 
-    if (!isOpen || !record) return null;
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave(formData as PaymentRecord);
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files.length > 0) {
+            setBoletoFile(e.target.files[0]);
+        }
     };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsUploading(true);
+        let finalData = { ...formData };
+
+        if (boletoFile) {
+            try {
+                const filePath = `organizations/${organizationId}/boletos/${record!.id}-${boletoFile.name}`;
+                const storageRef = ref(storage, filePath);
+                const snapshot = await uploadBytes(storageRef, boletoFile);
+                const downloadURL = await getDownloadURL(snapshot.ref);
+                finalData.boletoUrl = downloadURL;
+            } catch (error) {
+                console.error("Error uploading boleto:", error);
+                setIsUploading(false);
+                return;
+            }
+        }
+
+        onSave(finalData as PaymentRecord);
+        setIsUploading(false);
+    };
+
+    if (!isOpen || !record) return null;
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -585,12 +688,19 @@ function RegisterPaymentDialog({
                         <Input value={formData.paymentMethod || ''} onChange={e => setFormData(p => ({...p, paymentMethod: e.target.value}))} placeholder="Ex: PIX, Boleto, Cartão..."/>
                      </div>
                      <div className="space-y-2">
+                        <Label>Anexar Boleto/Comprovante</Label>
+                        <Input type="file" onChange={handleFileChange} accept="application/pdf,image/*" />
+                     </div>
+                     <div className="space-y-2">
                         <Label>Observações</Label>
                         <Textarea value={formData.notes || ''} onChange={e => setFormData(p => ({...p, notes: e.target.value}))} />
                      </div>
                     <DialogFooter>
-                        <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                        <Button type="submit">Confirmar Pagamento</Button>
+                        <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={isUploading}>Cancelar</Button>
+                        <Button type="submit" disabled={isUploading}>
+                            {isUploading && <Loader2 className="mr-2 animate-spin"/>}
+                            Confirmar Pagamento
+                        </Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
@@ -656,7 +766,7 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
     );
 }
 
-function OrgUsersDialog({ organization, isOpen, onOpenChange, forceSetUserPassword }: { organization: OrgWithUser | null; isOpen: boolean; onOpenChange: (open: boolean) => void; forceSetUserPassword: (userId: string, newPass: string) => Promise<{ success: boolean; error?: string; }> }) {
+function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: OrgWithUser | null; isOpen: boolean; onOpenChange: (open: boolean) => void; }) {
     const { toast } = useToast();
     const { createUser, resetUserPassword } = useAuth();
     const [users, setUsers] = useState<User[]>([]);
@@ -709,12 +819,6 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange, forceSetUserPasswo
             toast({ title: 'Erro ao redefinir senha', description: error, variant: 'destructive' });
         }
     };
-
-    const handleSetPassword = async (userId: string, newPass: string) => {
-        // This is a placeholder, as the actual implementation is not possible from the client
-        console.log(`Attempting to set password for ${userId} to ${newPass}`);
-        toast({ title: 'Funcionalidade não implementada', description: 'A definição forçada de senha requer uma função de backend segura.'});
-    };
     
     if (!isOpen || !organization) return null;
 
@@ -758,7 +862,7 @@ function OrgUsersDialog({ organization, isOpen, onOpenChange, forceSetUserPasswo
                      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                          <DialogContent>
                              <DialogHeader><DialogTitle>{editingUser ? 'Editar Usuário' : 'Novo Usuário'}</DialogTitle></DialogHeader>
-                             {/* UserForm has been moved to this file */}
+                             <UserForm user={editingUser} profiles={profiles} onSave={handleSaveUser} onDone={() => setIsFormOpen(false)} />
                          </DialogContent>
                      </Dialog>
                  )}
@@ -1022,4 +1126,3 @@ function SuperAdminPage() {
 }
 
 export default SuperAdminPage;
-

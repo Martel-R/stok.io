@@ -194,7 +194,7 @@ function CheckoutModal({
   isOpen,
   onOpenChange,
   cart,
-  subtotal,
+  grandTotal,
   onCheckout,
   paymentConditions,
   attendanceId,
@@ -203,58 +203,15 @@ function CheckoutModal({
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   cart: CartItem[];
-  subtotal: number;
+  grandTotal: number;
   onCheckout: (payments: PaymentDetail[], attendanceId?: string, customerId?: string) => Promise<void>;
   paymentConditions: PaymentCondition[];
   attendanceId?: string;
   customerId?: string;
 }) {
-  const { currentBranch } = useAuth();
   const [payments, setPayments] = useState<PaymentDetail[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
-
-  const getComboPriceWithDiscount = (combo: Combo, paymentConditionId?: string): number => {
-    const applicableRule = combo.discountRules.find(rule => rule.paymentConditionIds?.includes(paymentConditionId || '')) || combo.discountRules.find(rule => !rule.paymentConditionIds || rule.paymentConditionIds.length === 0);
-
-    if (applicableRule) {
-      if (applicableRule.discountType === 'percentage') {
-        return combo.originalPrice * (1 - (applicableRule.discountValue / 100));
-      } else {
-        return combo.originalPrice - applicableRule.discountValue;
-      }
-    }
-    return combo.finalPrice;
-  };
-
-  const { totalDiscount, grandTotal } = useMemo(() => {
-    let currentSubtotal = 0;
-    let currentTotalDiscount = 0;
-
-    const firstPaymentConditionId = payments[0]?.conditionId;
-
-    cart.forEach(item => {
-        if (item.itemType === 'product') {
-            currentSubtotal += (item.price || 0) * item.quantity;
-        } else if (item.itemType === 'combo') {
-            const discountedPrice = getComboPriceWithDiscount(item, firstPaymentConditionId);
-            currentSubtotal += discountedPrice * item.quantity;
-            currentTotalDiscount += (item.originalPrice - discountedPrice) * item.quantity;
-        } else if (item.itemType === 'kit') {
-            currentSubtotal += item.total * item.quantity;
-            const originalPrice = item.chosenProducts.reduce((sum, p) => sum + p.price, 0);
-            currentTotalDiscount += (originalPrice - item.total) * item.quantity;
-        } else if (item.itemType === 'service') {
-            currentSubtotal += item.total;
-        }
-    });
-    
-    const tax = currentSubtotal * ((currentBranch?.taxRate || 0) / 100);
-    const finalTotal = currentSubtotal + tax;
-
-    return { totalDiscount: currentTotalDiscount, grandTotal: finalTotal };
-
-  }, [cart, payments, paymentConditions, currentBranch?.taxRate]);
 
   const paidAmount = useMemo(() => payments.reduce((acc, p) => acc + p.amount, 0), [payments]);
   const remainingAmount = useMemo(() => grandTotal - paidAmount, [grandTotal, paidAmount]);
@@ -748,6 +705,57 @@ export default function POSPage() {
   const { user, currentBranch, loading: authLoading, paymentConditions } = useAuth();
   const router = useRouter();
 
+  const barcodeRef = useRef('');
+  const barcodeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const processBarcode = (barcode: string) => {
+    if (!barcode.trim()) return;
+    const product = products.find(p => p.barcode === barcode);
+    if (product) {
+      addToCart(product, 'product');
+      toast({ title: "Produto adicionado!", description: `${product.name} foi adicionado ao carrinho.` });
+    } else {
+      toast({ title: "Produto não encontrado", description: `Nenhum produto com o código ${barcode} foi encontrado.`, variant: 'destructive' });
+    }
+    barcodeRef.current = '';
+  };
+  
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+        // Ignore inputs from text fields to allow normal typing
+        const activeElement = document.activeElement;
+        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+            return;
+        }
+
+        if (barcodeTimeoutRef.current) {
+            clearTimeout(barcodeTimeoutRef.current);
+        }
+
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            processBarcode(barcodeRef.current);
+        } else if (event.key.length === 1) { // Append alphanumeric characters
+            barcodeRef.current += event.key;
+        }
+
+        barcodeTimeoutRef.current = setTimeout(() => {
+            if (barcodeRef.current.length > 3) { // A heuristic to avoid processing short, accidental typing
+                processBarcode(barcodeRef.current);
+            }
+            barcodeRef.current = '';
+        }, 100); // A short timeout to detect the end of a scan
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+        window.removeEventListener('keydown', handleKeyDown);
+        if (barcodeTimeoutRef.current) {
+            clearTimeout(barcodeTimeoutRef.current);
+        }
+    };
+  }, [products]); // Rerun if products change, so the closure has the latest product list
+
   useEffect(() => {
     if (authLoading || !currentBranch || !user?.organizationId) {
         setLoading(true);
@@ -903,18 +911,58 @@ export default function POSPage() {
   
   const handleScan = (barcode: string) => {
     setIsScannerOpen(false);
-    const product = products.find(p => p.barcode === barcode);
-    if (product) {
-        addToCart(product, 'product');
-        toast({ title: "Produto adicionado!", description: `${product.name} foi adicionado ao carrinho.` });
-    } else {
-        toast({ title: "Produto não encontrado", description: "Nenhum produto com este código de barras foi encontrado.", variant: 'destructive' });
-    }
+    processBarcode(barcode);
   };
   
   const removeFromCart = (itemId: string, itemType: CartItem['itemType']) => {
       setCart(cart => cart.filter(item => !(item.id === itemId && item.itemType === itemType)));
   }
+
+  const { subtotal, totalDiscount, grandTotal } = useMemo(() => {
+    let currentSubtotal = 0;
+    let currentTotalDiscount = 0;
+
+    const firstPaymentConditionId = paymentConditions[0]?.id;
+
+    cart.forEach(item => {
+        let itemTotal = 0;
+        let itemOriginalTotal = 0;
+
+        if (item.itemType === 'product' || item.itemType === 'service') {
+            itemTotal = (item.price || 0) * item.quantity;
+            itemOriginalTotal = itemTotal;
+        } else if (item.itemType === 'combo') {
+            const applicableRule = item.discountRules.find(rule => rule.paymentConditionIds?.includes(firstPaymentConditionId || '')) || item.discountRules.find(rule => !rule.paymentConditionIds || rule.paymentConditionIds.length === 0);
+            
+            let finalPrice = item.originalPrice;
+            if(applicableRule) {
+                 if(applicableRule.discountType === 'percentage') {
+                    finalPrice = item.originalPrice * (1 - (applicableRule.discountValue / 100));
+                 } else {
+                    finalPrice = item.originalPrice - applicableRule.discountValue;
+                 }
+            } else {
+                 finalPrice = item.finalPrice;
+            }
+            
+            itemTotal = finalPrice * item.quantity;
+            itemOriginalTotal = item.originalPrice * item.quantity;
+
+        } else if (item.itemType === 'kit') {
+            const originalPrice = item.chosenProducts.reduce((sum, p) => sum + p.price, 0);
+            itemTotal = item.total * item.quantity;
+            itemOriginalTotal = originalPrice * item.quantity;
+        }
+        
+        currentSubtotal += itemTotal;
+        currentTotalDiscount += (itemOriginalTotal - itemTotal);
+    });
+    
+    const tax = currentSubtotal * ((currentBranch?.taxRate || 0) / 100);
+    const finalTotal = currentSubtotal + tax;
+    
+    return { subtotal: currentSubtotal, totalDiscount: currentTotalDiscount, grandTotal: finalTotal };
+  }, [cart, currentBranch?.taxRate, paymentConditions]);
   
   const handleCheckout = async (payments: PaymentDetail[], attendanceId?: string, customerId?: string) => {
       if (cart.length === 0) {
@@ -930,7 +978,6 @@ export default function POSPage() {
         const batch = writeBatch(db);
         const saleDate = serverTimestamp();
         
-        // Create stock entries first for products, combos, and kits
         for (const item of cart) {
             if (item.itemType === 'product') {
                  const entry: Omit<StockEntry, 'id'> = {
@@ -966,7 +1013,7 @@ export default function POSPage() {
                     const entry: Omit<StockEntry, 'id'> = {
                         productId: product.id,
                         productName: product.name,
-                        quantity: -1, // Each chosen product is one unit from stock
+                        quantity: -1, 
                         type: 'sale',
                         date: saleDate,
                         userId: user.id,
@@ -1142,27 +1189,6 @@ export default function POSPage() {
     )
   }
 
-  const { subtotal, grandTotal } = useMemo(() => {
-    let currentSubtotal = cart.reduce((acc, item) => {
-        let itemTotal;
-        if (item.itemType === 'product' || item.itemType === 'service') {
-            itemTotal = (item.price || 0) * item.quantity;
-        } else if (item.itemType === 'combo') {
-            itemTotal = item.finalPrice * item.quantity;
-        } else if (item.itemType === 'kit') {
-            itemTotal = item.total * item.quantity;
-        } else {
-            itemTotal = 0;
-        }
-        return acc + itemTotal;
-    }, 0);
-    
-    const tax = currentSubtotal * ((currentBranch?.taxRate || 0) / 100);
-    const finalTotal = currentSubtotal + tax;
-    return { subtotal: currentSubtotal, grandTotal: finalTotal };
-  }, [cart, currentBranch?.taxRate]);
-
-
   const getCartItemPrice = (item: CartItem) => {
       switch (item.itemType) {
           case 'product': return (item as ProductWithStock).price || (item as AttendanceItem).price || 0;
@@ -1195,7 +1221,7 @@ export default function POSPage() {
                     <Search className="absolute left-2.5 top-6.5 h-4 w-4 text-muted-foreground" />
                     <Input
                         type="search"
-                        placeholder="Buscar item..."
+                        placeholder="Buscar item ou escanear código de barras..."
                         className="w-full rounded-lg bg-background pl-8"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -1363,20 +1389,21 @@ export default function POSPage() {
             </ScrollArea>
           </CardContent>
           <CardFooter className="flex-col !p-6 border-t">
-             <CheckoutModal
-                isOpen={isCheckoutModalOpen}
-                onOpenChange={setIsCheckoutModalOpen}
-                cart={cart}
-                subtotal={subtotal}
-                onCheckout={handleCheckout}
-                paymentConditions={paymentConditions}
-                attendanceId={currentAttendanceId}
-                customerId={selectedCustomer?.id}
-            />
-            <Button className="w-full mt-4" size="lg" onClick={() => setIsCheckoutModalOpen(true)} disabled={cart.length === 0}>
-                <CreditCard className="mr-2 h-4 w-4" />
-                Finalizar Compra (R$ {grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
-            </Button>
+             <div className="w-full space-y-2">
+                 {totalDiscount > 0 && (
+                     <div className="flex justify-between text-destructive">
+                         <p>Descontos</p>
+                         <p>-R${totalDiscount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                     </div>
+                 )}
+                 <div className="flex justify-between"><p>Subtotal</p><p>R${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p></div>
+                 <div className="flex justify-between"><p>Imposto ({currentBranch?.taxRate || 0}%)</p><p>R${tax.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p></div>
+                 <div className="flex justify-between font-bold text-lg"><p>Total</p><p>R${grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p></div>
+             </div>
+             <Button className="w-full mt-4" size="lg" onClick={() => setIsCheckoutModalOpen(true)} disabled={cart.length === 0}>
+                 <CreditCard className="mr-2 h-4 w-4" />
+                 Finalizar Compra
+             </Button>
           </CardFooter>
         </Card>
       </div>
@@ -1390,6 +1417,16 @@ export default function POSPage() {
             onConfirm={(chosen) => handleKitSelection(selectedKit, chosen)}
         />
     )}
+    <CheckoutModal
+      isOpen={isCheckoutModalOpen}
+      onOpenChange={setIsCheckoutModalOpen}
+      cart={cart}
+      grandTotal={grandTotal}
+      onCheckout={handleCheckout}
+      paymentConditions={paymentConditions}
+      attendanceId={currentAttendanceId}
+      customerId={selectedCustomer?.id}
+    />
      <BarcodeScannerModal
         isOpen={isScannerOpen}
         onOpenChange={setIsScannerOpen}
@@ -1399,3 +1436,5 @@ export default function POSPage() {
   );
 }
 
+
+    

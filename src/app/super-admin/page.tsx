@@ -756,7 +756,7 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
     );
 }
 
-function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: OrgWithUser | null; isOpen: boolean; onOpenChange: (open: boolean) => void; }) {
+function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: OrgWithUser | null; isOpen: boolean; onOpenChange: (open: boolean) => void }) {
     const { toast } = useToast();
     const { createUser, resetUserPassword } = useAuth();
     const [users, setUsers] = useState<User[]>([]);

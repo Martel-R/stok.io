@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { useAuth } from "@/lib/auth";
 import { db } from '@/lib/firebase';
-import { collection, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, writeBatch, query, where } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ export default function HelpPage() {
     const { user } = useAuth();
     const { toast } = useToast();
     const [isRepairing, setIsRepairing] = useState(false);
+    const [isMigrating, setIsMigrating] = useState(false);
     
     const allFeatures = [
         {
@@ -107,6 +108,49 @@ export default function HelpPage() {
             setIsRepairing(false);
         }
     };
+    
+    const handleProductMigration = async () => {
+        if (!user?.organizationId) {
+            toast({ title: 'Erro', description: 'Organização não encontrada.', variant: 'destructive' });
+            return;
+        }
+        setIsMigrating(true);
+        toast({ title: 'Iniciando migração de produtos...', description: 'Isso pode levar alguns instantes.' });
+
+        try {
+            const productsQuery = query(collection(db, 'products'), where('organizationId', '==', user.organizationId));
+            const querySnapshot = await getDocs(productsQuery);
+            
+            const batch = writeBatch(db);
+            let productsToMigrate = 0;
+
+            querySnapshot.forEach(doc => {
+                const product = doc.data();
+                // Check if migration is needed (has old field, lacks new field)
+                if (product.branchId && !product.branchIds) {
+                    batch.update(doc.ref, {
+                        branchIds: [product.branchId],
+                        // You might want to remove the old branchId field as well for cleanliness
+                        // branchId: deleteField() // This requires importing `deleteField` from "firebase/firestore"
+                    });
+                    productsToMigrate++;
+                }
+            });
+
+            if (productsToMigrate > 0) {
+                await batch.commit();
+                toast({ title: 'Migração Concluída!', description: `${productsToMigrate} produtos foram atualizados para o novo sistema de filiais.` });
+            } else {
+                toast({ title: 'Nenhum produto para migrar', description: 'Seus produtos já estão no formato mais recente.' });
+            }
+
+        } catch (error) {
+            console.error("Error migrating products:", error);
+            toast({ title: 'Erro na Migração', description: 'Ocorreu um erro durante a migração dos produtos.', variant: 'destructive' });
+        } finally {
+            setIsMigrating(false);
+        }
+    };
 
     return (
         <div className="space-y-8">
@@ -143,10 +187,10 @@ export default function HelpPage() {
                     <CardTitle className="flex items-center gap-2 text-destructive"><AlertTriangle /> Ferramentas de Reparo</CardTitle>
                     <CardDescription>Use estas ferramentas com cuidado. Elas servem para corrigir inconsistências nos dados do sistema.</CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex flex-col sm:flex-row gap-4">
                     <AlertDialog>
                         <AlertDialogTrigger asChild>
-                            <Button variant="destructive" disabled={isRepairing}>
+                            <Button variant="destructive" disabled={isRepairing || isMigrating}>
                                 {isRepairing && <Loader2 className="mr-2 animate-spin" />}
                                 Restaurar Todos os Registros Excluídos
                             </Button>
@@ -161,6 +205,26 @@ export default function HelpPage() {
                             <AlertDialogFooter>
                                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
                                 <AlertDialogAction onClick={handleFixSoftDelete}>Sim, eu entendo, restaurar tudo.</AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                     <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                             <Button variant="outline" disabled={isRepairing || isMigrating}>
+                                {isMigrating && <Loader2 className="mr-2 animate-spin" />}
+                                Migrar Produtos para Múltiplas Filiais
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Confirmar Migração de Produtos?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    Esta ação irá atualizar seus produtos para o novo sistema que permite compartilhar um mesmo produto entre várias filiais. É um passo necessário após a última atualização. A operação é segura e não deve causar perda de dados.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction onClick={handleProductMigration}>Sim, iniciar migração</AlertDialogAction>
                             </AlertDialogFooter>
                         </AlertDialogContent>
                     </AlertDialog>

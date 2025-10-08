@@ -141,7 +141,7 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
 }
 
 
-function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product; suppliers: Supplier[]; onSave: (product: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => void; onDone: () => void }) {
+function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product; suppliers: Supplier[]; onSave: (product: Omit<Product, 'id' | 'organizationId'>) => void; onDone: () => void }) {
   const [formData, setFormData] = useState<Partial<Product>>(
     product || { 
         name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
@@ -281,7 +281,7 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
       ...formData,
       supplierName: supplier ? supplier.name : '',
       imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png'
-    } as Omit<Product, 'id' | 'branchId' | 'organizationId'>);
+    } as Omit<Product, 'id' | 'organizationId'>);
     onDone();
   };
 
@@ -486,14 +486,14 @@ export default function ProductsPage() {
   }), [user]);
 
   useEffect(() => {
-    if (authLoading || !currentBranch) {
+    if (authLoading || !user?.organizationId) {
         setLoading(true);
         return;
     }
     
-    const productsQuery = query(collection(db, 'products'), where("branchId", "==", currentBranch.id));
-    const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
-    const suppliersQuery = query(collection(db, 'suppliers'), where('organizationId', '==', user?.organizationId), where("isDeleted", "!=", true));
+    const productsQuery = query(collection(db, 'products'), where("organizationId", "==", user.organizationId));
+    const stockEntriesQuery = query(collection(db, 'stockEntries'), where('organizationId', '==', user.organizationId));
+    const suppliersQuery = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId), where("isDeleted", "!=", true));
 
     const unsubs = [
         onSnapshot(productsQuery, snap => {
@@ -514,15 +514,15 @@ export default function ProductsPage() {
     return () => {
       unsubs.forEach(unsub => unsub());
     };
-  }, [currentBranch, authLoading, user]);
+  }, [authLoading, user]);
 
 
   const productsWithStock = useMemo(() => {
-     const productsToDisplay = allProducts.filter(p => !p.isDeleted);
+     if (!currentBranch) return [];
+     const productsToDisplay = allProducts.filter(p => !p.branchId || p.branchId === currentBranch.id).filter(p => !p.isDeleted);
+     
      const sortedProducts = [...productsToDisplay].sort((a,b) => {
-        if (a.order !== undefined && b.order !== undefined) {
-            return a.order - b.order;
-        }
+        if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
         if (a.order !== undefined) return -1;
         if (b.order !== undefined) return 1;
         return a.name.localeCompare(b.name);
@@ -530,11 +530,11 @@ export default function ProductsPage() {
 
     return sortedProducts.map(product => {
         const stock = allStockEntries
-            .filter(e => e.productId === product.id)
+            .filter(e => e.productId === product.id && e.branchId === currentBranch.id)
             .reduce((sum, e) => sum + (Number(e.quantity) || 0), 0);
         return { ...product, stock };
     });
-  }, [allProducts, allStockEntries]);
+  }, [allProducts, allStockEntries, currentBranch]);
 
   const filteredProducts = useMemo(() => {
     if (!searchQuery) {
@@ -547,9 +547,9 @@ export default function ProductsPage() {
   }, [productsWithStock, searchQuery]);
 
 
-  const handleSave = async (productData: Omit<Product, 'id' | 'branchId' | 'organizationId'>) => {
-    if (!currentBranch || !user?.organizationId) {
-        toast({ title: 'Nenhuma filial selecionada', variant: 'destructive' });
+  const handleSave = async (productData: Omit<Product, 'id' | 'organizationId'>) => {
+    if (!user?.organizationId) {
+        toast({ title: 'Nenhuma organização selecionada', variant: 'destructive' });
         return;
     }
     const action = editingProduct?.id ? 'product_updated' : 'product_created';
@@ -560,8 +560,8 @@ export default function ProductsPage() {
         toast({ title: 'Produto atualizado!' });
       } else {
         await addDoc(collection(db, "products"), { 
-            ...productData, 
-            branchId: currentBranch.id, 
+            ...productData,
+            branchId: productData.branchId || undefined,
             organizationId: user.organizationId,
             isDeleted: false,
         });
@@ -571,7 +571,7 @@ export default function ProductsPage() {
         userId: user.id,
         userName: user.name,
         organizationId: user.organizationId,
-        branchId: currentBranch.id,
+        branchId: currentBranch?.id,
         action,
         details: { productId: editingProduct?.id || 'new', productName: productData.name }
       });
@@ -609,7 +609,7 @@ export default function ProductsPage() {
     await handleSave(newProductData);
   }
 
-  const handleImport = async (importedData: { product: Omit<Product, 'id' | 'branchId' | 'organizationId'>, stock: number }[]) => {
+  const handleImport = async (importedData: { product: Omit<Product, 'id' | 'organizationId'>, stock: number }[]) => {
       if (!currentBranch || !user?.organizationId) {
           toast({ title: 'Nenhuma filial selecionada', variant: 'destructive' });
           return;
@@ -729,7 +729,7 @@ export default function ProductsPage() {
     };
 
     const handleBulkCopy = async () => {
-        if (selectedProductIds.length === 0 || branchesToCopyTo.length === 0) {
+        if (selectedProductIds.length === 0 || branchesToCopyTo.length === 0 || !user?.organizationId) {
             toast({ title: 'Nenhum produto ou filial de destino selecionado', variant: 'destructive' });
             return;
         }
@@ -739,13 +739,16 @@ export default function ProductsPage() {
         const batch = writeBatch(db);
         branchesToCopyTo.forEach(branchId => {
             productsToCopy.forEach(p => {
-                const { id, ...productData } = p;
-                const newProductRef = doc(collection(db, 'products'));
-                batch.set(newProductRef, {
+                const { id, stock, ...productData } = p as ProductWithStock;
+                const newProductData = {
                     ...productData,
                     branchId: branchId,
-                    organizationId: user?.organizationId
-                });
+                    organizationId: user.organizationId,
+                    isDeleted: false,
+                };
+                
+                const newProductRef = doc(collection(db, 'products'));
+                batch.set(newProductRef, newProductData);
             });
         });
 
@@ -756,6 +759,7 @@ export default function ProductsPage() {
             setBranchesToCopyTo([]);
             setIsCopyProductsDialogOpen(false);
         } catch (error) {
+            console.error("Error copying products:", error);
             toast({ title: 'Erro ao copiar produtos', variant: 'destructive' });
         } finally {
             setIsProcessingBulkAction(false);

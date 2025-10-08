@@ -193,7 +193,7 @@ export interface Product {
   category: string;
   price: number;
   imageUrl: string;
-  branchId: string;
+  branchId?: string; // Now optional, for products specific to a branch
   organizationId: string;
   lowStockThreshold: number;
   isSalable: boolean;

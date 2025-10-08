@@ -28,6 +28,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { ptBR } from 'date-fns/locale';
 import { NfeImportDialog } from '@/components/nfe-import-dialog';
+import { useRouter } from 'next/navigation';
 
 const convertDate = (dateField: any): Date => {
     if (dateField instanceof Timestamp) return dateField.toDate();
@@ -52,8 +53,7 @@ export default function InventoryPage() {
     const [loading, setLoading] = useState(true);
     const { user, currentBranch, branches, loading: authLoading } = useAuth();
     const [products, setProducts] = useState<Product[]>([]);
-    const [isFormOpen, setIsFormOpen] = useState(false);
-    const [formType, setFormType] = useState<'entry' | 'adjustment' | 'transfer'>('entry');
+    const [isTransferFormOpen, setIsTransferFormOpen] = useState(false);
     const [selectedHistoryItem, setSelectedHistoryItem] = useState<DailyStockSummary | null>(null);
     const { toast } = useToast();
     const [searchQuery, setSearchQuery] = useState("");
@@ -62,6 +62,7 @@ export default function InventoryPage() {
       from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
       to: new Date(),
     });
+    const router = useRouter();
 
     const canManageStock = useMemo(() => user?.enabledModules?.inventory?.edit ?? false, [user]);
 
@@ -172,11 +173,6 @@ export default function InventoryPage() {
         });
     }, [dailyStockHistory, historySearchQuery, historyDateRange]);
 
-    const handleOpenForm = (type: 'entry' | 'adjustment' | 'transfer') => {
-        setFormType(type);
-        setIsFormOpen(true);
-    };
-
     const getBadgeForType = (type: StockEntryType) => {
         switch (type) {
             case 'entry': return <Badge variant="secondary" className="bg-green-100 text-green-800">Entrada</Badge>;
@@ -225,36 +221,29 @@ export default function InventoryPage() {
                 <h1 className="text-3xl font-bold">Gestão de Estoque</h1>
                 {canManageStock && (
                      <div className="flex flex-wrap gap-2">
-                        <NfeImportDialog products={products} />
-                        <Button variant="outline" onClick={() => handleOpenForm('entry')}><PlusCircle className="mr-2" />Entrada</Button>
-                        <Button variant="outline" onClick={() => handleOpenForm('adjustment')}><MinusCircle className="mr-2" />Saída</Button>
-                        <Button variant="outline" onClick={() => handleOpenForm('transfer')} disabled={branches.length <= 1}><ArrowRightLeft className="mr-2" />Transferir</Button>
+                        <NfeImportDialog/>
+                        <Button variant="outline" onClick={() => router.push('/dashboard/inventory/movement?type=entry')}><PlusCircle className="mr-2" />Entrada</Button>
+                        <Button variant="outline" onClick={() => router.push('/dashboard/inventory/movement?type=adjustment')}><MinusCircle className="mr-2" />Saída</Button>
+                        <Dialog open={isTransferFormOpen} onOpenChange={setIsTransferFormOpen}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" disabled={branches.length <= 1}><ArrowRightLeft className="mr-2" />Transferir</Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>Transferência de Estoque</DialogTitle>
+                                    <DialogDescription>Selecione o produto, quantidade e filial de destino.</DialogDescription>
+                                </DialogHeader>
+                                <StockMovementForm 
+                                    type="transfer"
+                                    products={products}
+                                    branches={branches.filter(b => b.id !== currentBranch?.id)}
+                                    onDone={() => setIsTransferFormOpen(false)}
+                                />
+                            </DialogContent>
+                        </Dialog>
                     </div>
                 )}
             </div>
-
-            {canManageStock && (
-                <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>
-                                {formType === 'entry' && 'Entrada de Estoque'}
-                                {formType === 'adjustment' && 'Saída de Estoque'}
-                                {formType === 'transfer' && 'Transferência de Estoque'}
-                            </DialogTitle>
-                             <DialogDescription>
-                                {formType === 'transfer' ? "Selecione o produto, quantidade e filial de destino." : "Selecione o produto e a quantidade para registrar a movimentação."}
-                            </DialogDescription>
-                        </DialogHeader>
-                        <StockMovementForm 
-                            type={formType}
-                            products={products}
-                            branches={branches.filter(b => b.id !== currentBranch?.id)}
-                            onDone={() => setIsFormOpen(false)}
-                        />
-                    </DialogContent>
-                </Dialog>
-            )}
 
             <Tabs defaultValue="current">
                 <TabsList className="grid w-full grid-cols-2 no-print">
@@ -529,4 +518,3 @@ export default function InventoryPage() {
     );
 }
 
-    

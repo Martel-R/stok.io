@@ -59,38 +59,17 @@ export function StockMovementForm({ type, products, branches = [], onDone }: Sto
 
         const batch = writeBatch(db);
         const date = serverTimestamp();
-        let destinationProductId = selectedProduct.id;
 
-        // For transfers, check if product exists in destination branch. If not, create it.
+        // For transfers, ensure the product is associated with the destination branch
         if (type === 'transfer' && destinationBranch) {
-             const productsRef = collection(db, 'products');
-             const q = query(
-                 productsRef, 
-                 where('branchId', '==', destinationBranch.id), 
-                 where('name', '==', selectedProduct.name),
-                 where('isDeleted', '!=', true),
-                 limit(1)
-             );
-            
-            const existingProductSnap = await getDocs(q);
-            
-            if (existingProductSnap.empty) {
-                // Product does not exist, create it in the destination branch
-                const { id, stock, branchId, organizationId, ...productToCopy } = selectedProduct as any; 
-                const newProductRef = doc(collection(db, 'products'));
-                batch.set(newProductRef, {
-                    ...productToCopy,
-                    branchId: destinationBranch.id,
-                    organizationId: user.organizationId,
-                    isDeleted: false,
+            const productRef = doc(db, 'products', selectedProduct.id);
+            const currentBranchIds = selectedProduct.branchIds || [];
+            if (!currentBranchIds.includes(destinationBranch.id)) {
+                batch.update(productRef, {
+                    branchIds: [...currentBranchIds, destinationBranch.id]
                 });
-                destinationProductId = newProductRef.id;
-            } else {
-                // Product exists, use its ID for the stock entry
-                destinationProductId = existingProductSnap.docs[0].id;
             }
         }
-
 
         // Outgoing entry (from currentBranch)
         const outgoingEntry: Omit<StockEntry, 'id'> = {
@@ -112,7 +91,7 @@ export function StockMovementForm({ type, products, branches = [], onDone }: Sto
         // Incoming entry for transfers
         if (type === 'transfer' && destinationBranch) {
             const incomingEntry: Omit<StockEntry, 'id'> = {
-                productId: destinationProductId, // Use the correct product ID for the destination
+                productId: selectedProduct.id, 
                 productName: selectedProduct.name,
                 quantity: quantity,
                 type: 'transfer',

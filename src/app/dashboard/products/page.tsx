@@ -141,12 +141,13 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
 }
 
 
-function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product; suppliers: Supplier[]; onSave: (product: Omit<Product, 'id' | 'organizationId'>) => void; onDone: () => void }) {
+function ProductForm({ product, suppliers, branches, onSave, onDone }: { product?: Product; suppliers: Supplier[]; branches: Branch[]; onSave: (product: Omit<Product, 'id' | 'organizationId'>) => void; onDone: () => void }) {
+  const { currentBranch } = useAuth();
   const [formData, setFormData] = useState<Partial<Product>>(
     product || { 
         name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
         purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: '',
-        brand: '', model: '', isPerishable: false,
+        brand: '', model: '', isPerishable: false, branchIds: currentBranch ? [currentBranch.id] : []
     }
   );
   const [isUploading, setIsUploading] = useState(false);
@@ -161,9 +162,9 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
         setFormData(product || { 
             name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
             purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: '',
-            brand: '', model: '', isPerishable: false,
+            brand: '', model: '', isPerishable: false, branchIds: currentBranch ? [currentBranch.id] : []
         });
-    }, [product]);
+    }, [product, currentBranch]);
 
     useEffect(() => {
         const { purchasePrice = 0, marginValue = 0, marginType = 'percentage' } = formData;
@@ -274,6 +275,15 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
     toast({ title: "Código de barras lido com sucesso!"});
   }
 
+  const handleBranchSelect = (branchId: string) => {
+    setFormData(prev => {
+        const newIds = prev.branchIds?.includes(branchId)
+            ? prev.branchIds.filter(id => id !== branchId)
+            : [...(prev.branchIds || []), branchId];
+        return { ...prev, branchIds: newIds };
+    });
+};
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const supplier = suppliers.find(s => s.id === formData.supplierId);
@@ -360,6 +370,38 @@ function ProductForm({ product, suppliers, onSave, onDone }: { product?: Product
                     {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                 </SelectContent>
             </Select>
+        </div>
+
+         <div className="space-y-2">
+            <Label>Filiais</Label>
+            <Popover>
+                <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" className="w-full justify-between">
+                        {formData.branchIds?.length || 0} filial(is) selecionada(s)
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                    <Command>
+                        <CommandInput placeholder="Buscar filial..." />
+                        <CommandList>
+                            <CommandEmpty>Nenhuma filial encontrada.</CommandEmpty>
+                            <CommandGroup>
+                                {branches.map((branch) => (
+                                    <CommandItem
+                                        key={branch.id}
+                                        value={branch.name}
+                                        onSelect={() => handleBranchSelect(branch.id)}
+                                    >
+                                        <Check className={cn("mr-2 h-4 w-4", formData.branchIds?.includes(branch.id) ? "opacity-100" : "opacity-0")} />
+                                        {branch.name}
+                                    </CommandItem>
+                                ))}
+                            </CommandGroup>
+                        </CommandList>
+                    </Command>
+                </PopoverContent>
+            </Popover>
         </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -519,7 +561,7 @@ export default function ProductsPage() {
 
   const productsWithStock = useMemo(() => {
      if (!currentBranch) return [];
-     const productsToDisplay = allProducts.filter(p => !p.branchId || p.branchId === currentBranch.id).filter(p => !p.isDeleted);
+     const productsToDisplay = allProducts.filter(p => p.branchIds?.includes(currentBranch.id) && !p.isDeleted);
      
      const sortedProducts = [...productsToDisplay].sort((a,b) => {
         if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
@@ -561,7 +603,6 @@ export default function ProductsPage() {
       } else {
         await addDoc(collection(db, "products"), { 
             ...productData,
-            branchId: productData.branchId || undefined,
             organizationId: user.organizationId,
             isDeleted: false,
         });
@@ -620,7 +661,7 @@ export default function ProductsPage() {
           const productRef = doc(collection(db, "products"));
           batch.set(productRef, {
               ...product,
-              branchId: currentBranch.id,
+              branchIds: [currentBranch.id],
               organizationId: user.organizationId,
               isDeleted: false,
           });
@@ -737,30 +778,21 @@ export default function ProductsPage() {
         const productsToCopy = allProducts.filter(p => selectedProductIds.includes(p.id));
 
         const batch = writeBatch(db);
-        branchesToCopyTo.forEach(branchId => {
-            productsToCopy.forEach(p => {
-                const { id, stock, ...productData } = p as ProductWithStock;
-                const newProductData = {
-                    ...productData,
-                    branchId: branchId,
-                    organizationId: user.organizationId,
-                    isDeleted: false,
-                };
-                
-                const newProductRef = doc(collection(db, 'products'));
-                batch.set(newProductRef, newProductData);
-            });
+        productsToCopy.forEach(p => {
+             const existingBranchIds = p.branchIds || [];
+             const newBranchIds = [...new Set([...existingBranchIds, ...branchesToCopyTo])];
+             batch.update(doc(db, 'products', p.id), { branchIds: newBranchIds });
         });
 
         try {
             await batch.commit();
-            toast({ title: 'Produtos copiados com sucesso!' });
+            toast({ title: 'Produtos compartilhados com sucesso!' });
             setSelectedProductIds([]);
             setBranchesToCopyTo([]);
             setIsCopyProductsDialogOpen(false);
         } catch (error) {
             console.error("Error copying products:", error);
-            toast({ title: 'Erro ao copiar produtos', variant: 'destructive' });
+            toast({ title: 'Erro ao compartilhar produtos', variant: 'destructive' });
         } finally {
             setIsProcessingBulkAction(false);
         }
@@ -895,7 +927,7 @@ export default function ProductsPage() {
                                 Alterar Fornecedor
                             </DropdownMenuItem>
                              <DropdownMenuItem onClick={() => setIsCopyProductsDialogOpen(true)}>
-                                Copiar para Filial(is)
+                                Compartilhar com Filial(is)
                             </DropdownMenuItem>
                             {can.delete && <>
                                 <DropdownMenuSeparator />
@@ -961,7 +993,7 @@ export default function ProductsPage() {
                     <DialogHeader>
                         <DialogTitle>{editingProduct ? 'Editar Produto' : 'Adicionar Novo Produto'}</DialogTitle>
                     </DialogHeader>
-                    <ProductForm product={editingProduct} suppliers={suppliers} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
+                    <ProductForm product={editingProduct} suppliers={suppliers} branches={branches} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
                 </DialogContent>
             </Dialog>}
         </div>
@@ -1153,7 +1185,7 @@ export default function ProductsPage() {
         <Dialog open={isCopyProductsDialogOpen} onOpenChange={setIsCopyProductsDialogOpen}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Copiar Produtos para Outras Filiais</DialogTitle>
+                    <DialogTitle>Compartilhar Produtos com Outras Filiais</DialogTitle>
                 </DialogHeader>
                 <div className="py-4 space-y-2">
                     <Label>Filiais de Destino</Label>
@@ -1189,7 +1221,7 @@ export default function ProductsPage() {
                     <Button variant="ghost" onClick={() => setIsCopyProductsDialogOpen(false)}>Cancelar</Button>
                     <Button onClick={handleBulkCopy} disabled={isProcessingBulkAction || branchesToCopyTo.length === 0}>
                          {isProcessingBulkAction && <Loader2 className="mr-2 animate-spin"/>}
-                        Copiar Produtos
+                        Compartilhar Produtos
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -1198,3 +1230,4 @@ export default function ProductsPage() {
     </div>
   );
 }
+

@@ -193,7 +193,8 @@ export interface Product {
   category: string;
   price: number;
   imageUrl: string;
-  branchId?: string; // Now optional, for products specific to a branch
+  branchId: string; // Este campo não será mais usado para lógica de filial única
+  branchIds: string[]; // Novo campo para múltiplas filiais
   organizationId: string;
   lowStockThreshold: number;
   isSalable: boolean;

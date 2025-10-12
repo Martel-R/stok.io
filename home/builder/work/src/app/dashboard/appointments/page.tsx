@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, Timestamp, writeBatch, serverTimestamp, getDocs } from 'firebase/firestore';
 import type { Appointment, Customer, Service, User, AppointmentStatus, Attendance, AnamnesisAnswer, PermissionProfile, AttendanceItem, Product } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Calendar, Users, Briefcase, Check, ChevronsUpDown, Clock, RefreshCw, PlayCircle, AlertTriangle, ChevronLeft, ChevronRight, GripVertical } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Calendar, Users, Briefcase, Check, ChevronsUpDown, Clock, RefreshCw, PlayCircle, AlertTriangle, ChevronLeft, ChevronRight, GripVertical, List } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -28,6 +28,7 @@ import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { DndContext, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { Table, TableBody, TableCell, TableHeader, TableRow, TableHead } from '@/components/ui/table';
 
 
 function AppointmentForm({ 
@@ -260,7 +261,8 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
     const draggableStyle = transform ? {
         ...style,
         transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-    } : style;
+        zIndex: isDragging ? 50 : 10,
+    } : { ...style, zIndex: 10 };
     
     const customer = customers.find(c => c.id === appointment.customerId);
     const anamnesisDone = isAnamnesisComplete(customer);
@@ -274,7 +276,7 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
         <Card
             ref={setNodeRef}
             style={draggableStyle}
-            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden", isDragging && "opacity-50 z-50", appointment.status === 'pending-confirmation' && 'border-orange-500')}
+            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden", isDragging && "opacity-50", appointment.status === 'pending-confirmation' && 'border-orange-500')}
         >
              <div className="flex justify-between items-start gap-2 h-full">
                 <div 
@@ -401,7 +403,7 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                                                 onStartAttendance={onStartAttendance}
                                                 onReschedule={onReschedule}
                                                 onDelete={onDelete}
-                                                style={{ top: `${top}px`, height: `${height}px` }}
+                                                style={{ top: `${top}px`, minHeight: '5rem', height: `${height}px` }}
                                                 isDragging={activeAppointment?.id === app.id}
                                             />
                                         )
@@ -571,7 +573,7 @@ function MonthView({ appointments, date, setDate, setViewMode }: {
     appointments: Appointment[];
     date: Date;
     setDate: (d: Date) => void;
-    setViewMode: (v: 'day' | 'week' | 'month') => void;
+    setViewMode: (v: 'day' | 'week' | 'month' | 'list') => void;
 }) {
     return (
          <CalendarComponent
@@ -598,6 +600,81 @@ function MonthView({ appointments, date, setDate, setViewMode }: {
     )
 }
 
+function ListView({ appointments, onEdit, onStartAttendance, onReschedule, onDelete }: {
+    appointments: Appointment[];
+    onEdit: (app: Appointment) => void;
+    onStartAttendance: (app: Appointment) => void;
+    onReschedule: (app: Appointment) => void;
+    onDelete: (id: string) => void;
+}) {
+    const { user } = useAuth();
+    const can = useMemo(() => ({
+        edit: user?.enabledModules?.appointments?.edit ?? false,
+        delete: user?.enabledModules?.appointments?.delete ?? false,
+    }), [user]);
+
+    const sortedAppointments = useMemo(() => {
+        return [...appointments].sort((a, b) => b.start.getTime() - a.start.getTime());
+    }, [appointments]);
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Todos os Agendamentos</CardTitle>
+                <CardDescription>Uma lista completa de todos os agendamentos registrados.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Data</TableHead>
+                            <TableHead>Cliente</TableHead>
+                            <TableHead>Serviço</TableHead>
+                            <TableHead>Profissional</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {sortedAppointments.map(app => (
+                            <TableRow key={app.id}>
+                                <TableCell>
+                                    <div className="font-medium">{format(app.start, 'dd/MM/yyyy')}</div>
+                                    <div className="text-sm text-muted-foreground">{format(app.start, 'HH:mm')}</div>
+                                </TableCell>
+                                <TableCell>{app.customerName}</TableCell>
+                                <TableCell>{app.serviceName}</TableCell>
+                                <TableCell>{app.professionalName}</TableCell>
+                                <TableCell>{getStatusBadge(app.status)}</TableCell>
+                                <TableCell className="text-right">
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                                                <MoreHorizontal className="h-4 w-4" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                             {can.edit ? (
+                                                <DropdownMenuItem onClick={() => onStartAttendance(app)} disabled={app.status !== 'scheduled'}>
+                                                    <PlayCircle className="mr-2 h-4 w-4" />
+                                                    {app.attendanceId ? 'Ver Atendimento' : 'Iniciar Atendimento'}
+                                                </DropdownMenuItem>
+                                            ) : null}
+                                            {can.edit && <DropdownMenuItem onClick={() => onEdit(app)}>Editar</DropdownMenuItem>}
+                                            {can.edit && <DropdownMenuItem onClick={() => onReschedule(app)}>Reagendar</DropdownMenuItem>}
+                                            {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(app.id)}>Excluir</DropdownMenuItem>}
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+    );
+}
+
 export default function AppointmentsPage() {
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [customers, setCustomers] = useState<Customer[]>([]);
@@ -608,7 +685,7 @@ export default function AppointmentsPage() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingAppointment, setEditingAppointment] = useState<Partial<Appointment> | undefined>(undefined);
     const [currentDate, setCurrentDate] = useState<Date>(new Date());
-    const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
+    const [viewMode, setViewMode] = useState<'day' | 'week' | 'month' | 'list'>('day');
 
 
     const { toast } = useToast();
@@ -647,9 +724,9 @@ export default function AppointmentsPage() {
             const profilesQuery = query(collection(db, 'permissionProfiles'), where("organizationId", "==", user.organizationId), where("name", "==", "Profissional"));
             const profileSnap = await getDocs(profilesQuery);
 
-            const professionalProfile = profileSnap.docs.find(doc => doc.data().name === "Profissional");
-            if (professionalProfile) {
-                const professionalsQuery = query(collection(db, 'users'), where("organizationId", "==", user.organizationId), where("role", "==", professionalProfile.id), where("isDeleted", "!=", true));
+            if (!profileSnap.empty) {
+                const professionalProfileId = profileSnap.docs[0].id;
+                const professionalsQuery = query(collection(db, 'users'), where("organizationId", "==", user.organizationId), where("role", "==", professionalProfileId), where("isDeleted", "!=", true));
                 const unsubProfs = onSnapshot(professionalsQuery, snap => setProfessionals(snap.docs.map(d => ({id: d.id, ...d.data()}) as User)));
                 unsubscribers.push(unsubProfs);
             } else {
@@ -673,7 +750,7 @@ export default function AppointmentsPage() {
         
         try {
             if (editingAppointment?.id) {
-                await updateDoc(doc(db, "appointments", editingAppointment.id!), data);
+                await updateDoc(doc(db, "appointments", editingAppointment.id!), { ...data, isDeleted: false });
                 toast({ title: 'Agendamento atualizado!' });
             } else {
                 await addDoc(collection(db, "appointments"), { ...data, organizationId: user.organizationId, isDeleted: false });
@@ -800,13 +877,13 @@ export default function AppointmentsPage() {
     
      const handleDateNav = (direction: 'prev' | 'next') => {
         const amount = direction === 'prev' ? -1 : 1;
-        if (viewMode === 'day') setCurrentDate(d => addDays(d, amount));
+        if (viewMode === 'day' || viewMode === 'list') setCurrentDate(d => addDays(d, amount));
         if (viewMode === 'week') setCurrentDate(d => addDays(d, amount * 7));
         if (viewMode === 'month') setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() + amount, 1));
     };
 
     const currentTitle = useMemo(() => {
-        if (viewMode === 'day') return format(currentDate, 'PPP', { locale: ptBR });
+        if (viewMode === 'day' || viewMode === 'list') return format(currentDate, 'PPP', { locale: ptBR });
         if (viewMode === 'week') {
             const start = startOfWeek(currentDate, { locale: ptBR });
             const end = endOfWeek(currentDate, { locale: ptBR });
@@ -823,15 +900,20 @@ export default function AppointmentsPage() {
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                 <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="icon" onClick={() => handleDateNav('prev')}><ChevronLeft/></Button>
-                    <h2 className="text-xl font-bold w-48 text-center">{currentTitle}</h2>
-                    <Button variant="ghost" size="icon" onClick={() => handleDateNav('next')}><ChevronRight/></Button>
+                     {viewMode !== 'list' && (
+                        <>
+                            <Button variant="ghost" size="icon" onClick={() => handleDateNav('prev')}><ChevronLeft/></Button>
+                            <h2 className="text-xl font-bold w-48 text-center">{currentTitle}</h2>
+                            <Button variant="ghost" size="icon" onClick={() => handleDateNav('next')}><ChevronRight/></Button>
+                        </>
+                    )}
                 </div>
                  <div className="flex flex-wrap gap-2">
                     <ToggleGroup type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as any)}>
                         <ToggleGroupItem value="day">Dia</ToggleGroupItem>
                         <ToggleGroupItem value="week">Semana</ToggleGroupItem>
                         <ToggleGroupItem value="month">Mês</ToggleGroupItem>
+                        <ToggleGroupItem value="list">Lista</ToggleGroupItem>
                     </ToggleGroup>
                     {can.edit && (
                         <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
@@ -883,6 +965,13 @@ export default function AppointmentsPage() {
                         date={currentDate}
                         setDate={setCurrentDate}
                         setViewMode={setViewMode}
+                    />}
+                     {viewMode === 'list' && <ListView 
+                        appointments={appointments}
+                        onEdit={openEditDialog}
+                        onStartAttendance={handleStartAttendance}
+                        onReschedule={handleReschedule}
+                        onDelete={handleDelete}
                     />}
                 </>
             )}

@@ -644,7 +644,7 @@ export default function AppointmentsPage() {
         unsubscribers.push(onSnapshot(appointmentQuery, snap => setAppointments(snap.docs.map(d => convertAppointmentDate({id: d.id, ...d.data()})))));
 
         const fetchProfessionals = async () => {
-            const profilesQuery = query(collection(db, 'permissionProfiles'), where("organizationId", "==", user.organizationId));
+            const profilesQuery = query(collection(db, 'permissionProfiles'), where("organizationId", "==", user.organizationId), where("name", "==", "Profissional"));
             const profileSnap = await getDocs(profilesQuery);
 
             const professionalProfile = profileSnap.docs.find(doc => doc.data().name === "Profissional");

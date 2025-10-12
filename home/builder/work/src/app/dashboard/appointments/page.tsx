@@ -107,12 +107,14 @@ function AppointmentForm({
 
         const customer = customers.find(c => c.id === formData.customerId);
         const professional = professionals.find(p => p.id === formData.professionalId);
+        const service = services.find(s => s.id === formData.serviceId);
 
         const finalData = {
             ...formData,
             customerName: customer?.name,
             professionalName: professional?.name,
-            end: addMinutes(formData.start, selectedService?.duration || 0),
+            serviceName: service?.name,
+            end: addMinutes(formData.start, service?.duration || 0),
             branchId: currentBranch?.id
         }
         onSave(finalData as Partial<Appointment>);
@@ -258,8 +260,7 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
     const draggableStyle = transform ? {
         ...style,
         transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-        zIndex: isDragging ? 50 : 10,
-    } : { ...style, zIndex: 10 };
+    } : style;
     
     const customer = customers.find(c => c.id === appointment.customerId);
     const anamnesisDone = isAnamnesisComplete(customer);
@@ -273,7 +274,7 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
         <Card
             ref={setNodeRef}
             style={draggableStyle}
-            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden", isDragging && "opacity-50")}
+            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden", isDragging && "opacity-50 z-50", appointment.status === 'pending-confirmation' && 'border-orange-500')}
         >
              <div className="flex justify-between items-start gap-2 h-full">
                 <div 
@@ -400,7 +401,7 @@ function DayView({ appointments, date, onEdit, onStartAttendance, onReschedule, 
                                                 onStartAttendance={onStartAttendance}
                                                 onReschedule={onReschedule}
                                                 onDelete={onDelete}
-                                                style={{ top: `${top}px`, minHeight: '5rem', height: `${height}px` }}
+                                                style={{ top: `${top}px`, height: `${height}px` }}
                                                 isDragging={activeAppointment?.id === app.id}
                                             />
                                         )
@@ -537,7 +538,7 @@ function DraggableWeekAppointment({ appointment, onEdit, onStartAttendance, onRe
     }), [user]);
 
     return (
-        <Card ref={setNodeRef} style={style} {...listeners} {...attributes} className={cn("p-2 cursor-grab", isDragging && 'opacity-50')}>
+        <Card ref={setNodeRef} style={style} {...listeners} {...attributes} className={cn("p-2 cursor-grab", isDragging && 'opacity-50', appointment.status === 'pending-confirmation' && 'border-orange-500')}>
              <div onClick={() => onEdit(appointment)}>
                 <p className="font-bold text-xs truncate">{appointment.serviceName}</p>
                 <p className="text-xs text-muted-foreground truncate">{appointment.customerName}</p>
@@ -643,12 +644,12 @@ export default function AppointmentsPage() {
         unsubscribers.push(onSnapshot(appointmentQuery, snap => setAppointments(snap.docs.map(d => convertAppointmentDate({id: d.id, ...d.data()})))));
 
         const fetchProfessionals = async () => {
-            const profilesQuery = query(collection(db, 'permissionProfiles'), where("organizationId", "==", user.organizationId), where("name", "==", "Profissional"));
+            const profilesQuery = query(collection(db, 'permissionProfiles'), where("organizationId", "==", user.organizationId));
             const profileSnap = await getDocs(profilesQuery);
 
-            if (!profileSnap.empty) {
-                const professionalProfileId = profileSnap.docs[0].id;
-                const professionalsQuery = query(collection(db, 'users'), where("organizationId", "==", user.organizationId), where("role", "==", professionalProfileId));
+            const professionalProfile = profileSnap.docs.find(doc => doc.data().name === "Profissional");
+            if (professionalProfile) {
+                const professionalsQuery = query(collection(db, 'users'), where("organizationId", "==", user.organizationId), where("role", "==", professionalProfile.id), where("isDeleted", "!=", true));
                 const unsubProfs = onSnapshot(professionalsQuery, snap => setProfessionals(snap.docs.map(d => ({id: d.id, ...d.data()}) as User)));
                 unsubscribers.push(unsubProfs);
             } else {
@@ -675,7 +676,7 @@ export default function AppointmentsPage() {
                 await updateDoc(doc(db, "appointments", editingAppointment.id!), data);
                 toast({ title: 'Agendamento atualizado!' });
             } else {
-                await addDoc(collection(db, "appointments"), { ...data, organizationId: user.organizationId });
+                await addDoc(collection(db, "appointments"), { ...data, organizationId: user.organizationId, isDeleted: false });
                 toast({ title: 'Agendamento criado!' });
             }
             setIsFormOpen(false);
@@ -702,7 +703,7 @@ export default function AppointmentsPage() {
         const newEnd = addMinutes(newStart, duration);
 
         try {
-            await updateDoc(doc(db, "appointments", id), { start: newStart, end: newEnd });
+            await updateDoc(doc(db, "appointments", id), { start: newStart, end: newEnd, status: 'scheduled' });
             toast({ title: 'Agendamento reagendado!' });
         } catch (error) {
             toast({ title: 'Erro ao reagendar', variant: 'destructive' });

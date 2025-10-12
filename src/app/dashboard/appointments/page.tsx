@@ -273,7 +273,7 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
         <Card
             ref={setNodeRef}
             style={draggableStyle}
-            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden", isDragging && "opacity-50")}
+            className={cn("absolute w-[calc(100%-0.5rem)] ml-2 p-3 overflow-hidden", isDragging && "opacity-50", appointment.status === 'pending-confirmation' && 'border-orange-500')}
         >
              <div className="flex justify-between items-start gap-2 h-full">
                 <div 
@@ -537,7 +537,7 @@ function DraggableWeekAppointment({ appointment, onEdit, onStartAttendance, onRe
     }), [user]);
 
     return (
-        <Card ref={setNodeRef} style={style} {...listeners} {...attributes} className={cn("p-2 cursor-grab", isDragging && 'opacity-50')}>
+        <Card ref={setNodeRef} style={style} {...listeners} {...attributes} className={cn("p-2 cursor-grab", isDragging && 'opacity-50', appointment.status === 'pending-confirmation' && 'border-orange-500')}>
              <div onClick={() => onEdit(appointment)}>
                 <p className="font-bold text-xs truncate">{appointment.serviceName}</p>
                 <p className="text-xs text-muted-foreground truncate">{appointment.customerName}</p>
@@ -672,7 +672,7 @@ export default function AppointmentsPage() {
         
         try {
             if (editingAppointment?.id) {
-                await updateDoc(doc(db, "appointments", editingAppointment.id), data);
+                await updateDoc(doc(db, "appointments", editingAppointment.id!), data);
                 toast({ title: 'Agendamento atualizado!' });
             } else {
                 await addDoc(collection(db, "appointments"), { ...data, organizationId: user.organizationId });
@@ -702,7 +702,7 @@ export default function AppointmentsPage() {
         const newEnd = addMinutes(newStart, duration);
 
         try {
-            await updateDoc(doc(db, "appointments", id), { start: newStart, end: newEnd });
+            await updateDoc(doc(db, "appointments", id), { start: newStart, end: newEnd, status: 'scheduled' });
             toast({ title: 'Agendamento reagendado!' });
         } catch (error) {
             toast({ title: 'Erro ao reagendar', variant: 'destructive' });

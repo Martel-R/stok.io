@@ -520,6 +520,8 @@ export default function ProductsPage() {
   const [isProcessingBulkAction, setIsProcessingBulkAction] = useState(false);
   const [isChangeSupplierDialogOpen, setIsChangeSupplierDialogOpen] = useState(false);
   const [newSupplierId, setNewSupplierId] = useState("");
+  const [isChangePriceDialogOpen, setIsChangePriceDialogOpen] = useState(false);
+  const [newPrice, setNewPrice] = useState<number | ''>('');
 
 
   const can = useMemo(() => ({
@@ -873,6 +875,29 @@ export default function ProductsPage() {
         }
     };
 
+    const handleBulkChangePrice = async () => {
+        if (selectedProductIds.length === 0 || newPrice === '' || newPrice < 0) {
+            toast({ title: 'Nenhum produto selecionado ou preço inválido', variant: 'destructive' });
+            return;
+        }
+        setIsProcessingBulkAction(true);
+        const batch = writeBatch(db);
+        selectedProductIds.forEach(id => {
+            batch.update(doc(db, 'products', id), { price: newPrice });
+        });
+        try {
+            await batch.commit();
+            toast({ title: 'Preço atualizado com sucesso!' });
+            setSelectedProductIds([]);
+            setNewPrice('');
+            setIsChangePriceDialogOpen(false);
+        } catch (error) {
+            toast({ title: 'Erro ao atualizar o preço', variant: 'destructive' });
+        } finally {
+            setIsProcessingBulkAction(false);
+        }
+    };
+
 
   if (!currentBranch && !authLoading) {
     return (
@@ -925,6 +950,9 @@ export default function ProductsPage() {
                             </DropdownMenuItem>
                              <DropdownMenuItem onClick={() => setIsChangeSupplierDialogOpen(true)}>
                                 Alterar Fornecedor
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setIsChangePriceDialogOpen(true)}>
+                                Alterar Preço de Venda
                             </DropdownMenuItem>
                              <DropdownMenuItem onClick={() => setIsCopyProductsDialogOpen(true)}>
                                 Compartilhar com Filial(is)
@@ -1222,6 +1250,33 @@ export default function ProductsPage() {
                     <Button onClick={handleBulkCopy} disabled={isProcessingBulkAction || branchesToCopyTo.length === 0}>
                          {isProcessingBulkAction && <Loader2 className="mr-2 animate-spin"/>}
                         Compartilhar Produtos
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        {/* Dialog for Changing Price */}
+        <Dialog open={isChangePriceDialogOpen} onOpenChange={setIsChangePriceDialogOpen}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Alterar Preço de Venda em Lote</DialogTitle>
+                </DialogHeader>
+                <div className="py-4">
+                    <Label htmlFor="newPrice">Novo Preço de Venda</Label>
+                    <Input
+                        id="newPrice"
+                        type="number"
+                        value={newPrice}
+                        onChange={(e) => setNewPrice(parseFloat(e.target.value) || '')}
+                        placeholder="Ex: 99.90"
+                        step="0.01"
+                    />
+                </div>
+                <DialogFooter>
+                    <Button variant="ghost" onClick={() => setIsChangePriceDialogOpen(false)}>Cancelar</Button>
+                    <Button onClick={handleBulkChangePrice} disabled={isProcessingBulkAction}>
+                        {isProcessingBulkAction && <Loader2 className="mr-2 animate-spin"/>}
+                        Alterar Preço
                     </Button>
                 </DialogFooter>
             </DialogContent>

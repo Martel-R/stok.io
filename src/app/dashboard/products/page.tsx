@@ -33,6 +33,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { logUserActivity } from '@/lib/logging';
+import CurrencyInput from 'react-currency-input-field';
 
 
 type ProductWithStock = Product & { stock: number };
@@ -222,22 +223,7 @@ function ProductForm({ product, suppliers, branches, onSave, onDone }: { product
     const numValue = parseFloat(value);
     
     setFormData(prev => {
-        const newForm = {...prev, [name]: type === 'number' ? (isNaN(numValue) ? 0 : numValue) : value};
-        
-        if (name === 'price') {
-             const { purchasePrice = 0 } = newForm;
-             if (purchasePrice > 0) {
-                 const finalPrice = isNaN(numValue) ? 0 : numValue;
-                 const diff = finalPrice - purchasePrice;
-                 if (newForm.marginType === 'percentage') {
-                     newForm.marginValue = (diff / purchasePrice) * 100;
-                 } else {
-                     newForm.marginValue = diff;
-                 }
-             }
-        }
-
-        return newForm;
+        return {...prev, [name]: type === 'number' ? (isNaN(numValue) ? 0 : numValue) : value};
     });
   };
 
@@ -354,7 +340,33 @@ function ProductForm({ product, suppliers, branches, onSave, onDone }: { product
             </div>
              <div>
                 <Label htmlFor="price">Preço de Venda (Calculado)</Label>
-                <Input id="price" name="price" type="number" step="0.01" value={formData.price || ''} onChange={handleChange} required />
+                <CurrencyInput
+                    id="price"
+                    name="price"
+                    required
+                    value={formData.price}
+                    onValueChange={(value) => {
+                        const numValue = parseFloat(value || '0');
+                        setFormData(prev => {
+                            const newForm = {...prev, price: numValue};
+                            const { purchasePrice = 0 } = newForm;
+                            if (purchasePrice > 0) {
+                                const diff = numValue - purchasePrice;
+                                if (newForm.marginType === 'percentage') {
+                                    newForm.marginValue = (diff / purchasePrice) * 100;
+                                } else {
+                                    newForm.marginValue = diff;
+                                }
+                            }
+                            return newForm;
+                        });
+                    }}
+                    prefix="R$ "
+                    decimalSeparator=","
+                    groupSeparator="."
+                    decimalsLimit={2}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
              </div>
         </CardContent>
       </Card>

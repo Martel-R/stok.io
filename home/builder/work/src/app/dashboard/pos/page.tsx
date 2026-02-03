@@ -918,7 +918,7 @@ export default function POSPage() {
       setCart(cart => cart.filter(item => !(item.id === itemId && item.itemType === itemType)));
   }
 
-  const { subtotal, totalDiscount, grandTotal } = useMemo(() => {
+  const { subtotal, totalDiscount, grandTotal, tax } = useMemo(() => {
     let currentSubtotal = 0;
     let currentTotalDiscount = 0;
 
@@ -961,7 +961,7 @@ export default function POSPage() {
     const tax = currentSubtotal * ((currentBranch?.taxRate || 0) / 100);
     const finalTotal = currentSubtotal + tax;
     
-    return { subtotal: currentSubtotal, totalDiscount: currentTotalDiscount, grandTotal: finalTotal };
+    return { subtotal: currentSubtotal, totalDiscount: currentTotalDiscount, grandTotal: finalTotal, tax };
   }, [cart, currentBranch?.taxRate, paymentConditions]);
   
   const handleCheckout = async (payments: PaymentDetail[], attendanceId?: string, customerId?: string) => {

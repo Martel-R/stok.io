@@ -63,7 +63,7 @@ export default function AssistantPage() {
 
       // Appointments
       unsubs.push(onSnapshot(query(collection(db, 'appointments'), where('branchId', '==', branchId)), (s) => {
-          const data = s.docs.map(d => ({...d.data(), start: convertDate(d.data().start)}));
+          const data = s.docs.map(d => ({...(d.data() as Appointment), start: convertDate(d.data().start)}));
           setAppointmentsContext(JSON.stringify(data.map(({customerName, serviceName, professionalName, start, status}) => ({
               cliente: customerName, 
               servico: serviceName,
@@ -92,13 +92,13 @@ export default function AssistantPage() {
       
       // Sales
       unsubs.push(onSnapshot(query(collection(db, 'sales'), where('branchId', '==', branchId)), (s) => {
-          const data = s.docs.map(d => ({...d.data(), date: convertDate(d.data().date)}));
+          const data = s.docs.map(d => ({...(d.data() as Sale), date: convertDate(d.data().date)}));
            setSalesContext(JSON.stringify(data.map(({ cashier, total, date, items, payments }) => ({
                vendedor: cashier,
                total: total,
                data: format(date, 'dd/MM/yyyy HH:mm'),
                itens: items.map((i: any) => i.name).join(', '),
-               pagamento: payments.map((p: any) => p.conditionName).join(', ')
+               pagamento: (payments || []).map((p: any) => p.conditionName).join(', ')
            }))));
       }));
       

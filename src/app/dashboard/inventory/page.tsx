@@ -67,7 +67,7 @@ export default function InventoryPage() {
     const canManageStock = useMemo(() => user?.enabledModules?.inventory?.edit ?? false, [user]);
 
     useEffect(() => {
-        if (authLoading || !currentBranch) {
+        if (authLoading || !currentBranch || !user?.organizationId) {
             setLoading(true);
             return;
         }

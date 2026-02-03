@@ -327,7 +327,7 @@ export default function CombosPage() {
     });
 
     const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
-        const allProducts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Product[]);
+        const allProducts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
         const filtered = allProducts.filter(p => 
             !p.isDeleted && (
                 (p.branchIds && p.branchIds.includes(currentBranch.id)) || 

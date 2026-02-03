@@ -177,6 +177,7 @@ export default function NfeProcessingPage() {
                         cfop: prod.cfop,
                         unitOfMeasure: prod.unitOfMeasure,
                         branchId: currentBranch.id,
+                        branchIds: [currentBranch.id],
                         organizationId: user.organizationId,
                         isDeleted: false,
                         imageUrl: 'https://placehold.co/400x400.png',
@@ -188,7 +189,7 @@ export default function NfeProcessingPage() {
                      const existingProduct = stokioProducts.find(p => p.id === productId);
                      productName = existingProduct?.name || prod.name;
                      const productRef = doc(db, 'products', productId);
-                     batch.update(productRef, { purchasePrice: prod.finalPurchasePrice });
+                     batch.update(productRef, { purchasePrice: prod.finalPurchasePrice, price: prod.finalSalePrice });
                 }
 
                 if (!productId) continue;

@@ -106,6 +106,7 @@ export function ImportProductsDialog({
                     code: entry.code || '',
                     marginValue: purchasePrice > 0 ? ((price - purchasePrice) / purchasePrice) * 100 : 0,
                     marginType: 'percentage',
+                    branchIds: [], // Will be set during actual import
                  });
             }
         }

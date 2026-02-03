@@ -43,7 +43,7 @@ export default function CustomerHistoryPage() {
 
             // Fetch Attendances
             const attendanceQuery = query(collection(db, 'attendances'), where('customerId', '==', customerId));
-            const attendanceSnap = await getDocs(attendanceQuery, { source: 'server' });
+            const attendanceSnap = await getDocs(attendanceQuery);
             const attendances = attendanceSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Attendance));
             
             const attendanceIds = attendances.map(a => a.id);
@@ -51,7 +51,7 @@ export default function CustomerHistoryPage() {
             // Fetch related sales
             if (attendanceIds.length > 0) {
                  const salesQuery = query(collection(db, 'sales'), where('attendanceId', 'in', attendanceIds));
-                 const salesSnap = await getDocs(salesQuery, { source: 'server' });
+                 const salesSnap = await getDocs(salesQuery);
                  const salesData = salesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale));
 
                  attendances.forEach(att => {

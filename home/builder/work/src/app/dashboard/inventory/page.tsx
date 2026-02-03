@@ -225,7 +225,7 @@ export default function InventoryPage() {
                 <h1 className="text-3xl font-bold">Gestão de Estoque</h1>
                 {canManageStock && (
                      <div className="flex flex-wrap gap-2">
-                        <NfeImportDialog products={products} />
+                        <NfeImportDialog />
                         <Button variant="outline" onClick={() => handleOpenForm('entry')}><PlusCircle className="mr-2" />Entrada</Button>
                         <Button variant="outline" onClick={() => handleOpenForm('adjustment')}><MinusCircle className="mr-2" />Saída</Button>
                         <Button variant="outline" onClick={() => handleOpenForm('transfer')} disabled={branches.length <= 1}><ArrowRightLeft className="mr-2" />Transferir</Button>

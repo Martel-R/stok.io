@@ -842,7 +842,7 @@ function TopSellingProductsReport() {
                     });
                 } else if (item.type === 'kit' && item.chosenProducts) {
                     item.chosenProducts.forEach((p: any) => {
-                         const existing = productSales.get(p.id) || { name: p.name, salesContext: [] };
+                         const existing = productSales.get(p.id) || { name: p.name, salesContext: [] as string[] };
                          existing.salesContext.push(`Kit: ${item.name}`);
                          productSales.set(p.id, existing);
                     });

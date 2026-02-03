@@ -595,7 +595,7 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
 
 
 function PaymentConditionForm({ condition, onSave, onDone }: { condition?: PaymentCondition, onSave: (data: Partial<PaymentCondition>) => void, onDone: () => void }) {
-    const [formData, setFormData] = useState(
+    const [formData, setFormData] = useState<Partial<PaymentCondition>>(
         condition || { name: '', type: 'credit', fee: 0, feeType: 'percentage', maxInstallments: 12, isDeleted: false }
     );
     

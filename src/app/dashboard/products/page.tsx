@@ -710,7 +710,7 @@ export default function ProductsPage() {
     await handleSave(newProductData);
   }
 
-  const handleImport = async (importedData: { product: Omit<Product, 'id' | 'organizationId'>, stock: number }[]) => {
+  const handleImport = async (importedData: { product: Omit<Product, 'id' | 'organizationId' | 'branchId'>, stock: number }[]) => {
       if (!currentBranch || !user?.organizationId) {
           toast({ title: 'Nenhuma filial selecionada', variant: 'destructive' });
           return;

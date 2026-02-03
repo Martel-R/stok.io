@@ -25,9 +25,6 @@ const auth = getAuth(app);
 // Configure Firestore with modern cache settings
 const db = initializeFirestore(app, {
   ignoreUndefinedProperties: true,
-  cache: typeof window !== 'undefined' 
-    ? persistentLocalCache({}) 
-    : memoryLocalCache({}),
 });
 
 const storage = getStorage(app);

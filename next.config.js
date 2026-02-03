@@ -22,6 +22,23 @@ const nextConfig = {
       }
     ],
   },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      // Don't bundle these on the client
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+        child_process: false,
+        performance: false,
+        'require-in-the-middle': false,
+        '@opentelemetry/exporter-jaeger': false,
+        '@genkit-ai/firebase': false,
+      };
+    }
+    return config;
+  },
 };
 
 module.exports = nextConfig;

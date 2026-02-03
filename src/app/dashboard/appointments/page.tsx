@@ -250,10 +250,6 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
         id: appointment.id,
         data: appointment,
         disabled: user?.enabledModules?.appointments?.edit === false,
-        activationConstraint: {
-          delay: 250,
-          tolerance: 5,
-        },
     });
     
     const draggableStyle = transform ? {
@@ -524,10 +520,6 @@ function DraggableWeekAppointment({ appointment, onEdit, onStartAttendance, onRe
         id: appointment.id,
         data: appointment,
         disabled: disabled,
-        activationConstraint: {
-          delay: 250,
-          tolerance: 5,
-        },
     });
 
     const style = transform && isDragging ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 10 } : undefined;

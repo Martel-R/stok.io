@@ -86,7 +86,7 @@ function ServiceForm({ service, professionals, products, onSave, onDone }: {
         }));
     };
     
-    const handleSubmit = (e: React.Event<HTMLFormElement>) => {
+    const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         onSave(formData);
         onDone();

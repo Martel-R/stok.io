@@ -100,6 +100,7 @@ export interface Customer {
     address: string;
     isActive: boolean;
     organizationId: string;
+    branchId?: string; // Added for portal requests
     anamnesisAnswers?: AnamnesisAnswer[];
     isDeleted?: boolean;
 }
@@ -398,6 +399,7 @@ export interface Organization {
     enabledModules: EnabledModules;
     branding?: BrandingSettings;
     subscription?: Subscription;
+    evolutionApiConfig?: EvolutionApiConfig;
 }
 
 export interface Expense {
@@ -427,4 +429,64 @@ export interface PricingPlan {
     maxUsers: number;
     isFeatured?: boolean;
     isDeleted?: boolean;
+}
+
+export type FormFieldType = 'text' | 'number' | 'date' | 'select' | 'textarea' | 'checkbox';
+
+export interface FormField {
+    id: string;
+    label: string;
+    type: FormFieldType;
+    required: boolean;
+    options?: string[];
+    placeholder?: string;
+    order: number;
+}
+
+export interface FormTemplate {
+    id: string;
+    name: string;
+    organizationId: string;
+    fields: FormField[];
+    isDeleted?: boolean;
+}
+
+export interface ClinicalRecord {
+    id: string;
+    customerId: string;
+    customerName: string;
+    professionalId: string;
+    professionalName: string;
+    date: any; // Timestamp
+    templateId: string;
+    templateName: string;
+    answers: Record<string, any>;
+    organizationId: string;
+    branchId: string;
+    isDeleted?: boolean;
+}
+
+export type CustomerFormFieldType = 'text' | 'number' | 'date' | 'select' | 'textarea' | 'checkbox';
+
+export interface CustomerFormField {
+    id: string;
+    label: string;
+    type: CustomerFormFieldType;
+    required: boolean;
+    options?: string[];
+    placeholder?: string;
+    order: number;
+}
+
+export interface CustomerFormTemplate {
+    id: string;
+    organizationId: string;
+    fields: CustomerFormField[];
+}
+
+export interface EvolutionApiConfig {
+    enabled: boolean;
+    apiUrl: string;
+    apiKey: string;
+    instanceName: string;
 }

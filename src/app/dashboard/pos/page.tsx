@@ -997,8 +997,9 @@ export default function POSPage() {
         const saleItems = cart.map(item => {
             const baseItem: any = { id: item.id, name: item.name, quantity: item.quantity, type: item.itemType };
             if (item.itemType === 'product' || item.itemType === 'service') {
-                baseItem.price = item.price;
-                baseItem.total = item.total;
+                const price = (item as any).price || 0;
+                baseItem.price = price;
+                baseItem.total = price * item.quantity;
             }
             if (item.itemType === 'kit') {
                 baseItem.chosenProducts = item.chosenProducts.map(p => ({id: p.id, name: p.name, price: p.price}));

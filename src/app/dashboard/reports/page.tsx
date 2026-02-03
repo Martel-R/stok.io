@@ -831,12 +831,12 @@ function TopSellingProductsReport() {
         filteredSales.forEach(sale => {
             sale.items.forEach((item: any) => {
                  if (item.type === 'product') {
-                    const existing = productSales.get(item.id) || { name: item.name, salesContext: [] };
+                    const existing = productSales.get(item.id) || { name: item.name, salesContext: [] as string[] };
                     existing.salesContext.push('Individual');
                     productSales.set(item.id, existing);
                 } else if (item.type === 'combo' && item.products) {
                     item.products.forEach((p: any) => {
-                         const existing = productSales.get(p.productId) || { name: p.productName, salesContext: [] };
+                         const existing = productSales.get(p.productId) || { name: p.productName, salesContext: [] as string[] };
                          existing.salesContext.push(`Combo: ${item.name}`);
                          productSales.set(p.productId, existing);
                     });

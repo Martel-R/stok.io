@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, updateDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
 import type { Customer, AnamnesisQuestion, AnamnesisAnswer } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -41,7 +41,7 @@ export default function AnamnesisPage() {
             setQuestions(questionData);
 
             // Fetch customer data to get existing answers
-            const customerRef = doc(db, 'customers', user.customerId);
+            const customerRef = doc(db, 'customers', user.customerId as string);
             const customerSnap = await getDoc(customerRef);
             if (customerSnap.exists()) {
                 const customerData = customerSnap.data() as Customer;

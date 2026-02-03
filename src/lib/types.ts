@@ -25,6 +25,7 @@ export interface EnabledModules {
     expenses: ModulePermissions;
     backup: ModulePermissions;
     subscription: ModulePermissions;
+    chat?: ModulePermissions;
 }
 
 export interface PermissionProfile {
@@ -431,7 +432,7 @@ export interface PricingPlan {
     isDeleted?: boolean;
 }
 
-export type FormFieldType = 'text' | 'number' | 'date' | 'select' | 'textarea' | 'checkbox';
+export type FormFieldType = 'text' | 'number' | 'date' | 'select' | 'textarea' | 'checkbox' | 'radio';
 
 export interface FormField {
     id: string;
@@ -463,10 +464,11 @@ export interface ClinicalRecord {
     answers: Record<string, any>;
     organizationId: string;
     branchId: string;
+    status?: string; // Added status
     isDeleted?: boolean;
 }
 
-export type CustomerFormFieldType = 'text' | 'number' | 'date' | 'select' | 'textarea' | 'checkbox';
+export type CustomerFormFieldType = 'text' | 'number' | 'date' | 'select' | 'textarea' | 'checkbox' | 'radio';
 
 export interface CustomerFormField {
     id: string;
@@ -480,6 +482,7 @@ export interface CustomerFormField {
 
 export interface CustomerFormTemplate {
     id: string;
+    name?: string; // Added name
     organizationId: string;
     fields: CustomerFormField[];
 }
@@ -489,4 +492,5 @@ export interface EvolutionApiConfig {
     apiUrl: string;
     apiKey: string;
     instanceName: string;
+    endpoint?: string;
 }

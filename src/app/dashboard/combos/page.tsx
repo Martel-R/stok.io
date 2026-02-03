@@ -307,22 +307,34 @@ export default function CombosPage() {
     }
     
     const combosRef = collection(db, 'combos');
-    const qCombos = query(combosRef, where("branchId", "==", currentBranch.id), where("isDeleted", "!=", true));
+    const qCombos = query(combosRef, where("organizationId", "==", user.organizationId));
 
     const productsRef = collection(db, 'products');
-    const qProducts = query(productsRef, where("branchId", "==", currentBranch.id));
+    const qProducts = query(productsRef, where("organizationId", "==", user.organizationId));
     
     const conditionsQuery = query(collection(db, 'paymentConditions'), where("organizationId", "==", user.organizationId));
 
     const unsubscribeCombos = onSnapshot(qCombos, (snapshot) => {
-      const combosData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Combo[];
-      setCombos(combosData);
+      const allCombos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Combo[];
+      const filtered = allCombos.filter(c => 
+          !c.isDeleted && (
+              (c.branchId === currentBranch.id) || 
+              ((c as any).branchIds && (c as any).branchIds.includes(currentBranch.id))
+          )
+      );
+      setCombos(filtered);
       setLoading(false);
     });
 
     const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
-        const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Product[]);
-        setProducts(productsData);
+        const allProducts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Product[]);
+        const filtered = allProducts.filter(p => 
+            !p.isDeleted && (
+                (p.branchIds && p.branchIds.includes(currentBranch.id)) || 
+                (p.branchId === currentBranch.id)
+            )
+        );
+        setProducts(filtered);
     });
     
     const unsubscribeConditions = onSnapshot(conditionsQuery, (snapshot) => {
@@ -355,6 +367,7 @@ export default function CombosPage() {
         await addDoc(collection(db, "combos"), { 
             ...comboData, 
             branchId: currentBranch.id,
+            branchIds: [currentBranch.id], // Future proof
             organizationId: user.organizationId,
             isDeleted: false,
         });

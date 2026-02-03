@@ -522,6 +522,7 @@ export default function ProductsPage() {
   const { toast } = useToast();
   const { user, currentBranch, branches, loading: authLoading } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortConfig, setSortConfig] = useState<{ key: keyof ProductWithStock; direction: 'asc' | 'desc' } | null>(null);
   
   const [isChangeCategoryDialogOpen, setIsChangeCategoryDialogOpen] = useState(false);
   const [newCategory, setNewCategory] = useState("");
@@ -546,14 +547,27 @@ export default function ProductsPage() {
         setLoading(true);
         return;
     }
+
+    if (!currentBranch) {
+        setAllProducts([]);
+        setAllStockEntries([]);
+        setLoading(false);
+        return;
+    }
     
     const productsQuery = query(collection(db, 'products'), where("organizationId", "==", user.organizationId));
-    const stockEntriesQuery = query(collection(db, 'stockEntries'), where('organizationId', '==', user.organizationId));
+    const stockEntriesQuery = query(collection(db, 'stockEntries'), where('organizationId', '==', user.organizationId), where('branchId', '==', currentBranch.id));
     const suppliersQuery = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId), where("isDeleted", "!=", true));
 
+    setLoading(true);
     const unsubs = [
         onSnapshot(productsQuery, snap => {
-            setAllProducts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+            const products = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+            const filtered = products.filter(p => 
+                (p.branchIds && p.branchIds.includes(currentBranch.id)) || 
+                (p.branchId === currentBranch.id)
+            );
+            setAllProducts(filtered);
             setLoading(false);
         }, err => {
             console.error("Error fetching products:", err);
@@ -570,12 +584,11 @@ export default function ProductsPage() {
     return () => {
       unsubs.forEach(unsub => unsub());
     };
-  }, [authLoading, user]);
+  }, [authLoading, user, currentBranch]);
 
 
   const productsWithStock = useMemo(() => {
-     if (!currentBranch) return [];
-     const productsToDisplay = allProducts.filter(p => p.branchIds?.includes(currentBranch.id) && !p.isDeleted);
+     const productsToDisplay = allProducts.filter(p => !p.isDeleted);
      
      const sortedProducts = [...productsToDisplay].sort((a,b) => {
         if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
@@ -586,21 +599,50 @@ export default function ProductsPage() {
 
     return sortedProducts.map(product => {
         const stock = allStockEntries
-            .filter(e => e.productId === product.id && e.branchId === currentBranch.id)
+            .filter(e => e.productId === product.id)
             .reduce((sum, e) => sum + (Number(e.quantity) || 0), 0);
         return { ...product, stock };
     });
-  }, [allProducts, allStockEntries, currentBranch]);
+  }, [allProducts, allStockEntries]);
 
   const filteredProducts = useMemo(() => {
-    if (!searchQuery) {
-        return productsWithStock;
+    let result = productsWithStock;
+    
+    if (searchQuery) {
+        result = result.filter(product => 
+            product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            product.category.toLowerCase().includes(searchQuery.toLowerCase())
+        );
     }
-    return productsWithStock.filter(product => 
-        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.category.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [productsWithStock, searchQuery]);
+
+    if (sortConfig) {
+        result = [...result].sort((a, b) => {
+            const aValue = a[sortConfig.key];
+            const bValue = b[sortConfig.key];
+
+            if (aValue === undefined || aValue === null) return 1;
+            if (bValue === undefined || bValue === null) return -1;
+
+            if (aValue < bValue) {
+                return sortConfig.direction === 'asc' ? -1 : 1;
+            }
+            if (aValue > bValue) {
+                return sortConfig.direction === 'asc' ? 1 : -1;
+            }
+            return 0;
+        });
+    }
+
+    return result;
+  }, [productsWithStock, searchQuery, sortConfig]);
+
+  const handleSort = (key: keyof ProductWithStock) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+        direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
 
 
   const handleSave = async (productData: Omit<Product, 'id' | 'organizationId'>) => {
@@ -609,14 +651,18 @@ export default function ProductsPage() {
         return;
     }
     const action = editingProduct?.id ? 'product_updated' : 'product_created';
+    const finalProductData = {
+        ...productData,
+        branchId: productData.branchIds?.[0] || currentBranch?.id || '', // Backward compatibility
+    };
     try {
       if (editingProduct?.id) {
         const productRef = doc(db, "products", editingProduct.id);
-        await updateDoc(productRef, productData);
+        await updateDoc(productRef, finalProductData);
         toast({ title: 'Produto atualizado!' });
       } else {
         await addDoc(collection(db, "products"), { 
-            ...productData,
+            ...finalProductData,
             organizationId: user.organizationId,
             isDeleted: false,
         });
@@ -675,6 +721,7 @@ export default function ProductsPage() {
           const productRef = doc(collection(db, "products"));
           batch.set(productRef, {
               ...product,
+              branchId: currentBranch.id,
               branchIds: [currentBranch.id],
               organizationId: user.organizationId,
               isDeleted: false,
@@ -1062,13 +1109,48 @@ export default function ProductsPage() {
                 />
             </TableHead>}
             <TableHead className="w-[80px]">Imagem</TableHead>
-            <TableHead>Nome</TableHead>
-            <TableHead>Categoria</TableHead>
-            <TableHead>Comerciável</TableHead>
-            <TableHead className="text-right">Preço de Compra</TableHead>
-            <TableHead className="text-right">Margem</TableHead>
-            <TableHead className="text-right">Preço de Venda</TableHead>
-            <TableHead className="text-right">Estoque</TableHead>
+            <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('name')}>
+                <div className="flex items-center gap-1">
+                    Nome
+                    <ChevronsUpDown className="h-4 w-4" />
+                </div>
+            </TableHead>
+            <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('category')}>
+                <div className="flex items-center gap-1">
+                    Categoria
+                    <ChevronsUpDown className="h-4 w-4" />
+                </div>
+            </TableHead>
+            <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('isSalable')}>
+                <div className="flex items-center gap-1">
+                    Comerciável
+                    <ChevronsUpDown className="h-4 w-4" />
+                </div>
+            </TableHead>
+            <TableHead className="text-right cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('purchasePrice')}>
+                <div className="flex items-center justify-end gap-1">
+                    Preço de Compra
+                    <ChevronsUpDown className="h-4 w-4" />
+                </div>
+            </TableHead>
+            <TableHead className="text-right cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('marginValue')}>
+                <div className="flex items-center justify-end gap-1">
+                    Margem
+                    <ChevronsUpDown className="h-4 w-4" />
+                </div>
+            </TableHead>
+            <TableHead className="text-right cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('price')}>
+                <div className="flex items-center justify-end gap-1">
+                    Preço de Venda
+                    <ChevronsUpDown className="h-4 w-4" />
+                </div>
+            </TableHead>
+            <TableHead className="text-right cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('stock')}>
+                <div className="flex items-center justify-end gap-1">
+                    Estoque
+                    <ChevronsUpDown className="h-4 w-4" />
+                </div>
+            </TableHead>
             <TableHead className="text-center">Ações</TableHead>
           </TableRow>
         </TableHeader>

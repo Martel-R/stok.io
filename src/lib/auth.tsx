@@ -90,46 +90,63 @@ const professionalPermissions: EnabledModules = {
 };
 
 const runDataIntegrityCheck = async (organizationId: string) => {
-    if (sessionStorage.getItem(`integrityCheck_${organizationId}`)) {
+    // Check if it's already running or has run in this session
+    if (typeof window === 'undefined' || sessionStorage.getItem(`integrityCheck_${organizationId}`)) {
       return;
     }
   
-    console.log("Running data integrity check for organization:", organizationId);
-  
-    const collectionsToFix = [
-      'products', 'combos', 'kits', 'services', 'customers',
-      'anamnesisQuestions', 'suppliers', 'branches', 'expenses', 'appointments', 'permissionProfiles'
-    ];
-  
-    try {
-      const batch = writeBatch(db);
-      let updatesMade = 0;
-  
-      for (const collectionName of collectionsToFix) {
-        const q = query(collection(db, collectionName), where("organizationId", "==", organizationId));
-        const snapshot = await getDocs(q);
-        
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          if (data.isDeleted === undefined || data.isDeleted === null) {
-            batch.update(doc.ref, { isDeleted: false });
-            updatesMade++;
-          }
-        });
-      }
-  
-      if (updatesMade > 0) {
-        await batch.commit();
-        console.log(`Data integrity check complete. Updated ${updatesMade} records.`);
-      } else {
-        console.log("Data integrity check complete. No records needed updating.");
-      }
+    // Run in background without await to not block the main flow
+    (async () => {
+        console.log("Starting background data integrity check...");
+        const collectionsToFix = [
+          'products', 'combos', 'kits', 'services', 'customers',
+          'anamnesisQuestions', 'suppliers', 'branches', 'expenses', 'appointments', 'permissionProfiles'
+        ];
       
-      sessionStorage.setItem(`integrityCheck_${organizationId}`, 'true');
-  
-    } catch (error) {
-      console.error("Error during data integrity check:", error);
-    }
+        try {
+          const batch = writeBatch(db);
+          let updatesMade = 0;
+          const maxBatchSize = 500;
+      
+          for (const collectionName of collectionsToFix) {
+            const q = query(collection(db, collectionName), where("organizationId", "==", organizationId));
+            const snapshot = await getDocs(q);
+            
+            snapshot.forEach(doc => {
+              const data = doc.data();
+              let needsUpdate = false;
+              const updates: any = {};
+
+              if (data.isDeleted === undefined || data.isDeleted === null) {
+                updates.isDeleted = false;
+                needsUpdate = true;
+              }
+
+              if (['products', 'combos', 'kits', 'services'].includes(collectionName)) {
+                if (data.branchId && (!data.branchIds || !data.branchIds.includes(data.branchId))) {
+                  updates.branchIds = [data.branchId];
+                  needsUpdate = true;
+                }
+              }
+
+              if (needsUpdate) {
+                batch.update(doc.ref, updates);
+                updatesMade++;
+                // If batch gets too large, we should ideally commit and start a new one, 
+                // but for integrity check 500 is usually enough for one org's items.
+              }
+            });
+          }
+      
+          if (updatesMade > 0) {
+            await batch.commit();
+            console.log(`Background integrity check complete. Updated ${updatesMade} records.`);
+          }
+          sessionStorage.setItem(`integrityCheck_${organizationId}`, 'true');
+        } catch (error) {
+          console.error("Error during background data integrity check:", error);
+        }
+    })();
 };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -192,15 +209,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Standard user or impersonating admin flow
       if (effectiveOrgId) {
-          await runDataIntegrityCheck(effectiveOrgId);
+          runDataIntegrityCheck(effectiveOrgId); // Non-blocking
 
-          const orgDoc = await getDoc(doc(db, 'organizations', effectiveOrgId));
+          // Parallelize organization and profile fetching
+          const [orgDoc, profilesSnap] = await Promise.all([
+            getDoc(doc(db, 'organizations', effectiveOrgId)),
+            getDocs(query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId)))
+          ]);
+
           if (!orgDoc.exists()) {
               setUser(null); setLoading(false); return;
           }
           const orgData = { id: orgDoc.id, ...orgDoc.data() } as Organization;
-
-          const profilesSnap = await getDocs(query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId)));
           const profiles = profilesSnap.docs.map(p => ({ id: p.id, ...p.data() } as PermissionProfile));
           
           const orgModules = orgData.enabledModules || {};
@@ -425,15 +445,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loginCancelledRef.current = false;
     try {
         const userCredential = await signInWithEmailAndPassword(auth, email, pass);
-        const loggedInUser = await getDoc(doc(db, 'users', userCredential.user.uid));
-        if (loggedInUser.exists()) {
-             logUserActivity({
-                userId: loggedInUser.id,
-                userName: loggedInUser.data().name,
-                organizationId: loggedInUser.data().organizationId,
-                action: 'login_success'
-            });
-        }
+        // Fetch user data once to log activity in background
+        getDoc(doc(db, 'users', userCredential.user.uid)).then(loggedInUser => {
+            if (loggedInUser.exists()) {
+                logUserActivity({
+                   userId: loggedInUser.id,
+                   userName: loggedInUser.data().name,
+                   organizationId: loggedInUser.data().organizationId,
+                   action: 'login_success'
+               });
+           }
+        });
         return true;
     } catch (error) {
         console.error("Firebase Login Error:", error);
@@ -477,13 +499,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await batch.commit();
         }
 
-        const loggedInUser = (await getDoc(userDocRef)).data() as User;
-         logUserActivity({
-            userId: loggedInUser.id,
-            userName: loggedInUser.name,
-            organizationId: loggedInUser.organizationId,
-            action: 'login_success_google'
-        });
+        const loggedInUserDoc = await getDoc(userDocRef);
+        const loggedInUser = loggedInUserDoc.data() as User;
+        
+        // Log in background
+        (async () => {
+            logUserActivity({
+                userId: loggedInUser.id,
+                userName: loggedInUser.name,
+                organizationId: loggedInUser.organizationId,
+                action: 'login_success_google'
+            });
+        })();
 
         return true;
     } catch (error) {

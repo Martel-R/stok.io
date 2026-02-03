@@ -244,9 +244,16 @@ export default function ServicesPage() {
             setLoading(false);
         });
 
-        const productsQuery = query(collection(db, 'products'), where("branchId", "==", currentBranch.id), where("isDeleted", "==", false));
+        const productsQuery = query(collection(db, 'products'), where("organizationId", "==", user.organizationId));
         const productsUnsub = onSnapshot(productsQuery, (snapshot) => {
-            setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+            const allProducts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+            const filtered = allProducts.filter(p => 
+                !p.isDeleted && (
+                    (p.branchIds && p.branchIds.includes(currentBranch.id)) || 
+                    (p.branchId === currentBranch.id)
+                )
+            );
+            setProducts(filtered);
         });
 
         const profilesQuery = query(collection(db, 'permissionProfiles'), where("organizationId", "==", user.organizationId), where("name", "==", "Profissional"));

@@ -41,15 +41,21 @@ function MovementPageContent() {
     const [globalNotes, setGlobalNotes] = useState('');
 
     useEffect(() => {
-        if (!currentBranch) return;
-        const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id), where('isDeleted', '!=', true));
+        if (!currentBranch || !user?.organizationId) return;
+        const productsQuery = query(collection(db, 'products'), where('organizationId', '==', user.organizationId));
         const unsubscribe = onSnapshot(productsQuery, (snapshot) => {
-            const productsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-            setProducts(productsData.sort((a, b) => a.name.localeCompare(b.name)));
+            const allProducts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+            const filtered = allProducts.filter(p => 
+                !p.isDeleted && (
+                    (p.branchIds && p.branchIds.includes(currentBranch.id)) || 
+                    (p.branchId === currentBranch.id)
+                )
+            );
+            setProducts(filtered.sort((a, b) => a.name.localeCompare(b.name)));
             setIsLoading(false);
         });
         return unsubscribe;
-    }, [currentBranch]);
+    }, [currentBranch, user?.organizationId]);
 
     const addProductToList = (product: Product) => {
         if (listedProducts.some(p => p.id === product.id)) {

@@ -73,7 +73,7 @@ export default function InventoryPage() {
         }
 
         const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
-        const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id), where("isDeleted", "==", false));
+        const productsQuery = query(collection(db, 'products'), where('organizationId', '==', user.organizationId));
 
         const unsubscribeEntries = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
             const entriesData = entriesSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, date: convertDate(doc.data().date) } as StockEntry));
@@ -81,8 +81,14 @@ export default function InventoryPage() {
         });
 
         const unsubscribeProducts = onSnapshot(productsQuery, (productsSnapshot) => {
-            const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-            setProducts(productsData);
+            const allProducts = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+            const filtered = allProducts.filter(p => 
+                !p.isDeleted && (
+                    (p.branchIds && p.branchIds.includes(currentBranch.id)) || 
+                    (p.branchId === currentBranch.id)
+                )
+            );
+            setProducts(filtered);
             setLoading(false);
         });
 

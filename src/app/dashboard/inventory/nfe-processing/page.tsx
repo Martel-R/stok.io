@@ -81,14 +81,19 @@ export default function NfeProcessingPage() {
     }, [router, toast]);
     
     useEffect(() => {
-        if (!currentBranch) return;
-        const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id), where("isDeleted", "!=", true));
+        if (!currentBranch || !user?.organizationId) return;
+        const productsQuery = query(collection(db, 'products'), where('organizationId', '==', user.organizationId));
         const unsub = onSnapshot(productsQuery, snap => {
-            setStokioProducts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Product)));
+            const allProducts = snap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+            const filtered = allProducts.filter(p => 
+                (p.branchIds && p.branchIds.includes(currentBranch.id)) || 
+                (p.branchId === currentBranch.id)
+            );
+            setStokioProducts(filtered);
             setIsLoading(false);
         });
         return () => unsub();
-    }, [currentBranch]);
+    }, [currentBranch, user?.organizationId]);
 
     const updateProductStatus = (index: number, status: ProcessingStatus, stokioProductId?: string) => {
         setProcessedProducts(prev => {
@@ -184,6 +189,7 @@ export default function NfeProcessingPage() {
                         cfop: prod.cfop,
                         unitOfMeasure: prod.unitOfMeasure,
                         branchId: currentBranch.id,
+                        branchIds: [currentBranch.id],
                         organizationId: user.organizationId,
                         isDeleted: false,
                         imageUrl: 'https://placehold.co/400x400.png',

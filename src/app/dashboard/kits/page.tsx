@@ -228,17 +228,30 @@ export default function KitsPage() {
             return;
         }
         
-        const qKits = query(collection(db, 'kits'), where("branchId", "==", currentBranch.id), where('isDeleted', '==', false));
-        const qProducts = query(collection(db, 'products'), where("branchId", "==", currentBranch.id), where('isDeleted', '==', false));
+        const qKits = query(collection(db, 'kits'), where("organizationId", "==", user.organizationId));
+        const qProducts = query(collection(db, 'products'), where("organizationId", "==", user.organizationId));
         
         const unsubscribeKits = onSnapshot(qKits, (snapshot) => {
-            setKits(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kit)));
+            const allKits = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kit));
+            const filtered = allKits.filter(k => 
+                !k.isDeleted && (
+                    (k.branchId === currentBranch.id) || 
+                    ((k as any).branchIds && (k as any).branchIds.includes(currentBranch.id))
+                )
+            );
+            setKits(filtered);
             setLoading(false);
         });
 
         const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
-            const productData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-            setProducts(productData.sort((a,b) => a.name.localeCompare(b.name)));
+            const allProducts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+            const filtered = allProducts.filter(p => 
+                !p.isDeleted && (
+                    (p.branchIds && p.branchIds.includes(currentBranch.id)) || 
+                    (p.branchId === currentBranch.id)
+                )
+            );
+            setProducts(filtered.sort((a,b) => a.name.localeCompare(b.name)));
         });
 
         return () => {
@@ -262,6 +275,7 @@ export default function KitsPage() {
                 await addDoc(collection(db, "kits"), {
                     ...kitData,
                     branchId: currentBranch.id,
+                    branchIds: [currentBranch.id], // Future proof
                     organizationId: user.organizationId,
                 });
                 toast({ title: 'Kit adicionado com sucesso!' });

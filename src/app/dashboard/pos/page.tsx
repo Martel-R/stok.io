@@ -711,19 +711,25 @@ export default function POSPage() {
         return;
     }
 
-    const productsQuery = query(collection(db, 'products'), where('branchId', '==', currentBranch.id), where('isDeleted', '!=', true));
-    const combosQuery = query(collection(db, 'combos'), where('branchId', '==', currentBranch.id), where('isDeleted', '!=', true));
-    const kitsQuery = query(collection(db, 'kits'), where('branchId', '==', currentBranch.id), where('isDeleted', '!=', true));
+    const productsQuery = query(collection(db, 'products'), where('organizationId', '==', user.organizationId));
+    const combosQuery = query(collection(db, 'combos'), where('organizationId', '==', user.organizationId));
+    const kitsQuery = query(collection(db, 'kits'), where('organizationId', '==', user.organizationId));
     const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
     const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
 
     const unsubscribeProducts = onSnapshot(productsQuery, (productsSnapshot) => {
-        const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+        const allProducts = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+        const filteredProducts = allProducts.filter(p => 
+            !p.isDeleted && (
+                (p.branchIds && p.branchIds.includes(currentBranch.id)) || 
+                (p.branchId === currentBranch.id)
+            )
+        );
 
         const entriesSub = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
             const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
 
-            const productsWithStock = productsData.map(p => {
+            const productsWithStock = filteredProducts.map(p => {
                 const stock = entriesData
                     .filter(e => e.productId === p.id)
                     .reduce((sum, e) => sum + e.quantity, 0);
@@ -751,11 +757,25 @@ export default function POSPage() {
     });
 
     const unsubscribeCombos = onSnapshot(combosQuery, (querySnapshot) => {
-      setCombos(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Combo)));
+      const allCombos = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Combo));
+      const filtered = allCombos.filter(c => 
+          !c.isDeleted && (
+              (c.branchId === currentBranch.id) || 
+              ((c as any).branchIds && (c as any).branchIds.includes(currentBranch.id))
+          )
+      );
+      setCombos(filtered);
     });
 
     const unsubscribeKits = onSnapshot(kitsQuery, (querySnapshot) => {
-      setKits(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kit)));
+      const allKits = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kit));
+      const filtered = allKits.filter(k => 
+          !k.isDeleted && (
+              (k.branchId === currentBranch.id) || 
+              ((k as any).branchIds && (k as any).branchIds.includes(currentBranch.id))
+          )
+      );
+      setKits(filtered);
     });
 
     return () => {

@@ -64,6 +64,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/jspdf": "^2.0.0",
     "@types/node": "^20",
     "@types/react": "^18",

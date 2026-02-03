@@ -69,8 +69,8 @@ SidebarHeader.displayName = 'SidebarHeader';
 export const SidebarContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, children, ...props }, ref) => {
       return (
-        <ScrollArea ref={ref} className={cn('flex-1', className)} {...props}>
-            <div className="p-2">
+        <ScrollArea className={cn('flex-1', className)}>
+            <div ref={ref} className="p-2" {...props}>
                 {children}
             </div>
         </ScrollArea>

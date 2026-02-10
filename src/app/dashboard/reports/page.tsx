@@ -2132,7 +2132,7 @@ function DREReport() {
         const ws_data: any[] = [['Descrição', ...dreData.periods.map(p => p.label), 'Total', '% Rec. Bruta Total']];
 
         const addDRELine = (label: string, field: string, isDetail = false) => {
-            const row = [isDetail ? `    ${label}` : label];
+            const row: any[] = [isDetail ? `    ${label}` : label];
             dreData.periods.forEach(p => row.push((p.metrics as any)[field]));
             const totalVal = (dreData.total as any)[field];
             row.push(totalVal);
@@ -2151,7 +2151,7 @@ function DREReport() {
             });
             
             Array.from(keys).sort().forEach(key => {
-                const row = [`    ${key}`];
+                const row: any[] = [`    ${key}`];
                 dreData.periods.forEach(p => {
                     const b = (p.metrics as any)[breakdownField] as Map<string, any>;
                     const val = b.get(key);

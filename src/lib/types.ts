@@ -293,6 +293,7 @@ export interface Branch {
     userIds: string[];
     taxRate: number; // Stored as a percentage, e.g., 8 for 8%
     organizationId: string;
+    allowNegativeStock?: boolean;
     isDeleted?: boolean;
 }
 

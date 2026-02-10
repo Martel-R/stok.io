@@ -702,35 +702,27 @@ function RegisterPaymentDialog({
 
 function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void }) {
     const { toast } = useToast();
-    const [enabledModules, setEnabledModules] = useState<EnabledModules>(organization.enabledModules);
-
-    useEffect(() => {
-        if (organization.enabledModules) {
-            setEnabledModules(organization.enabledModules);
-        }
-    }, [organization]);
+    const [isUpdating, setIsUpdating] = useState<string | null>(null);
 
     const handleModuleToggle = async (module: keyof EnabledModules, checked: boolean) => {
         const newPermissions = checked ? { view: true, edit: true, delete: true } : { view: false, edit: false, delete: false };
-        const updatedModules = { ...enabledModules, [module]: newPermissions };
         
-        setEnabledModules(updatedModules);
-
+        setIsUpdating(module);
         try {
             const orgRef = doc(db, 'organizations', organization.id);
-            await updateDoc(orgRef, { enabledModules: updatedModules });
-            toast({ title: 'Módulo atualizado com sucesso!' });
+            await updateDoc(orgRef, { [`enabledModules.${module}`]: newPermissions });
+            toast({ title: `Módulo ${checked ? 'habilitado' : 'desabilitado'}!` });
         } catch (error) {
-            toast({ title: 'Erro ao atualizar módulo', variant: 'destructive' });
-            setEnabledModules(prev => {
-                const reverted = {...prev};
-                delete reverted[module];
-                return reverted;
-            });
+            console.error("Error updating module:", error);
+            toast({ title: 'Erro ao salvar alteração', variant: 'destructive' });
+        } finally {
+            setIsUpdating(null);
         }
     };
 
     if (!isOpen) return null;
+
+    const enabledModules = organization.enabledModules || {} as EnabledModules;
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -739,13 +731,17 @@ function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organiz
                     <DialogTitle>Gerenciar Módulos</DialogTitle>
                     <DialogDescription>Habilite ou desabilite funcionalidades para a organização "{organization.name}".</DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
+                <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto pr-2">
                      {allModuleConfig.map(mod => (
                         <div key={mod.key} className="flex flex-row items-center justify-between rounded-lg border p-4">
-                            <Label htmlFor={`module-${mod.key}`} className="text-base">{mod.label}</Label>
+                            <div className="flex flex-col">
+                                <Label htmlFor={`module-${mod.key}`} className="text-base">{mod.label}</Label>
+                                {isUpdating === mod.key && <span className="text-[10px] text-muted-foreground animate-pulse">Salvando...</span>}
+                            </div>
                             <Switch
                                 id={`module-${mod.key}`}
-                                checked={!!enabledModules[mod.key]}
+                                checked={!!enabledModules[mod.key]?.view}
+                                disabled={isUpdating === mod.key}
                                 onCheckedChange={(checked) => handleModuleToggle(mod.key, checked)}
                             />
                         </div>
@@ -949,12 +945,16 @@ function SuperAdminPage() {
     const router = useRouter();
     const [organizations, setOrganizations] = useState<OrgWithUser[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selectedOrg, setSelectedOrg] = useState<OrgWithUser | null>(null);
+    const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
     const [isModuleDialogOpen, setIsModuleDialogOpen] = useState(false);
     const [isUsersDialogOpen, setIsUsersDialogOpen] = useState(false);
     const [isProfilesDialogOpen, setIsProfilesDialogOpen] = useState(false);
     const [isSubscriptionDialogOpen, setIsSubscriptionDialogOpen] = useState(false);
     const { toast } = useToast();
+
+    const selectedOrg = React.useMemo(() => 
+        organizations.find(org => org.id === selectedOrgId) || null
+    , [organizations, selectedOrgId]);
 
     useEffect(() => {
         if (!authLoading && user && user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL && !user.isImpersonating) {
@@ -1006,7 +1006,7 @@ function SuperAdminPage() {
     }
     
     const handleOpenDialog = (org: OrgWithUser, type: 'modules' | 'users' | 'profiles' | 'subscription') => {
-        setSelectedOrg(org);
+        setSelectedOrgId(org.id);
         if (type === 'modules') setIsModuleDialogOpen(true);
         if (type === 'users') setIsUsersDialogOpen(true);
         if (type === 'profiles') setIsProfilesDialogOpen(true);

@@ -83,7 +83,7 @@ function GeneralReport() {
 
                 const branchesData = branchesSnap.docs
                     .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
-                    .filter(b => !b.isDeleted);
+                    .filter(b => b.isDeleted !== true);
                 
                 setSales(salesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Sale)));
                 setExpenses(expensesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Expense)));
@@ -518,7 +518,7 @@ function SalesReport() {
                 
                 const branchesData = branchesSnap.docs
                     .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
-                    .filter(b => !b.isDeleted);
+                    .filter(b => b.isDeleted !== true);
                 
                 setSales(salesData);
                 setBranches(branchesData);
@@ -815,7 +815,7 @@ function TopSellingProductsReport() {
                 });
                 const branchesData = branchesSnap.docs
                     .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
-                    .filter(b => !b.isDeleted);
+                    .filter(b => b.isDeleted !== true);
                 
                 setSales(salesData);
                 setBranches(branchesData);
@@ -976,7 +976,7 @@ function LowStockReport() {
                 setAllStockEntries(stockEntriesSnap.docs.map(d => d.data() as StockEntry));
                 const branchesData = branchesSnap.docs
                     .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
-                    .filter(b => !b.isDeleted);
+                    .filter(b => b.isDeleted !== true);
                 setAllBranches(branchesData);
                 setSelectedBranchIds(branchesData.map(b => b.id));
 
@@ -1168,7 +1168,7 @@ function FinancialSummaryReport() {
                 setExpenses(expensesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Expense)));
                 setBranches(branchesSnap.docs
                     .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
-                    .filter(b => !b.isDeleted)
+                    .filter(b => b.isDeleted !== true)
                 );
                 setPaymentConditions(conditionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition)));
             } catch (error) {
@@ -1386,7 +1386,7 @@ function ABCCurveReport() {
                 const productsData = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
                 const branchesData = branchesSnap.docs
                     .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
-                    .filter(b => !b.isDeleted);
+                    .filter(b => b.isDeleted !== true);
                 
                 setSales(salesData);
                 setProducts(productsData);
@@ -1587,7 +1587,7 @@ function ExpirationReport() {
                 setAllStockEntries(stockEntriesSnap.docs.map(d => ({...d.data(), date: (d.data().date as Timestamp).toDate()} as StockEntry)));
                 const branchesData = branchesSnap.docs
                     .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
-                    .filter(b => !b.isDeleted);
+                    .filter(b => b.isDeleted !== true);
                 setBranches(branchesData);
                 setSelectedBranchIds(branchesData.map(b => b.id));
 
@@ -1710,7 +1710,7 @@ function InventoryPerformanceReport() {
 
                 const branchesData = branchesSnap.docs
                     .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
-                    .filter(b => !b.isDeleted);
+                    .filter(b => b.isDeleted !== true);
                 setProducts(productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
                 setStockEntries(stockEntriesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockEntry)));
                 setBranches(branchesData);
@@ -2015,7 +2015,7 @@ function DREReport() {
 
                 const branchesData = branchesSnap.docs
                     .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
-                    .filter(b => !b.isDeleted);
+                    .filter(b => b.isDeleted !== true);
                 setSales(salesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Sale)));
                 setExpenses(expensesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Expense)));
                 setBranches(branchesData);

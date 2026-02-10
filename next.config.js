@@ -14,7 +14,19 @@ const nextConfig = {
       },
       {
         protocol: 'https',
-        hostname: '/**',
+        hostname: 'picsum.photos',
+      },
+      {
+        protocol: 'https',
+        hostname: 'tse3.mm.bing.net',
+      },
+      {
+        protocol: 'https',
+        hostname: 'a-static.mlcdn.com.br',
+      },
+      {
+        protocol: 'https',
+        hostname: 'images.tcdn.com.br',
       }
     ],
   },

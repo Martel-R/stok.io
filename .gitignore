@@ -43,3 +43,11 @@ next-env.d.ts
 # firebase
 firebase-debug.log
 firestore-debug.log
+
+# IDEs
+.idea/
+.vscode/
+
+# Local configuration
+docker-compose.dev.yml
+jest.config.js

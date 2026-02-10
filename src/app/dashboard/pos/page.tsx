@@ -527,7 +527,7 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
     );
 }
 
-function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: { kit: Kit; products: ProductWithStock[]; isOpen: boolean; onOpenChange: (isOpen: boolean) => void; onConfirm: (chosenProducts: Product[]) => void; }) {
+function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm, allowNegative = false }: { kit: Kit; products: ProductWithStock[]; isOpen: boolean; onOpenChange: (isOpen: boolean) => void; onConfirm: (chosenProducts: Product[]) => void; allowNegative?: boolean; }) {
     const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const { toast } = useToast();
@@ -564,7 +564,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm }: {
 
     const addProduct = (product: Product) => {
         const productWithStock = eligibleProducts.find(p => p.id === product.id);
-        if (!productWithStock || productWithStock.availableStock <= 0) {
+        if (!productWithStock || (productWithStock.availableStock <= 0 && !allowNegative)) {
             toast({ title: `Estoque insuficiente para ${product.name}`, variant: "destructive" });
             return;
         }
@@ -825,16 +825,19 @@ export default function POSPage() {
         toast({ title: 'Ação bloqueada', description: 'Finalize o pagamento do atendimento pendente antes de iniciar uma nova venda.', variant: 'destructive' });
         return;
     }
+
+    const allowNegative = currentBranch?.allowNegativeStock ?? false;
+
     if (type === 'product') {
         const product = item as ProductWithStock;
-        if (product.stock <= 0) {
+        if (product.stock <= 0 && !allowNegative) {
             toast({ title: 'Fora de estoque', description: `${product.name} não está disponível.`, variant: 'destructive'});
             return;
         }
          setCart((prev) => {
             const existingItem = prev.find((cartItem) => cartItem.id === product.id && cartItem.itemType === 'product');
             if (existingItem) {
-                if (existingItem.quantity >= (existingItem as ProductWithStock).stock) {
+                if (existingItem.quantity >= (existingItem as ProductWithStock).stock && !allowNegative) {
                      toast({ title: 'Limite de estoque atingido', description: `Você não pode adicionar mais de ${(existingItem as ProductWithStock).stock} unidades de ${existingItem.name}.`, variant: 'destructive'});
                     return prev;
                 }
@@ -847,28 +850,32 @@ export default function POSPage() {
     } else {
         const combo = item as Combo;
         // Check stock for all products in combo
-        for (const comboProduct of combo.products) {
-            const productInStore = products.find(p => p.id === comboProduct.productId);
-            if (!productInStore || productInStore.stock < comboProduct.quantity) {
-                toast({ title: 'Estoque insuficiente para o combo', description: `O produto ${comboProduct.productName} não tem estoque suficiente para montar o combo ${combo.name}.`, variant: 'destructive'});
-                return;
+        if (!allowNegative) {
+            for (const comboProduct of combo.products) {
+                const productInStore = products.find(p => p.id === comboProduct.productId);
+                if (!productInStore || productInStore.stock < comboProduct.quantity) {
+                    toast({ title: 'Estoque insuficiente para o combo', description: `O produto ${comboProduct.productName} não tem estoque suficiente para montar o combo ${combo.name}.`, variant: 'destructive'});
+                    return;
+                }
             }
         }
         setCart(prev => {
             const existingItem = prev.find(ci => ci.id === combo.id && ci.itemType === 'combo');
             if (existingItem) {
                 // Check stock for subsequent additions of the same combo
-                for (const comboProduct of combo.products) {
-                    const productInStore = products.find(p => p.id === comboProduct.productId);
-                    const cartProduct = cart.find(ci => ci.id === comboProduct.productId && ci.itemType === 'product');
-                    const cartComboUsage = cart.filter(ci => ci.itemType === 'combo').reduce((acc, c) => {
-                        const pInCombo = (c as Combo).products.find(p => p.productId === comboProduct.productId);
-                        return acc + (pInCombo ? pInCombo.quantity * c.quantity : 0);
-                    }, 0);
+                if (!allowNegative) {
+                    for (const comboProduct of combo.products) {
+                        const productInStore = products.find(p => p.id === comboProduct.productId);
+                        const cartProduct = cart.find(ci => ci.id === comboProduct.productId && ci.itemType === 'product');
+                        const cartComboUsage = cart.filter(ci => ci.itemType === 'combo').reduce((acc, c) => {
+                            const pInCombo = (c as Combo).products.find(p => p.productId === comboProduct.productId);
+                            return acc + (pInCombo ? pInCombo.quantity * c.quantity : 0);
+                        }, 0);
 
-                    if (!productInStore || productInStore.stock < (cartProduct?.quantity || 0) + cartComboUsage + comboProduct.quantity) {
-                         toast({ title: 'Estoque insuficiente para o combo', description: `O produto ${comboProduct.productName} não tem estoque suficiente para adicionar outro combo ${combo.name}.`, variant: 'destructive'});
-                         return prev;
+                        if (!productInStore || productInStore.stock < (cartProduct?.quantity || 0) + cartComboUsage + comboProduct.quantity) {
+                            toast({ title: 'Estoque insuficiente para o combo', description: `O produto ${comboProduct.productName} não tem estoque suficiente para adicionar outro combo ${combo.name}.`, variant: 'destructive'});
+                            return prev;
+                        }
                     }
                 }
                 return prev.map(ci => ci.id === combo.id ? {...ci, quantity: ci.quantity + 1} : ci);
@@ -1387,6 +1394,7 @@ export default function POSPage() {
             isOpen={!!selectedKit}
             onOpenChange={(isOpen) => !isOpen && setSelectedKit(null)}
             onConfirm={(chosen) => handleKitSelection(selectedKit, chosen)}
+            allowNegative={currentBranch?.allowNegativeStock}
         />
     )}
     <CheckoutModal

@@ -498,13 +498,17 @@ function BranchesSettings() {
 function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users: User[]; onSave: (data: Omit<Branch, 'id' | 'organizationId' | 'isDeleted'>) => void; onDone: () => void }) {
     const { user: currentUser } = useAuth();
     const [formData, setFormData] = useState(
-        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], taxRate: 8, isDeleted: false }
+        branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], taxRate: 8, allowNegativeStock: false, isDeleted: false }
     );
     const [open, setOpen] = useState(false);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value, type } = e.target;
         setFormData(prev => ({ ...prev, [name]: type === 'number' ? parseFloat(value) || 0 : value }));
+    };
+
+    const handleSwitchChange = (checked: boolean) => {
+        setFormData(prev => ({ ...prev, allowNegativeStock: checked }));
     };
 
     const handleUserSelect = (userId: string) => {
@@ -539,6 +543,18 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
             <div>
                 <Label htmlFor="taxRate">Imposto (%)</Label>
                 <Input id="taxRate" name="taxRate" type="number" step="0.1" value={formData.taxRate} onChange={handleChange} required />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                    <Label className="text-base">Permitir Venda sem Estoque</Label>
+                    <p className="text-sm text-muted-foreground">
+                        Permite que o PDV finalize vendas mesmo se o produto não tiver saldo em estoque.
+                    </p>
+                </div>
+                <Switch
+                    checked={formData.allowNegativeStock}
+                    onCheckedChange={handleSwitchChange}
+                />
             </div>
             <div>
                 <Label>Usuários Vinculados</Label>

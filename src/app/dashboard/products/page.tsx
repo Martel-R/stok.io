@@ -1050,25 +1050,6 @@ export default function ProductsPage() {
                 onImport={handleImport}
             />}
 
-            {can.edit && <Dialog open={isStockFormOpen} onOpenChange={setIsStockFormOpen}>
-                <DialogTrigger asChild>
-                    <Button variant="outline" disabled={allProducts.length === 0}>
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        Adicionar Estoque
-                    </Button>
-                </DialogTrigger>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Adicionar Estoque</DialogTitle>
-                    </DialogHeader>
-                     <StockMovementForm 
-                        type="entry"
-                        products={allProducts}
-                        onDone={() => setIsStockFormOpen(false)}
-                    />
-                </DialogContent>
-            </Dialog>}
-
             {can.edit && <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                 <DialogTrigger asChild>
                     <Button onClick={openNewDialog}>

@@ -104,7 +104,13 @@ function GeneralReport() {
     }, [user]);
 
     const filteredData = useMemo(() => {
-        const branchFilter = (item: { branchId: string }) => selectedBranchIds.length === 0 || selectedBranchIds.includes(item.branchId);
+        const activeBranchIds = branches.map(b => b.id);
+        const branchFilter = (item: { branchId: string }) => {
+            if (selectedBranchIds.length > 0) {
+                return selectedBranchIds.includes(item.branchId);
+            }
+            return activeBranchIds.includes(item.branchId);
+        };
         const dateFilter = (item: { date: Date }) => {
             const itemDate = item.date;
             const isAfterStart = dateRange?.from ? itemDate >= startOfDay(dateRange.from) : true;
@@ -536,6 +542,7 @@ function SalesReport() {
     }, [sales]);
 
     const filteredSales = useMemo(() => {
+        const activeBranchIds = branches.map(b => b.id);
         return sales.filter(sale => {
             if (sale.status === 'cancelled') return false;
             
@@ -544,12 +551,15 @@ function SalesReport() {
             const isBeforeEnd = dateRange?.to ? saleDate <= endOfDay(dateRange.to) : true;
             const inDateRange = isAfterStart && isBeforeEnd;
 
-            const inBranch = selectedBranchIds.length === 0 || selectedBranchIds.includes(sale.branchId);
+            const inBranch = selectedBranchIds.length > 0 
+                ? selectedBranchIds.includes(sale.branchId)
+                : activeBranchIds.includes(sale.branchId);
+            
             const byCashier = selectedCashierIds.length === 0 || selectedCashierIds.includes(sale.cashier);
 
             return inDateRange && inBranch && byCashier;
         }).sort((a, b) => b.date.getTime() - a.date.getTime());
-    }, [sales, dateRange, selectedBranchIds, selectedCashierIds]);
+    }, [sales, dateRange, selectedBranchIds, selectedCashierIds, branches]);
     
     const totals = useMemo(() => {
         const summary = {
@@ -822,6 +832,7 @@ function TopSellingProductsReport() {
     }, [user]);
 
     const topProducts = useMemo(() => {
+        const activeBranchIds = branches.map(b => b.id);
         const filteredSales = sales.filter(sale => {
             if (sale.status === 'cancelled') return false;
             
@@ -829,7 +840,9 @@ function TopSellingProductsReport() {
             const isAfterStart = dateRange?.from ? saleDate >= startOfDay(dateRange.from) : true;
             const isBeforeEnd = dateRange?.to ? saleDate <= endOfDay(dateRange.to) : true;
             const inDateRange = isAfterStart && isBeforeEnd;
-            const inBranch = selectedBranchIds.length === 0 || selectedBranchIds.includes(sale.branchId);
+            const inBranch = selectedBranchIds.length > 0 
+                ? selectedBranchIds.includes(sale.branchId)
+                : activeBranchIds.includes(sale.branchId);
             return inDateRange && inBranch;
         });
 
@@ -995,6 +1008,10 @@ function LowStockReport() {
 
         // 2. Group by product name across all branches
         for (const product of allProducts) {
+            // Only consider stock in active branches
+            const activeBranchIds = allBranches.map(b => b.id);
+            if (product.branchId && !activeBranchIds.includes(product.branchId)) continue;
+
             if (!productMap.has(product.name)) {
                 productMap.set(product.name, {
                     name: product.name,
@@ -1386,11 +1403,14 @@ function ABCCurveReport() {
     }, [user]);
 
     const { abcData, chartData, totalRevenue } = useMemo(() => {
+        const activeBranchIds = branches.map(b => b.id);
         const filteredSales = sales.filter(sale => {
             const saleDate = sale.date;
             const isAfterStart = dateRange?.from ? saleDate >= startOfDay(dateRange.from) : true;
             const isBeforeEnd = dateRange?.to ? saleDate <= endOfDay(dateRange.to) : true;
-            const inBranch = selectedBranchIds.length === 0 || selectedBranchIds.includes(sale.branchId);
+            const inBranch = selectedBranchIds.length > 0 
+                ? selectedBranchIds.includes(sale.branchId)
+                : activeBranchIds.includes(sale.branchId);
             return sale.status !== 'cancelled' && isAfterStart && isBeforeEnd && inBranch;
         });
 
@@ -1582,9 +1602,12 @@ function ExpirationReport() {
     }, [user]);
 
     const expirationData = useMemo(() => {
+        const activeBranchIds = branches.map(b => b.id);
         const perishableEntries = allStockEntries.filter(entry => {
             const product = allProducts.find(p => p.id === entry.productId);
-            const inBranch = selectedBranchIds.length === 0 || selectedBranchIds.includes(entry.branchId);
+            const inBranch = selectedBranchIds.length > 0 
+                ? selectedBranchIds.includes(entry.branchId)
+                : activeBranchIds.includes(entry.branchId);
             return product?.isPerishable && entry.expirationDate && inBranch;
         });
 
@@ -1711,9 +1734,14 @@ function InventoryPerformanceReport() {
     const inventoryData = useMemo(() => {
         // 1. Calculate stock per product and branch
         const stockMap = new Map<string, number>(); // key: productId
+        const activeBranchIds = branches.map(b => b.id);
         
         stockEntries.forEach(entry => {
-            if (selectedBranchIds.length === 0 || selectedBranchIds.includes(entry.branchId)) {
+            const inBranch = selectedBranchIds.length > 0 
+                ? selectedBranchIds.includes(entry.branchId)
+                : activeBranchIds.includes(entry.branchId);
+
+            if (inBranch) {
                 const current = stockMap.get(entry.productId) || 0;
                 stockMap.set(entry.productId, current + (Number(entry.quantity) || 0));
             }
@@ -2081,8 +2109,11 @@ function DREReport() {
             };
         };
 
-        const allFilteredSales = sales.filter(s => s.status !== 'cancelled' && (selectedBranchIds.length === 0 || selectedBranchIds.includes(s.branchId)) && s.date >= startOfDay(dateRange.from!) && s.date <= endOfDay(dateRange.to!));
-        const allFilteredExpenses = expenses.filter(e => (selectedBranchIds.length === 0 || selectedBranchIds.includes(e.branchId)) && e.date >= startOfDay(dateRange.from!) && e.date <= endOfDay(dateRange.to!));
+        const activeBranchIds = branches.map(b => b.id);
+        const branchFilter = (branchId: string) => selectedBranchIds.length > 0 ? selectedBranchIds.includes(branchId) : activeBranchIds.includes(branchId);
+
+        const allFilteredSales = sales.filter(s => s.status !== 'cancelled' && branchFilter(s.branchId) && s.date >= startOfDay(dateRange.from!) && s.date <= endOfDay(dateRange.to!));
+        const allFilteredExpenses = expenses.filter(e => branchFilter(e.branchId) && e.date >= startOfDay(dateRange.from!) && e.date <= endOfDay(dateRange.to!));
 
         const periods = quarters.map(q => {
             const s = allFilteredSales.filter(sale => sale.date >= q.start && sale.date <= q.end);

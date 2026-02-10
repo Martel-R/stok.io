@@ -1,5 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: {
+    serverExternalPackages: ['genkit', '@genkit-ai/googleai', '@genkit-ai/firebase', 'require-in-the-middle'],
+  },
+  turbopack: {},
   images: {
     remotePatterns: [
       {
@@ -10,15 +14,7 @@ const nextConfig = {
       },
       {
         protocol: 'https',
-        hostname: 'picsum.photos',
-      },
-      {
-        protocol: 'https',
-        hostname: 'tse3.mm.bing.net',
-      },
-      {
-        protocol: 'https',
-        hostname: 'a-static.mlcdn.com.br',
+        hostname: '/**',
       }
     ],
   },

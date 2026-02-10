@@ -19,7 +19,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Checkbox } from '@/components/ui/checkbox';
 import { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
-import { format, startOfDay, endOfDay, isBefore } from 'date-fns';
+import { format, startOfDay, endOfDay, isBefore, getQuarter, getYear, eachQuarterOfInterval, startOfQuarter, endOfQuarter } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -81,7 +81,10 @@ function GeneralReport() {
                 };
                 const [salesSnap, expensesSnap, branchesSnap, conditionsSnap, productsSnap, combosSnap, kitsSnap] = await Promise.all(Object.values(queries));
 
-                const branchesData = branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+                const branchesData = branchesSnap.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
+                    .filter(b => !b.isDeleted);
+                
                 setSales(salesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Sale)));
                 setExpenses(expensesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Expense)));
                 setBranches(branchesData);
@@ -507,7 +510,9 @@ function SalesReport() {
                     return { ...data, id: doc.id, date } as Sale;
                 });
                 
-                const branchesData = branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+                const branchesData = branchesSnap.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
+                    .filter(b => !b.isDeleted);
                 
                 setSales(salesData);
                 setBranches(branchesData);
@@ -798,7 +803,9 @@ function TopSellingProductsReport() {
                     const date = data.date instanceof Timestamp ? data.date.toDate() : new Date();
                     return { ...data, id: doc.id, date } as Sale;
                 });
-                const branchesData = branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+                const branchesData = branchesSnap.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
+                    .filter(b => !b.isDeleted);
                 
                 setSales(salesData);
                 setBranches(branchesData);
@@ -954,7 +961,9 @@ function LowStockReport() {
 
                 setAllProducts(productsSnap.docs.map(d => ({id: d.id, ...d.data()}) as Product));
                 setAllStockEntries(stockEntriesSnap.docs.map(d => d.data() as StockEntry));
-                const branchesData = branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+                const branchesData = branchesSnap.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
+                    .filter(b => !b.isDeleted);
                 setAllBranches(branchesData);
                 setSelectedBranchIds(branchesData.map(b => b.id));
 
@@ -1140,7 +1149,10 @@ function FinancialSummaryReport() {
 
                 setSales(salesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Sale)));
                 setExpenses(expensesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Expense)));
-                setBranches(branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch)));
+                setBranches(branchesSnap.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
+                    .filter(b => !b.isDeleted)
+                );
                 setPaymentConditions(conditionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition)));
             } catch (error) {
                 console.error("Error fetching financial data:", error);
@@ -1355,7 +1367,9 @@ function ABCCurveReport() {
 
                 const salesData = salesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Sale));
                 const productsData = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-                const branchesData = branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+                const branchesData = branchesSnap.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
+                    .filter(b => !b.isDeleted);
                 
                 setSales(salesData);
                 setProducts(productsData);
@@ -1551,7 +1565,9 @@ function ExpirationReport() {
 
                 setAllProducts(productsSnap.docs.map(d => ({id: d.id, ...d.data()}) as Product));
                 setAllStockEntries(stockEntriesSnap.docs.map(d => ({...d.data(), date: (d.data().date as Timestamp).toDate()} as StockEntry)));
-                const branchesData = branchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+                const branchesData = branchesSnap.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
+                    .filter(b => !b.isDeleted);
                 setBranches(branchesData);
                 setSelectedBranchIds(branchesData.map(b => b.id));
 
@@ -1644,6 +1660,616 @@ function ExpirationReport() {
 
 
 
+// --- Inventory Performance Report ---
+function InventoryPerformanceReport() {
+    const { user } = useAuth();
+    const [loading, setLoading] = useState(true);
+    const [products, setProducts] = useState<Product[]>([]);
+    const [stockEntries, setStockEntries] = useState<StockEntry[]>([]);
+    const [branches, setBranches] = useState<Branch[]>([]);
+    const [expenses, setExpenses] = useState<Expense[]>([]);
+
+    const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
+    const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+
+    useEffect(() => {
+        if (!user?.organizationId) return;
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const orgId = user.organizationId;
+                const [productsSnap, stockEntriesSnap, branchesSnap, expensesSnap] = await Promise.all([
+                    getDocs(query(collection(db, 'products'), where('organizationId', '==', orgId))),
+                    getDocs(query(collection(db, 'stockEntries'), where('organizationId', '==', orgId))),
+                    getDocs(query(collection(db, 'branches'), where('organizationId', '==', orgId))),
+                    getDocs(query(collection(db, 'expenses'), where('organizationId', '==', orgId))),
+                ]);
+
+                const branchesData = branchesSnap.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
+                    .filter(b => !b.isDeleted);
+                setProducts(productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+                setStockEntries(stockEntriesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockEntry)));
+                setBranches(branchesData);
+                setExpenses(expensesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Expense)));
+                
+                setSelectedBranchIds(branchesData.map(b => b.id));
+            } catch (error) {
+                console.error("Error fetching inventory performance data:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, [user]);
+
+    const categories = useMemo(() => {
+        const cats = new Set(products.map(p => p.category).filter(Boolean));
+        return Array.from(cats).map(c => ({ id: c, name: c }));
+    }, [products]);
+
+    const inventoryData = useMemo(() => {
+        // 1. Calculate stock per product and branch
+        const stockMap = new Map<string, number>(); // key: productId
+        
+        stockEntries.forEach(entry => {
+            if (selectedBranchIds.length === 0 || selectedBranchIds.includes(entry.branchId)) {
+                const current = stockMap.get(entry.productId) || 0;
+                stockMap.set(entry.productId, current + (Number(entry.quantity) || 0));
+            }
+        });
+
+        // 2. Filter products and build report data
+        const filteredProducts = products.filter(p => {
+            const inCategory = selectedCategories.length === 0 || selectedCategories.includes(p.category);
+            // Product is considered in branch if it has entries in that branch or is assigned to it
+            // Using stockMap to only include products that actually have stock/history in selected branches
+            const hasStockOrHistory = stockMap.has(p.id);
+            return inCategory && hasStockOrHistory;
+        });
+
+        const tableData = filteredProducts.map(p => {
+            const quantity = stockMap.get(p.id) || 0;
+            const totalPurchase = (p.purchasePrice || 0) * quantity;
+            const totalSales = (p.price || 0) * quantity;
+            const profitPercentage = p.purchasePrice > 0 ? ((p.price - p.purchasePrice) / p.purchasePrice) * 100 : 0;
+
+            return {
+                ...p,
+                quantity,
+                totalPurchase,
+                totalSales,
+                profitPercentage
+            };
+        }).filter(p => p.quantity !== 0); // Only show products with stock
+
+        const indicators = {
+            totalSalableQuantity: tableData.filter(p => p.isSalable).reduce((sum, p) => sum + p.quantity, 0),
+            totalNonSalableQuantity: tableData.filter(p => !p.isSalable).reduce((sum, p) => sum + p.quantity, 0),
+            distinctSalableCount: tableData.filter(p => p.isSalable).length,
+            distinctNonSalableCount: tableData.filter(p => !p.isSalable).length,
+            totalPurchaseValue: tableData.reduce((sum, p) => sum + p.totalPurchase, 0),
+            totalSalesValue: tableData.reduce((sum, p) => sum + p.totalSales, 0),
+            operationalCost: expenses.filter(e => {
+                const inBranch = selectedBranchIds.length === 0 || selectedBranchIds.includes(e.branchId);
+                return inBranch;
+            }).reduce((sum, e) => sum + e.amount, 0)
+        };
+
+        const totalProfitPercentage = indicators.totalPurchaseValue > 0 
+            ? ((indicators.totalSalesValue - indicators.totalPurchaseValue) / indicators.totalPurchaseValue) * 100 
+            : 0;
+
+        return { tableData, indicators, totalProfitPercentage };
+    }, [products, stockEntries, expenses, selectedBranchIds, selectedCategories]);
+
+    const exportToPDF = () => {
+        const doc = new jsPDF({ orientation: 'landscape' });
+        doc.text("Relatório de Desempenho de Inventário", 14, 16);
+        
+        autoTable(doc, {
+            head: [['Indicador', 'Valor']],
+            body: [
+                ['Produtos Distintos (C/NC)', `${inventoryData.indicators.distinctSalableCount} / ${inventoryData.indicators.distinctNonSalableCount}`],
+                ['Qtd. em Estoque (C/NC)', `${inventoryData.indicators.totalSalableQuantity} / ${inventoryData.indicators.totalNonSalableQuantity}`],
+                ['Valor Total de Compra', formatCurrency(inventoryData.indicators.totalPurchaseValue)],
+                ['Valor Total de Venda', formatCurrency(inventoryData.indicators.totalSalesValue)],
+                ['Percentual de Lucro Médio', `${inventoryData.totalProfitPercentage.toFixed(2)}%`],
+                ['Custo Operacional Total', formatCurrency(inventoryData.indicators.operationalCost)],
+            ],
+            startY: 22,
+        });
+
+        autoTable(doc, {
+            head: [['Produto', 'Preço Compra', 'Estoque', 'Preço Venda', 'Total Compra', '% Lucro', 'Total Venda']],
+            body: inventoryData.tableData.map(p => [
+                p.name,
+                formatCurrency(p.purchasePrice || 0),
+                p.quantity,
+                formatCurrency(p.price || 0),
+                formatCurrency(p.totalPurchase),
+                `${p.profitPercentage.toFixed(2)}%`,
+                formatCurrency(p.totalSales)
+            ]),
+            startY: (doc as any).lastAutoTable.finalY + 10,
+        });
+
+        doc.save('relatorio_desempenho_inventario.pdf');
+    };
+
+    const exportToExcel = () => {
+        const wb = XLSX.utils.book_new();
+        
+        const summaryData = [
+            ['Indicador', 'Valor'],
+            ['Produtos Distintos Comercializáveis', inventoryData.indicators.distinctSalableCount],
+            ['Produtos Distintos Não Comercializáveis', inventoryData.indicators.distinctNonSalableCount],
+            ['Qtd. Total Comercializáveis', inventoryData.indicators.totalSalableQuantity],
+            ['Qtd. Total Não Comercializáveis', inventoryData.indicators.totalNonSalableQuantity],
+            ['Valor Total de Compra', inventoryData.indicators.totalPurchaseValue],
+            ['Valor Total de Venda', inventoryData.indicators.totalSalesValue],
+            ['Percentual de Lucro Médio', inventoryData.totalProfitPercentage],
+            ['Custo Operacional Total', inventoryData.indicators.operationalCost],
+        ];
+        const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+        XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumo');
+
+        const tableData = inventoryData.tableData.map(p => ({
+            'Produto': p.name,
+            'Preço Compra': p.purchasePrice,
+            'Estoque': p.quantity,
+            'Preço Venda': p.price,
+            'Total Compra': p.totalPurchase,
+            '% Lucro': p.profitPercentage,
+            'Total Venda': p.totalSales
+        }));
+        const wsDetails = XLSX.utils.json_to_sheet(tableData);
+        XLSX.utils.book_append_sheet(wb, wsDetails, 'Detalhes');
+
+        XLSX.writeFile(wb, 'relatorio_desempenho_inventario.xlsx');
+    };
+
+    if (loading) return <Skeleton className="h-96 w-full" />;
+
+    return (
+        <div className="space-y-6 printable-area">
+            <Card className="no-print">
+                <CardHeader>
+                    <div className="flex flex-col md:flex-row justify-between gap-4">
+                        <div className="flex flex-wrap gap-2">
+                            <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
+                            <MultiSelectPopover title="Categorias" items={categories} selectedIds={selectedCategories} setSelectedIds={setSelectedCategories} />
+                        </div>
+                        <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" /> Imprimir</Button>
+                            <Button variant="outline" size="sm" onClick={exportToPDF}><FileDown className="mr-2 h-4 w-4" /> PDF</Button>
+                            <Button variant="outline" size="sm" onClick={exportToExcel}><FileDown className="mr-2 h-4 w-4" /> Excel</Button>
+                        </div>
+                    </div>
+                </CardHeader>
+            </Card>
+
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <Card>
+                    <CardHeader className="pb-2 text-sm font-medium">Produtos Cadastrados</CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{inventoryData.indicators.distinctSalableCount + inventoryData.indicators.distinctNonSalableCount}</div>
+                        <p className="text-xs text-muted-foreground">
+                            {inventoryData.indicators.distinctSalableCount} Comercializáveis / {inventoryData.indicators.distinctNonSalableCount} Não Comercializáveis
+                        </p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="pb-2 text-sm font-medium">Quantidade em Estoque</CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{inventoryData.indicators.totalSalableQuantity + inventoryData.indicators.totalNonSalableQuantity}</div>
+                        <p className="text-xs text-muted-foreground">
+                            {inventoryData.indicators.totalSalableQuantity} Comercializáveis / {inventoryData.indicators.totalNonSalableQuantity} Não Comercializáveis
+                        </p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="pb-2 text-sm font-medium">Valor Total (Compra)</CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{formatCurrency(inventoryData.indicators.totalPurchaseValue)}</div>
+                        <p className="text-xs text-muted-foreground">Investimento total em produtos</p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="pb-2 text-sm font-medium">Valor Total (Venda)</CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{formatCurrency(inventoryData.indicators.totalSalesValue)}</div>
+                        <p className="text-xs text-muted-foreground">Potencial de faturamento bruto</p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="pb-2 text-sm font-medium">Lucro Potencial Estimado</CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-green-600">
+                            {formatCurrency(inventoryData.indicators.totalSalesValue - inventoryData.indicators.totalPurchaseValue)}
+                        </div>
+                        <p className="text-xs text-muted-foreground">Margem média: {inventoryData.totalProfitPercentage.toFixed(2)}%</p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="pb-2 text-sm font-medium">Custo Operacional Total</CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-destructive">{formatCurrency(inventoryData.indicators.operationalCost)}</div>
+                        <p className="text-xs text-muted-foreground">Baseado em todas as despesas acumuladas</p>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Detalhamento por Produto</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Produto</TableHead>
+                                <TableHead className="text-right">Preço Compra</TableHead>
+                                <TableHead className="text-right">Estoque</TableHead>
+                                <TableHead className="text-right">Preço Venda</TableHead>
+                                <TableHead className="text-right">Total Compra</TableHead>
+                                <TableHead className="text-right">% Lucro</TableHead>
+                                <TableHead className="text-right">Total Venda</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {inventoryData.tableData.map((p) => (
+                                <TableRow key={p.id}>
+                                    <TableCell className="font-medium">{p.name}</TableCell>
+                                    <TableCell className="text-right">{formatCurrency(p.purchasePrice || 0)}</TableCell>
+                                    <TableCell className="text-right">{p.quantity}</TableCell>
+                                    <TableCell className="text-right">{formatCurrency(p.price || 0)}</TableCell>
+                                    <TableCell className="text-right font-bold">{formatCurrency(p.totalPurchase)}</TableCell>
+                                    <TableCell className="text-right">{p.profitPercentage.toFixed(2)}%</TableCell>
+                                    <TableCell className="text-right font-bold">{formatCurrency(p.totalSales)}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                        <TableFooter>
+                            <TableRow className="font-bold">
+                                <TableCell>Total</TableCell>
+                                <TableCell className="text-right">-</TableCell>
+                                <TableCell className="text-right">{inventoryData.indicators.totalSalableQuantity + inventoryData.indicators.totalNonSalableQuantity}</TableCell>
+                                <TableCell className="text-right">-</TableCell>
+                                <TableCell className="text-right">{formatCurrency(inventoryData.indicators.totalPurchaseValue)}</TableCell>
+                                <TableCell className="text-right">{inventoryData.totalProfitPercentage.toFixed(2)}%</TableCell>
+                                <TableCell className="text-right">{formatCurrency(inventoryData.indicators.totalSalesValue)}</TableCell>
+                            </TableRow>
+                        </TableFooter>
+                    </Table>
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
+// --- DRE Report Component ---
+function DREReport() {
+    const { user } = useAuth();
+    const [loading, setLoading] = useState(true);
+    const [sales, setSales] = useState<Sale[]>([]);
+    const [expenses, setExpenses] = useState<Expense[]>([]);
+    const [branches, setBranches] = useState<Branch[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
+    const [paymentConditions, setPaymentConditions] = useState<PaymentCondition[]>([]);
+
+    const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
+    const [expandedSections, setExpandedSections] = useState<string[]>([]);
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+        from: new Date(new Date().getFullYear(), 0, 1), // Start of current year
+        to: new Date(),
+    });
+
+    const toggleSection = (section: string) => {
+        setExpandedSections(prev => 
+            prev.includes(section) ? prev.filter(s => s !== section) : [...prev, section]
+        );
+    };
+
+    useEffect(() => {
+        if (!user?.organizationId) return;
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const orgId = user.organizationId;
+                const [salesSnap, expensesSnap, branchesSnap, productsSnap, conditionsSnap] = await Promise.all([
+                    getDocs(query(collection(db, 'sales'), where('organizationId', '==', orgId))),
+                    getDocs(query(collection(db, 'expenses'), where('organizationId', '==', orgId))),
+                    getDocs(query(collection(db, 'branches'), where('organizationId', '==', orgId))),
+                    getDocs(query(collection(db, 'products'), where('organizationId', '==', orgId))),
+                    getDocs(query(collection(db, 'paymentConditions'), where('organizationId', '==', orgId))),
+                ]);
+
+                const branchesData = branchesSnap.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() } as Branch))
+                    .filter(b => !b.isDeleted);
+                setSales(salesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Sale)));
+                setExpenses(expensesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id, date: doc.data().date.toDate() } as Expense)));
+                setBranches(branchesData);
+                setProducts(productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+                setPaymentConditions(conditionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition)));
+                
+                setSelectedBranchIds(branchesData.map(b => b.id));
+            } catch (error) {
+                console.error("Error fetching DRE data:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, [user]);
+
+    const dreData = useMemo(() => {
+        if (!dateRange?.from || !dateRange?.to) return null;
+
+        const quarters = eachQuarterOfInterval({
+            start: startOfQuarter(dateRange.from),
+            end: endOfQuarter(dateRange.to)
+        }).map(qStart => ({
+            start: qStart,
+            end: endOfQuarter(qStart),
+            label: `${getQuarter(qStart)}º Trim/${getYear(qStart)}`
+        }));
+
+        const processMetrics = (filteredSales: Sale[], filteredExpenses: Expense[]) => {
+            let grossRevenue = 0;
+            let totalTaxes = 0;
+            let totalFees = 0;
+            let totalCpv = 0;
+
+            const taxesBreakdown = new Map<string, number>();
+            const feesBreakdown = new Map<string, number>();
+            const cpvBreakdown = new Map<string, { quantity: number, totalCost: number }>();
+            const revenueBreakdown = new Map<string, number>(); // Grouped by branch
+            const expensesBreakdown = new Map<string, number>(); // Grouped by category
+
+            filteredSales.forEach(sale => {
+                grossRevenue += sale.total;
+                const branch = branches.find(b => b.id === sale.branchId);
+                const branchName = branch?.name || 'N/A';
+                revenueBreakdown.set(branchName, (revenueBreakdown.get(branchName) || 0) + sale.total);
+
+                if (branch?.taxRate) {
+                    const tax = sale.total * (branch.taxRate / 100);
+                    totalTaxes += tax;
+                    taxesBreakdown.set(branchName, (taxesBreakdown.get(branchName) || 0) + tax);
+                }
+
+                sale.payments?.forEach(p => {
+                    const condition = paymentConditions.find(c => c.id === p.conditionId);
+                    const fee = condition ? (condition.feeType === 'percentage' ? p.amount * (condition.fee / 100) : condition.fee) : 0;
+                    totalFees += fee;
+                    const feeName = condition?.name || 'Outros';
+                    feesBreakdown.set(feeName, (feesBreakdown.get(feeName) || 0) + fee);
+                });
+
+                sale.items?.forEach((item: any) => {
+                    const addCpv = (prodId: string, name: string, qty: number) => {
+                        const product = products.find(p => p.id === prodId);
+                        if (product) {
+                            const cost = qty * (product.purchasePrice || 0);
+                            totalCpv += cost;
+                            const current = cpvBreakdown.get(name) || { quantity: 0, totalCost: 0 };
+                            cpvBreakdown.set(name, { quantity: current.quantity + qty, totalCost: current.totalCost + cost });
+                        }
+                    };
+                    if (item.type === 'product') addCpv(item.id, item.name, item.quantity);
+                    else if (item.type === 'kit') item.chosenProducts?.forEach((p: any) => addCpv(p.id, p.name, item.quantity));
+                    else if (item.type === 'combo') item.products?.forEach((p: any) => addCpv(p.productId, p.productName, item.quantity * p.quantity));
+                });
+            });
+
+            filteredExpenses.forEach(e => {
+                expensesBreakdown.set(e.category, (expensesBreakdown.get(e.category) || 0) + e.amount);
+            });
+
+            const netRevenue = grossRevenue - totalTaxes - totalFees;
+            const grossProfit = netRevenue - totalCpv;
+            const totalExpensesVal = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+            const netResult = grossProfit - totalExpensesVal;
+
+            return {
+                grossRevenue, totalTaxes, totalFees, netRevenue, totalCpv, grossProfit, totalExpenses: totalExpensesVal, netResult,
+                revenueBreakdown, taxesBreakdown, feesBreakdown, cpvBreakdown, expensesBreakdown,
+                marginGross: netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0,
+                marginNet: grossRevenue > 0 ? (netResult / grossRevenue) * 100 : 0
+            };
+        };
+
+        const allFilteredSales = sales.filter(s => s.status !== 'cancelled' && (selectedBranchIds.length === 0 || selectedBranchIds.includes(s.branchId)) && s.date >= startOfDay(dateRange.from!) && s.date <= endOfDay(dateRange.to!));
+        const allFilteredExpenses = expenses.filter(e => (selectedBranchIds.length === 0 || selectedBranchIds.includes(e.branchId)) && e.date >= startOfDay(dateRange.from!) && e.date <= endOfDay(dateRange.to!));
+
+        const periods = quarters.map(q => {
+            const s = allFilteredSales.filter(sale => sale.date >= q.start && sale.date <= q.end);
+            const e = allFilteredExpenses.filter(exp => exp.date >= q.start && exp.date <= q.end);
+            return { label: q.label, metrics: processMetrics(s, e) };
+        });
+
+        const total = processMetrics(allFilteredSales, allFilteredExpenses);
+
+        return { periods, total };
+    }, [sales, expenses, branches, products, paymentConditions, selectedBranchIds, dateRange]);
+
+    const exportToExcel = () => {
+        if (!dreData) return;
+        const wb = XLSX.utils.book_new();
+        const ws_data: any[] = [['Descrição', ...dreData.periods.map(p => p.label), 'Total', '% Rec. Bruta Total']];
+
+        const addDRELine = (label: string, field: string, isDetail = false) => {
+            const row = [isDetail ? `    ${label}` : label];
+            dreData.periods.forEach(p => row.push((p.metrics as any)[field]));
+            const totalVal = (dreData.total as any)[field];
+            row.push(totalVal);
+            row.push(totalVal / dreData.total.grossRevenue || 0);
+            ws_data.push(row);
+        };
+
+        // This is complex for detail rows because they might not exist in all periods.
+        // We'll collect all unique keys for each breakdown type.
+        const addBreakdownLines = (label: string, field: string, breakdownField: string) => {
+            addDRELine(label, field);
+            const keys = new Set<string>();
+            dreData.periods.forEach(p => {
+                const breakdown = (p.metrics as any)[breakdownField] as Map<string, any>;
+                breakdown.forEach((_, key) => keys.add(key));
+            });
+            
+            Array.from(keys).sort().forEach(key => {
+                const row = [`    ${key}`];
+                dreData.periods.forEach(p => {
+                    const b = (p.metrics as any)[breakdownField] as Map<string, any>;
+                    const val = b.get(key);
+                    row.push(typeof val === 'number' ? val : (val?.totalCost || 0));
+                });
+                const totalB = (dreData.total as any)[breakdownField] as Map<string, any>;
+                const totalVal = totalB.get(key);
+                const finalTotal = typeof totalVal === 'number' ? totalVal : (totalVal?.totalCost || 0);
+                row.push(finalTotal);
+                row.push(finalTotal / dreData.total.grossRevenue || 0);
+                ws_data.push(row);
+            });
+        };
+
+        addBreakdownLines('RECEITA BRUTA', 'grossRevenue', 'revenueBreakdown');
+        addBreakdownLines('(-) IMPOSTOS', 'totalTaxes', 'taxesBreakdown');
+        addBreakdownLines('(-) TAXAS FINANCEIRAS', 'totalFees', 'feesBreakdown');
+        addDRELine('(=) RECEITA LÍQUIDA', 'netRevenue');
+        addBreakdownLines('(-) CPV', 'totalCpv', 'cpvBreakdown');
+        addDRELine('(=) LUCRO BRUTO', 'grossProfit');
+        addBreakdownLines('(-) DESPESAS OPERACIONAIS', 'totalExpenses', 'expensesBreakdown');
+        addDRELine('(=) RESULTADO LÍQUIDO', 'netResult');
+
+        const ws = XLSX.utils.aoa_to_sheet(ws_data);
+        XLSX.utils.book_append_sheet(wb, ws, "DRE Trimestral");
+        XLSX.writeFile(wb, "dre_trimestral.xlsx");
+    };
+
+    if (loading) return <Skeleton className="h-96 w-full" />;
+    if (!dreData) return null;
+
+    const renderDRERow = (label: string, field: string, breakdownField?: string, className?: string, isNegative = false) => {
+        const isExpanded = breakdownField && expandedSections.includes(breakdownField);
+        const totalVal = (dreData.total as any)[field];
+        
+        return (
+            <>
+                <TableRow 
+                    className={cn("cursor-pointer hover:bg-muted/20", className)} 
+                    onClick={() => breakdownField && toggleSection(breakdownField)}
+                >
+                    <TableCell className="font-medium flex items-center gap-2">
+                        {breakdownField && (isExpanded ? <ArrowDownCircle className="h-4 w-4" /> : <Package className="h-4 w-4 text-muted-foreground" />)}
+                        {label}
+                    </TableCell>
+                    {dreData.periods.map((p, i) => (
+                        <TableCell key={i} className="text-right">
+                            {isNegative ? `(${formatCurrency((p.metrics as any)[field])})` : formatCurrency((p.metrics as any)[field])}
+                        </TableCell>
+                    ))}
+                    <TableCell className="text-right font-bold border-l">
+                        {isNegative ? `(${formatCurrency(totalVal)})` : formatCurrency(totalVal)}
+                    </TableCell>
+                    <TableCell className="text-right text-xs text-muted-foreground">
+                        {((totalVal / dreData.total.grossRevenue) * 100 || 0).toFixed(2)}%
+                    </TableCell>
+                </TableRow>
+                {isExpanded && Array.from(((dreData.total as any)[breakdownField!] as Map<string, any>).keys()).sort().map(key => {
+                    const totalDetail = ((dreData.total as any)[breakdownField!] as Map<string, any>).get(key);
+                    const totalDetailVal = typeof totalDetail === 'number' ? totalDetail : totalDetail.totalCost;
+                    return (
+                        <TableRow key={key} className="bg-muted/5 text-xs italic border-l-4 border-primary/20">
+                            <TableCell className="pl-12 text-muted-foreground">{key}</TableCell>
+                            {dreData.periods.map((p, i) => {
+                                const detail = ((p.metrics as any)[breakdownField!] as Map<string, any>).get(key);
+                                const val = detail ? (typeof detail === 'number' ? detail : detail.totalCost) : 0;
+                                return <TableCell key={i} className="text-right">{isNegative ? `(${formatCurrency(val)})` : formatCurrency(val)}</TableCell>;
+                            })}
+                            <TableCell className="text-right font-semibold border-l">{isNegative ? `(${formatCurrency(totalDetailVal)})` : formatCurrency(totalDetailVal)}</TableCell>
+                            <TableCell className="text-right text-[10px]">{((totalDetailVal / dreData.total.grossRevenue) * 100 || 0).toFixed(2)}%</TableCell>
+                        </TableRow>
+                    );
+                })}
+            </>
+        );
+    };
+
+    return (
+        <div className="space-y-6 printable-area">
+            <Card className="no-print">
+                <CardHeader>
+                    <div className="flex flex-col md:flex-row justify-between gap-4">
+                        <div className="flex flex-wrap gap-2">
+                            <MultiSelectPopover title="Filiais" items={branches} selectedIds={selectedBranchIds} setSelectedIds={setSelectedBranchIds} />
+                            <DateRangePicker date={dateRange} onSelect={setDateRange} />
+                        </div>
+                        <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" /> Imprimir</Button>
+                            <Button variant="outline" size="sm" onClick={exportToExcel}><FileDown className="mr-2 h-4 w-4" /> Excel</Button>
+                        </div>
+                    </div>
+                </CardHeader>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>DRE - Demonstração do Resultado do Exercício</CardTitle>
+                    <CardDescription>Visualização trimestral com detalhamento de itens.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="overflow-x-auto">
+                        <Table>
+                            <TableHeader>
+                                <TableRow className="bg-muted/50">
+                                    <TableHead className="min-w-[250px]">Descrição</TableHead>
+                                    {dreData.periods.map((p, i) => (
+                                        <TableHead key={i} className="text-right whitespace-nowrap">{p.label}</TableHead>
+                                    ))}
+                                    <TableHead className="text-right border-l font-bold">Total Acumulado</TableHead>
+                                    <TableHead className="text-right text-xs">% Rec. Bruta</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {renderDRERow('RECEITA BRUTA DE VENDAS', 'grossRevenue', 'revenueBreakdown')}
+                                {renderDRERow('(-) Impostos sobre Vendas', 'totalTaxes', 'taxesBreakdown', 'text-destructive', true)}
+                                {renderDRERow('(-) Taxas Financeiras', 'totalFees', 'feesBreakdown', 'text-destructive', true)}
+                                {renderDRERow('(=) RECEITA LÍQUIDA', 'netRevenue', undefined, 'bg-muted/30 font-bold')}
+                                {renderDRERow('(-) Custo de Produtos (CPV)', 'totalCpv', 'cpvBreakdown', 'text-destructive', true)}
+                                {renderDRERow('(=) LUCRO BRUTO', 'grossProfit', undefined, 'bg-muted/30 font-bold')}
+                                {renderDRERow('(-) Despesas Operacionais', 'totalExpenses', 'expensesBreakdown', 'text-destructive', true)}
+                                {renderDRERow('(=) RESULTADO LÍQUIDO', 'netResult', undefined, cn("text-lg font-bold", dreData.total.netResult >= 0 ? "text-green-600 bg-green-50" : "text-destructive bg-destructive/10"))}
+                            </TableBody>
+                        </Table>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2 mt-8">
+                        <Card>
+                            <CardHeader className="pb-2 text-sm font-medium">Margem Bruta (Total)</CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-bold">{dreData.total.marginGross.toFixed(2)}%</div>
+                                <p className="text-xs text-muted-foreground">Lucro bruto sobre a receita líquida</p>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardHeader className="pb-2 text-sm font-medium">Margem Líquida (Total)</CardHeader>
+                            <CardContent>
+                                <div className={cn("text-2xl font-bold", dreData.total.marginNet >= 0 ? "text-green-600" : "text-destructive")}>
+                                    {dreData.total.marginNet.toFixed(2)}%
+                                </div>
+                                <p className="text-xs text-muted-foreground">Lucro real sobre a receita bruta</p>
+                            </CardContent>
+                        </Card>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
 // --- Main Page Component ---
 export default function ReportsPage() {
     const { user, loading } = useAuth();
@@ -1692,6 +2318,12 @@ export default function ReportsPage() {
                          <SelectItem value="general">
                             <span className="flex items-center"><Book className="mr-2 h-4 w-4"/>Relatório Geral</span>
                         </SelectItem>
+                        <SelectItem value="inventory-performance">
+                            <span className="flex items-center"><Package className="mr-2 h-4 w-4"/>Desempenho de Inventário</span>
+                        </SelectItem>
+                        <SelectItem value="dre">
+                            <span className="flex items-center"><FileBarChart className="mr-2 h-4 w-4"/>DRE Financeiro</span>
+                        </SelectItem>
                         <SelectItem value="sales">
                             <span className="flex items-center"><FileDown className="mr-2 h-4 w-4"/>Relatório de Vendas</span>
                         </SelectItem>
@@ -1715,6 +2347,8 @@ export default function ReportsPage() {
             </div>
             
             {reportType === 'general' && <GeneralReport />}
+            {reportType === 'inventory-performance' && <InventoryPerformanceReport />}
+            {reportType === 'dre' && <DREReport />}
             {reportType === 'sales' && <SalesReport />}
             {reportType === 'financial-summary' && <FinancialSummaryReport />}
             {reportType === 'abc-curve' && <ABCCurveReport />}

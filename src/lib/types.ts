@@ -403,6 +403,8 @@ export interface Organization {
     evolutionApiConfig?: EvolutionApiConfig;
 }
 
+export type ExpenseStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';
+
 export interface Expense {
     id: string;
     organizationId: string;
@@ -410,13 +412,20 @@ export interface Expense {
     description: string;
     amount: number;
     category: string;
-    date: any; // Timestamp
+    date: any; // Entry date/Launch date
+    dueDate: any; // Vencimento
+    paymentDate?: any; // Pagamento
+    status: ExpenseStatus;
     notes?: string;
     supplierId?: string;
     supplierName?: string;
     userId: string;
     userName: string;
+    linkedUserId?: string; // Para salários
+    linkedUserName?: string; // Para salários
     nfeNumber?: string;
+    receiptUrl?: string; // Comprovante
+    paidAmount?: number;
     isDeleted?: boolean;
 }
 

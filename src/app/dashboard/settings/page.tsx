@@ -37,6 +37,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { PermissionProfileForm } from '@/components/permission-profile-form';
 import { format } from 'date-fns';
 import { logUserActivity } from '@/lib/logging';
+import { EvolutionApiSettings } from '@/components/evolution-api-settings';
+import { MessageCircle } from 'lucide-react';
 
 
 const availableAvatars = [
@@ -1321,7 +1323,7 @@ function RolesSettings() {
                     </TableBody>
                 </Table>
                 <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                    <DialogContent className="max-w-2xl">
+                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>{editingProfile ? 'Editar Perfil' : 'Novo Perfil'}</DialogTitle>
                         </DialogHeader>
@@ -1479,6 +1481,9 @@ function SettingsPageContent() {
                     <TabsTrigger value="subscription">Assinatura</TabsTrigger>
                     <TabsTrigger value="branding">Branding</TabsTrigger>
                     <TabsTrigger value="roles">Perfis &amp; Permissões</TabsTrigger>
+                    {user?.enabledModules?.chat?.view && (
+                        <TabsTrigger value="chat"><MessageCircle className="mr-2 h-4 w-4"/>Chat</TabsTrigger>
+                    )}
                     {user?.enabledModules?.customers?.view && (
                         <TabsTrigger value="anamnesis">Anamnese</TabsTrigger>
                     )}
@@ -1504,6 +1509,11 @@ function SettingsPageContent() {
                  <TabsContent value="roles">
                     <RolesSettings />
                 </TabsContent>
+                {user?.enabledModules?.chat?.view && (
+                    <TabsContent value="chat">
+                        <EvolutionApiSettings />
+                    </TabsContent>
+                )}
                  {user?.enabledModules?.customers?.view && (
                     <TabsContent value="anamnesis">
                         <AnamnesisSettings />

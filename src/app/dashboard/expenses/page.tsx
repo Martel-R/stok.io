@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, doc, onSnapshot, query, where, Timestamp } from 'firebase/firestore';
-import type { Expense, Supplier, ExpenseStatus } from '@/lib/types';
+import type { Expense, Supplier, ExpenseStatus, User } from '@/lib/types';
 import { MoreHorizontal, PlusCircle, ArrowDownCircle, Lock, Calendar as CalendarIcon, CheckCircle2, Receipt, AlertCircle, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';

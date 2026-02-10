@@ -1,8 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverExternalPackages: ['genkit', '@genkit-ai/googleai', '@genkit-ai/firebase', 'require-in-the-middle'],
-  },
+  serverExternalPackages: ['genkit', '@genkit-ai/googleai', '@genkit-ai/firebase', 'require-in-the-middle'],
   turbopack: {},
   images: {
     remotePatterns: [

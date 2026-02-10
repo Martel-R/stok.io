@@ -30,6 +30,7 @@ import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Html5Qrcode } from 'html5-qrcode';
 
 
 type CartItem = 
@@ -41,84 +42,56 @@ type CartItem =
 type ProductWithStock = Product & { stock: number };
 
 function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean; onOpenChange: (open: boolean) => void; onScan: (barcode: string) => void; }) {
-    const videoRef = useRef<HTMLVideoElement>(null);
     const [hasPermission, setHasPermission] = useState(true);
-    const isScanningRef = useRef(false);
+    const scannerRef = useRef<Html5Qrcode | null>(null);
     const { toast } = useToast();
+    const regionId = "reader";
 
     useEffect(() => {
-        let stream: MediaStream | null = null;
-        let animationFrameId: number;
-
-        const startScan = async () => {
-            if (!isOpen || !(window as any).BarcodeDetector || isScanningRef.current) {
-                return;
-            }
-
-            try {
-                const barcodeDetector = new (window as any).BarcodeDetector({
-                    formats: ['ean_13', 'code_128', 'qr_code', 'upc_a', 'upc_e']
-                });
-                
-                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-                setHasPermission(true);
-
-                if (videoRef.current) {
-                    videoRef.current.srcObject = stream;
-                    await videoRef.current.play();
-                }
-
-                isScanningRef.current = true;
-
-                const detect = async () => {
-                    if (!isScanningRef.current) return;
-                    try {
-                        if (videoRef.current && videoRef.current.readyState === 4) {
-                            const barcodes = await barcodeDetector.detect(videoRef.current);
-                            if (barcodes.length > 0) {
-                                isScanningRef.current = false;
-                                onScan(barcodes[0].rawValue);
-                            }
-                        }
-                    } catch (error) {
-                       console.error("Barcode detection error:", error);
-                    }
-                    if (isScanningRef.current) {
-                       animationFrameId = requestAnimationFrame(detect);
-                    }
-                };
-                detect();
-
-            } catch (err) {
-                console.error("Error accessing camera for barcode scanning:", err);
-                setHasPermission(false);
-                toast({ title: "Permissão da câmera negada", description: "Por favor, permita o acesso à câmera.", variant: 'destructive' });
-            }
-        };
-        
-        const stopScan = () => {
-             cancelAnimationFrame(animationFrameId);
-             isScanningRef.current = false;
-             if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
-            if (videoRef.current) {
-                videoRef.current.srcObject = null;
-            }
-        };
+        let isMounted = true;
 
         if (isOpen) {
-            startScan();
+            // Wait for the next tick to ensure the DOM element is rendered
+            setTimeout(() => {
+                if (!isMounted || !document.getElementById(regionId)) return;
+
+                const html5QrCode = new Html5Qrcode(regionId);
+                scannerRef.current = html5QrCode;
+
+                const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+
+                html5QrCode.start(
+                    { facingMode: "environment" },
+                    config,
+                    (decodedText) => {
+                        onScan(decodedText);
+                        stopScanner();
+                    },
+                    undefined
+                ).catch(err => {
+                    console.error("Error starting scanner:", err);
+                    if (isMounted) setHasPermission(false);
+                });
+            }, 100);
         }
 
         return () => {
-           stopScan();
+            isMounted = false;
+            stopScanner();
         };
-    }, [isOpen, onScan, toast]);
+    }, [isOpen]);
+
+    const stopScanner = () => {
+        if (scannerRef.current && scannerRef.current.isScanning) {
+            scannerRef.current.stop().then(() => {
+                scannerRef.current?.clear();
+            }).catch(err => console.error("Error stopping scanner:", err));
+        }
+    };
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => {
-            if (!open) isScanningRef.current = false;
+            if (!open) stopScanner();
             onOpenChange(open);
         }}>
             <DialogContent>
@@ -126,17 +99,16 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
                     <DialogTitle>Escanear Código de Barras</DialogTitle>
                     <DialogDescription>Aponte a câmera para o código de barras do produto.</DialogDescription>
                 </DialogHeader>
-                <div className="p-4 bg-muted rounded-md">
-                    {hasPermission ? (
-                        <video ref={videoRef} className="w-full rounded-md" playsInline />
-                    ) : (
-                        <Alert variant="destructive">
-                            <AlertTitle>Acesso à Câmera Negado</AlertTitle>
+                <div className="p-4 bg-black rounded-md overflow-hidden min-h-[300px] flex items-center justify-center relative">
+                    {!hasPermission && (
+                        <Alert variant="destructive" className="z-10 absolute inset-4 w-auto">
+                            <AlertTitle>Erro na Câmera</AlertTitle>
                             <AlertDescription>
-                                Você precisa permitir o acesso à câmera para usar esta funcionalidade.
+                                Não foi possível acessar a câmera ou o scanner falhou ao iniciar.
                             </AlertDescription>
                         </Alert>
                     )}
+                    <div id={regionId} className="w-full h-full"></div>
                 </div>
             </DialogContent>
         </Dialog>

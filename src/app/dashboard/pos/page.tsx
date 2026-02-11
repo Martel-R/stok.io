@@ -476,7 +476,7 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
                                                     </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent>
-                                                    <DropdownMenuItem onSelect={() => onCancelSale(sale)} className="text-destructive focus:text-destructive">
+                                                    <DropdownMenuItem onSelect={() => setTimeout(() => onCancelSale(sale), 0)} className="text-destructive focus:text-destructive">
                                                         <Ban className="mr-2"/>
                                                         Cancelar Venda
                                                     </DropdownMenuItem>

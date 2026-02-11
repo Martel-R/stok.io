@@ -270,10 +270,10 @@ function ProductForm({ product, suppliers, branches, onSave, onDone }: { product
     });
 };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const supplier = suppliers.find(s => s.id === formData.supplierId);
-    onSave({
+    await onSave({
       ...formData,
       supplierName: supplier ? supplier.name : '',
       imageUrl: formData.imageUrl || 'https://placehold.co/400x400.png'
@@ -676,6 +676,7 @@ export default function ProductsPage() {
         action,
         details: { productId: editingProduct?.id || 'new', productName: productData.name }
       });
+      setIsFormOpen(false);
     } catch (error) {
       console.error("Error saving product: ", error);
       toast({ title: 'Erro ao salvar produto', variant: 'destructive' });
@@ -1060,6 +1061,9 @@ export default function ProductsPage() {
                 <DialogContent className="sm:max-w-xl">
                     <DialogHeader>
                         <DialogTitle>{editingProduct ? 'Editar Produto' : 'Adicionar Novo Produto'}</DialogTitle>
+                        <DialogDescription>
+                            {editingProduct ? 'Atualize as informações do produto selecionado.' : 'Preencha os dados abaixo para cadastrar um novo produto no catálogo.'}
+                        </DialogDescription>
                     </DialogHeader>
                     <ProductForm product={editingProduct} suppliers={suppliers} branches={branches} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
                 </DialogContent>
@@ -1184,12 +1188,12 @@ export default function ProductsPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      {can.edit && <DropdownMenuItem onClick={() => openEditDialog(product)}>Editar</DropdownMenuItem>}
-                      {can.edit && <DropdownMenuItem onClick={() => handleCopy(product)}>
+                      {can.edit && <DropdownMenuItem onSelect={() => setTimeout(() => openEditDialog(product), 0)}>Editar</DropdownMenuItem>}
+                      {can.edit && <DropdownMenuItem onSelect={() => handleCopy(product)}>
                         <Copy className="mr-2 h-4 w-4" />
                         Copiar
                       </DropdownMenuItem>}
-                      {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(product)}>Excluir</DropdownMenuItem>}
+                      {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onSelect={() => handleDelete(product)}>Excluir</DropdownMenuItem>}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>
@@ -1210,6 +1214,9 @@ export default function ProductsPage() {
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Alterar Categoria em Lote</DialogTitle>
+                    <DialogDescription>
+                        Esta alteração será aplicada a todos os produtos selecionados ({selectedProductIds.length}).
+                    </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
                     <Label htmlFor="newCategory">Nova Categoria</Label>
@@ -1235,6 +1242,9 @@ export default function ProductsPage() {
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Alterar Limite de Estoque Baixo em Lote</DialogTitle>
+                    <DialogDescription>
+                        Define o novo limite para disparar alertas de estoque baixo para os itens selecionados.
+                    </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
                     <Label htmlFor="newLowStockThreshold">Novo Limite</Label>
@@ -1261,6 +1271,9 @@ export default function ProductsPage() {
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Alterar Fornecedor em Lote</DialogTitle>
+                    <DialogDescription>
+                        Selecione o novo fornecedor que será atribuído aos produtos selecionados.
+                    </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
                     <Label htmlFor="newSupplier">Novo Fornecedor</Label>
@@ -1289,6 +1302,9 @@ export default function ProductsPage() {
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Compartilhar Produtos com Outras Filiais</DialogTitle>
+                    <DialogDescription>
+                        Os produtos selecionados ficarão disponíveis nas filiais escolhidas abaixo.
+                    </DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-2">
                     <Label>Filiais de Destino</Label>
@@ -1335,6 +1351,9 @@ export default function ProductsPage() {
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Alterar Preço de Venda em Lote</DialogTitle>
+                    <DialogDescription>
+                        Define o novo preço de venda para os produtos selecionados. Use com cautela.
+                    </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
                     <Label htmlFor="newPrice">Novo Preço de Venda</Label>

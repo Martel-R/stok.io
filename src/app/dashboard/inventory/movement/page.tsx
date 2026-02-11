@@ -38,6 +38,7 @@ function MovementPageContent() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [popoverOpen, setPopoverOpen] = useState(false);
+    const [openDatePopoverId, setOpenDatePopoverId] = useState<string | null>(null);
     const [globalNotes, setGlobalNotes] = useState('');
 
     useEffect(() => {
@@ -197,14 +198,28 @@ function MovementPageContent() {
                                     {movementType === 'entry' && (
                                         <TableCell>
                                             {p.isPerishable ? (
-                                                <Popover>
+                                                <Popover 
+                                                    open={openDatePopoverId === p.id} 
+                                                    onOpenChange={(open) => setOpenDatePopoverId(open ? p.id : null)}
+                                                    modal={true}
+                                                >
                                                     <PopoverTrigger asChild>
                                                         <Button variant="outline" size="sm" className="w-full justify-start text-left font-normal">
                                                             <CalendarIcon className="mr-2 h-4 w-4" />
                                                             {p.expirationDate ? format(p.expirationDate, 'dd/MM/yy') : <span>N/A</span>}
                                                         </Button>
                                                     </PopoverTrigger>
-                                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={p.expirationDate} onSelect={(date) => updateListedProduct(p.id, 'expirationDate', date)} /></PopoverContent>
+                                                    <PopoverContent className="w-auto p-0" align="start">
+                                                        <Calendar 
+                                                            mode="single" 
+                                                            selected={p.expirationDate} 
+                                                            onSelect={(date) => {
+                                                                updateListedProduct(p.id, 'expirationDate', date);
+                                                                setOpenDatePopoverId(null);
+                                                            }} 
+                                                            initialFocus
+                                                        />
+                                                    </PopoverContent>
                                                 </Popover>
                                             ) : (
                                                 <span className="text-muted-foreground text-xs">Não perecível</span>

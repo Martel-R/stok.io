@@ -5,7 +5,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -59,6 +59,7 @@ function AppointmentForm({
     });
     
     const [formData, setFormData] = useState<Partial<Appointment>>(appointment || getDefaultState());
+    const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     
     const [selectedService, setSelectedService] = useState<Service | null>(() => {
         if (appointment && appointment.serviceId) {
@@ -77,6 +78,7 @@ function AppointmentForm({
         const currentStartTime = formData.start || new Date();
         const newDate = setHours(setMinutes(date, getMinutes(currentStartTime)), getHours(currentStartTime));
         setFormData(prev => ({...prev, start: newDate }));
+        setIsCalendarOpen(false);
     }
 
     const handleTimeChange = (time: string) => { // time is "HH:mm"
@@ -99,7 +101,7 @@ function AppointmentForm({
         }
     }
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.customerId || !formData.serviceId || !formData.professionalId || !formData.start) {
             alert('Por favor, preencha todos os campos obrigatórios.');
@@ -116,7 +118,7 @@ function AppointmentForm({
             end: addMinutes(formData.start, selectedService?.duration || 0),
             branchId: currentBranch?.id
         }
-        onSave(finalData as Partial<Appointment>);
+        await onSave(finalData as Partial<Appointment>);
         onDone();
     };
 
@@ -165,14 +167,18 @@ function AppointmentForm({
             <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                     <Label>Data</Label>
-                     <Popover>
+                     <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                         <PopoverTrigger asChild>
                             <Button variant="outline" className="w-full justify-start text-left font-normal">
                                 <Calendar className="mr-2 h-4 w-4" />
                                 {formData.start ? format(formData.start, 'PPP', { locale: ptBR }) : <span>Escolha uma data</span>}
                             </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
+                        <PopoverContent 
+                            className="w-auto p-0" 
+                            align="start"
+                            onFocusOutside={(e) => e.preventDefault()}
+                        >
                             <CalendarComponent mode="single" selected={formData.start} onSelect={handleDateChange} initialFocus />
                         </PopoverContent>
                     </Popover>
@@ -295,9 +301,9 @@ function DraggableAppointment({ appointment, customers, onEdit, onStartAttendanc
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                                {can.edit && <DropdownMenuItem onClick={() => onEdit(appointment)}>Editar</DropdownMenuItem>}
-                                {can.edit && <DropdownMenuItem onClick={() => onReschedule(appointment)}><RefreshCw className="mr-2 h-4 w-4" />Reagendar</DropdownMenuItem>}
-                                {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(appointment.id)}>Excluir</DropdownMenuItem>}
+                                {can.edit && <DropdownMenuItem onSelect={() => setTimeout(() => onEdit(appointment), 0)}>Editar</DropdownMenuItem>}
+                                {can.edit && <DropdownMenuItem onSelect={() => setTimeout(() => onReschedule(appointment), 0)}><RefreshCw className="mr-2 h-4 w-4" />Reagendar</DropdownMenuItem>}
+                                {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => onDelete(appointment.id)}>Excluir</DropdownMenuItem>}
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
@@ -548,9 +554,9 @@ function DraggableWeekAppointment({ appointment, onEdit, onStartAttendance, onRe
                         <Button variant="ghost" size="icon" className="h-6 w-6"><MoreHorizontal className="h-4 w-4"/></Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                        {can.edit && <DropdownMenuItem onClick={() => onEdit(appointment)}>Editar</DropdownMenuItem>}
-                        {can.edit && <DropdownMenuItem onClick={() => onReschedule(appointment)}>Reagendar</DropdownMenuItem>}
-                        {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(appointment.id)}>Excluir</DropdownMenuItem>}
+                        {can.edit && <DropdownMenuItem onSelect={() => setTimeout(() => onEdit(appointment), 0)}>Editar</DropdownMenuItem>}
+                        {can.edit && <DropdownMenuItem onSelect={() => setTimeout(() => onReschedule(appointment), 0)}>Reagendar</DropdownMenuItem>}
+                        {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => onDelete(appointment.id)}>Excluir</DropdownMenuItem>}
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
@@ -645,14 +651,14 @@ function ListView({ appointments, onEdit, onStartAttendance, onReschedule, onDel
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
                                              {can.edit ? (
-                                                <DropdownMenuItem onClick={() => onStartAttendance(app)} disabled={app.status !== 'scheduled'}>
+                                                <DropdownMenuItem onSelect={() => setTimeout(() => onStartAttendance(app), 0)} disabled={app.status !== 'scheduled'}>
                                                     <PlayCircle className="mr-2 h-4 w-4" />
                                                     {app.attendanceId ? 'Ver Atendimento' : 'Iniciar Atendimento'}
                                                 </DropdownMenuItem>
                                             ) : null}
-                                            {can.edit && <DropdownMenuItem onClick={() => onEdit(app)}>Editar</DropdownMenuItem>}
-                                            {can.edit && <DropdownMenuItem onClick={() => onReschedule(app)}>Reagendar</DropdownMenuItem>}
-                                            {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(app.id)}>Excluir</DropdownMenuItem>}
+                                            {can.edit && <DropdownMenuItem onSelect={() => setTimeout(() => onEdit(app), 0)}>Editar</DropdownMenuItem>}
+                                            {can.edit && <DropdownMenuItem onSelect={() => setTimeout(() => onReschedule(app), 0)}>Reagendar</DropdownMenuItem>}
+                                            {can.delete && <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => onDelete(app.id)}>Excluir</DropdownMenuItem>}
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </TableCell>
@@ -911,7 +917,12 @@ export default function AppointmentsPage() {
                                 <Button onClick={openNewDialog}><PlusCircle className="mr-2 h-4 w-4" /> Novo Agendamento</Button>
                             </DialogTrigger>
                             <DialogContent className="sm:max-w-xl">
-                                <DialogHeader><DialogTitle>{editingAppointment ? 'Editar Agendamento' : 'Novo Agendamento'}</DialogTitle></DialogHeader>
+                                <DialogHeader>
+                                    <DialogTitle>{editingAppointment ? 'Editar Agendamento' : 'Novo Agendamento'}</DialogTitle>
+                                    <DialogDescription>
+                                        {editingAppointment ? 'Atualize os detalhes do agendamento selecionado.' : 'Escolha um cliente, serviço e profissional para criar um novo agendamento.'}
+                                    </DialogDescription>
+                                </DialogHeader>
                                 <AppointmentForm
                                     key={editingAppointment?.id || 'new'}
                                     appointment={editingAppointment}

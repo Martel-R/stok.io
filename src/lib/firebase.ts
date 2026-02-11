@@ -40,10 +40,13 @@ if (typeof window !== 'undefined') {
         isTokenAutoRefreshEnabled: true
       });
     } catch (error) {
-      console.error("Failed to initialize App Check. This may be due to an invalid or unconfigured reCAPTCHA key in your Firebase project settings.", error);
+      console.error("Failed to initialize App Check.", error);
     }
   } else {
-    console.warn("App Check not initialized. NEXT_PUBLIC_RECAPTCHA_SITE_KEY is missing or invalid.");
+    // Only log info if we are in development to avoid console noise in production if App Check is not desired
+    if (process.env.NODE_ENV === 'development') {
+        console.info("App Check not initialized. NEXT_PUBLIC_RECAPTCHA_SITE_KEY is missing or invalid.");
+    }
   }
 }
 

@@ -4,13 +4,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, doc, onSnapshot, query, where, Timestamp } from 'firebase/firestore';
 import type { Expense, Supplier, ExpenseStatus, User } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, ArrowDownCircle, Lock, Calendar as CalendarIcon, CheckCircle2, Receipt, AlertCircle, Clock } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, ArrowDownCircle, Lock, Calendar as CalendarIcon, CheckCircle2, Receipt, AlertCircle, Clock, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -42,7 +42,9 @@ const statusConfig: Record<ExpenseStatus, { label: string, color: string, icon: 
     cancelled: { label: 'Cancelado', color: 'bg-gray-100 text-gray-800 border-gray-200', icon: AlertCircle },
 };
 
-function ExpenseForm({ expense, suppliers, users, onSave, onDone }: { expense?: Expense; suppliers: Supplier[]; users: User[]; onSave: (data: Partial<Expense>) => void; onDone: () => void }) {
+function ExpenseForm({ expense, suppliers, users, onSave, onDone }: { expense?: Expense; suppliers: Supplier[]; users: User[]; onSave: (data: Partial<Expense>) => Promise<void>; onDone: () => void }) {
+    const [isSaving, setIsSaving] = useState(false);
+    const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     const [formData, setFormData] = useState<Partial<Expense>>(
         expense || {
             description: '',
@@ -71,19 +73,25 @@ function ExpenseForm({ expense, suppliers, users, onSave, onDone }: { expense?: 
     const handleDateChange = (date: Date | undefined) => {
         if (date) {
             setFormData(prev => ({ ...prev, dueDate: date }));
+            setIsCalendarOpen(false);
         }
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const supplier = suppliers.find(s => s.id === formData.supplierId);
-        const linkedUser = users.find(u => u.id === formData.linkedUserId);
-        onSave({ 
-            ...formData, 
-            supplierName: supplier?.name || '',
-            linkedUserName: linkedUser?.name || ''
-        });
-        onDone();
+        setIsSaving(true);
+        try {
+            const supplier = suppliers.find(s => s.id === formData.supplierId);
+            const linkedUser = users.find(u => u.id === formData.linkedUserId);
+            await onSave({ 
+                ...formData, 
+                supplierName: supplier?.name || '',
+                linkedUserName: linkedUser?.name || ''
+            });
+            onDone();
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const displayDueDate = formData.dueDate instanceof Timestamp ? formData.dueDate.toDate() : formData.dueDate;
@@ -101,14 +109,18 @@ function ExpenseForm({ expense, suppliers, users, onSave, onDone }: { expense?: 
                 </div>
                 <div className="space-y-2">
                     <Label htmlFor="dueDate">Data de Vencimento</Label>
-                     <Popover>
+                     <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                         <PopoverTrigger asChild>
                             <Button variant="outline" className="w-full justify-start text-left font-normal">
                                 <CalendarIcon className="mr-2 h-4 w-4" />
                                 {displayDueDate ? format(displayDueDate, 'PPP', { locale: ptBR }) : <span>Escolha uma data</span>}
                             </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
+                        <PopoverContent 
+                            className="w-auto p-0" 
+                            align="start" 
+                            onFocusOutside={(e) => e.preventDefault()}
+                        >
                             <Calendar mode="single" selected={displayDueDate} onSelect={handleDateChange} initialFocus />
                         </PopoverContent>
                     </Popover>
@@ -155,14 +167,19 @@ function ExpenseForm({ expense, suppliers, users, onSave, onDone }: { expense?: 
                 <Textarea id="notes" name="notes" value={formData.notes || ''} onChange={handleInputChange} placeholder="Detalhes sobre a despesa..." />
             </div>
             <DialogFooter>
-                <Button variant="ghost" type="button" onClick={onDone}>Cancelar</Button>
-                <Button type="submit">Lançar Despesa</Button>
+                <Button variant="ghost" type="button" onClick={onDone} disabled={isSaving}>Cancelar</Button>
+                <Button type="submit" disabled={isSaving}>
+                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Lançar Despesa
+                </Button>
             </DialogFooter>
         </form>
     );
 }
 
-function PaymentRegistrationForm({ expense, onSave, onDone }: { expense: Expense; onSave: (data: Partial<Expense>) => void; onDone: () => void }) {
+function PaymentRegistrationForm({ expense, onSave, onDone }: { expense: Expense; onSave: (data: Partial<Expense>) => Promise<void>; onDone: () => void }) {
+    const [isSaving, setIsSaving] = useState(false);
+    const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     const [formData, setFormData] = useState<Partial<Expense>>({
         paymentDate: new Date(),
         paidAmount: expense.amount,
@@ -182,13 +199,19 @@ function PaymentRegistrationForm({ expense, onSave, onDone }: { expense: Expense
     const handleDateChange = (date: Date | undefined) => {
         if (date) {
             setFormData(prev => ({ ...prev, paymentDate: date }));
+            setIsCalendarOpen(false);
         }
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData);
-        onDone();
+        setIsSaving(true);
+        try {
+            await onSave(formData);
+            onDone();
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -207,14 +230,18 @@ function PaymentRegistrationForm({ expense, onSave, onDone }: { expense: Expense
                 </div>
                 <div className="space-y-2">
                     <Label htmlFor="paymentDate">Data de Pagamento</Label>
-                     <Popover>
+                     <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                         <PopoverTrigger asChild>
                             <Button variant="outline" className="w-full justify-start text-left font-normal">
                                 <CalendarIcon className="mr-2 h-4 w-4" />
                                 {formData.paymentDate ? format(formData.paymentDate as Date, 'dd/MM/yyyy') : <span>Escolha uma data</span>}
                             </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
+                        <PopoverContent 
+                            className="w-auto p-0" 
+                            align="start"
+                            onFocusOutside={(e) => e.preventDefault()}
+                        >
                             <Calendar mode="single" selected={formData.paymentDate as Date} onSelect={handleDateChange} initialFocus />
                         </PopoverContent>
                     </Popover>
@@ -232,8 +259,11 @@ function PaymentRegistrationForm({ expense, onSave, onDone }: { expense: Expense
             </div>
 
             <DialogFooter>
-                <Button variant="ghost" type="button" onClick={onDone}>Cancelar</Button>
-                <Button type="submit" className="bg-green-600 hover:bg-green-700 text-white">Confirmar Pagamento</Button>
+                <Button variant="ghost" type="button" onClick={onDone} disabled={isSaving}>Cancelar</Button>
+                <Button type="submit" disabled={isSaving} className="bg-green-600 hover:bg-green-700 text-white">
+                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Confirmar Pagamento
+                </Button>
             </DialogFooter>
         </form>
     );
@@ -414,6 +444,9 @@ export default function ExpensesPage() {
                         <DialogContent className="sm:max-w-2xl">
                             <DialogHeader>
                                 <DialogTitle>{editingExpense ? 'Editar Lançamento' : 'Novo Lançamento de Despesa'}</DialogTitle>
+                                <DialogDescription>
+                                    {editingExpense ? 'Altere os detalhes da despesa selecionada.' : 'Preencha os campos abaixo para registrar uma nova despesa.'}
+                                </DialogDescription>
                             </DialogHeader>
                             <ExpenseForm
                                 expense={editingExpense}
@@ -498,21 +531,21 @@ export default function ExpensesPage() {
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
                                                     {expense.status !== 'paid' && expense.status !== 'cancelled' && (
-                                                        <DropdownMenuItem onClick={() => openPaymentDialog(expense)} className="text-green-600 font-semibold focus:text-green-700">
+                                                        <DropdownMenuItem onSelect={() => setTimeout(() => openPaymentDialog(expense), 0)} className="text-green-600 font-semibold focus:text-green-700">
                                                             <CheckCircle2 className="mr-2 h-4 w-4" /> Registrar Pagamento
                                                         </DropdownMenuItem>
                                                     )}
                                                     {expense.receiptUrl && (
-                                                        <DropdownMenuItem onClick={() => window.open(expense.receiptUrl, '_blank')}>
+                                                        <DropdownMenuItem onSelect={() => window.open(expense.receiptUrl, '_blank')}>
                                                             <Receipt className="mr-2 h-4 w-4" /> Ver Comprovante
                                                         </DropdownMenuItem>
                                                     )}
-                                                    <DropdownMenuItem onClick={() => openEditDialog(expense)}>Editar Lançamento</DropdownMenuItem>
+                                                    <DropdownMenuItem onSelect={() => setTimeout(() => openEditDialog(expense), 0)}>Editar Lançamento</DropdownMenuItem>
                                                     {expense.status !== 'cancelled' && (
-                                                        <DropdownMenuItem onClick={() => handleCancel(expense.id)} className="text-amber-600">Cancelar Despesa</DropdownMenuItem>
+                                                        <DropdownMenuItem onSelect={() => handleCancel(expense.id)} className="text-amber-600">Cancelar Despesa</DropdownMenuItem>
                                                     )}
                                                     {can.delete && (
-                                                        <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onClick={() => handleDelete(expense.id)}>
+                                                        <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" onSelect={() => handleDelete(expense.id)}>
                                                             Excluir Permanente
                                                         </DropdownMenuItem>
                                                     )}
@@ -538,6 +571,9 @@ export default function ExpensesPage() {
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle>Registrar Pagamento</DialogTitle>
+                        <DialogDescription>
+                            Confirme os dados do pagamento para concluir este lançamento.
+                        </DialogDescription>
                     </DialogHeader>
                     {payingExpense && (
                         <PaymentRegistrationForm

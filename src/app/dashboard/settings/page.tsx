@@ -50,7 +50,8 @@ const availableAvatars = [
 ];
 const getRandomAvatar = () => availableAvatars[Math.floor(Math.random() * availableAvatars.length)];
 
-function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: PermissionProfile[]; onSave: (user: Partial<User>) => void; onDone: () => void }) {
+function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: PermissionProfile[]; onSave: (user: Partial<User>) => Promise<void>; onDone: () => void }) {
+    const [isSaving, setIsSaving] = useState(false);
     const [formData, setFormData] = useState<Partial<User>>(
         user || { name: '', email: '', role: '', avatar: getRandomAvatar(), isDeleted: false, password: '' }
     );
@@ -74,10 +75,15 @@ function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: P
         setFormData(prev => ({...prev, role: roleId}));
     }
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData as User);
-        onDone();
+        setIsSaving(true);
+        try {
+            await onSave(formData as User);
+            onDone();
+        } finally {
+            setIsSaving(false);
+        }
     };
     
     const isEditing = !!user;
@@ -112,8 +118,11 @@ function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: P
                 </Select>
             </div>
             <DialogFooter>
-                 <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
-                 <Button type="submit">Salvar Usuário</Button>
+                 <Button type="button" variant="ghost" onClick={onDone} disabled={isSaving}>Cancelar</Button>
+                 <Button type="submit" disabled={isSaving}>
+                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Salvar Usuário
+                 </Button>
             </DialogFooter>
         </form>
     );
@@ -250,6 +259,9 @@ function UsersTable() {
                         <DialogContent className="sm:max-w-[480px]">
                             <DialogHeader>
                                 <DialogTitle>{editingUser ? 'Editar Usuário' : 'Adicionar Novo Usuário'}</DialogTitle>
+                                <DialogDescription>
+                                    {editingUser ? 'Atualize os dados e perfil do usuário.' : 'Crie um novo acesso para um colaborador da sua organização.'}
+                                </DialogDescription>
                             </DialogHeader>
                             <UserForm user={editingUser} profiles={profiles} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
                         </DialogContent>
@@ -299,7 +311,7 @@ function UsersTable() {
                                                 </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
-                                                <DropdownMenuItem onClick={() => openEditDialog(user)}>Editar</DropdownMenuItem>
+                                                <DropdownMenuItem onSelect={() => setTimeout(() => openEditDialog(user), 0)}>Editar</DropdownMenuItem>
                                                 <AlertDialogTrigger asChild>
                                                     <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" disabled={user.id === adminUser?.id}>Excluir</DropdownMenuItem>
                                                 </AlertDialogTrigger>
@@ -420,6 +432,9 @@ function BranchesSettings() {
                         <DialogContent className="sm:max-w-md">
                             <DialogHeader>
                                 <DialogTitle>{editingBranch ? 'Editar Filial' : 'Adicionar Nova Filial'}</DialogTitle>
+                                <DialogDescription>
+                                    Configure os dados da unidade, como CNPJ, localização e impostos.
+                                </DialogDescription>
                             </DialogHeader>
                             <BranchForm
                                 branch={editingBranch}
@@ -469,7 +484,7 @@ function BranchesSettings() {
                                                 </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
-                                                <DropdownMenuItem onClick={() => openEditDialog(branch)}>Editar</DropdownMenuItem>
+                                                <DropdownMenuItem onSelect={() => setTimeout(() => openEditDialog(branch), 0)}>Editar</DropdownMenuItem>
                                                 <AlertDialogTrigger asChild>
                                                      <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive">Excluir</DropdownMenuItem>
                                                 </AlertDialogTrigger>
@@ -497,8 +512,9 @@ function BranchesSettings() {
     );
 }
 
-function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users: User[]; onSave: (data: Omit<Branch, 'id' | 'organizationId' | 'isDeleted'>) => void; onDone: () => void }) {
+function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users: User[]; onSave: (data: Omit<Branch, 'id' | 'organizationId' | 'isDeleted'>) => Promise<void>; onDone: () => void }) {
     const { user: currentUser } = useAuth();
+    const [isSaving, setIsSaving] = useState(false);
     const [formData, setFormData] = useState(
         branch || { name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], taxRate: 8, allowNegativeStock: false, isDeleted: false }
     );
@@ -522,10 +538,15 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
         });
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData as Omit<Branch, 'id' | 'organizationId' | 'isDeleted'>);
-        onDone();
+        setIsSaving(true);
+        try {
+            await onSave(formData as Omit<Branch, 'id' | 'organizationId' | 'isDeleted'>);
+            onDone();
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -604,15 +625,19 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
                 </Popover>
             </div>
             <DialogFooter>
-                <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
-                <Button type="submit">Salvar Filial</Button>
+                <Button type="button" variant="ghost" onClick={onDone} disabled={isSaving}>Cancelar</Button>
+                <Button type="submit" disabled={isSaving}>
+                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Salvar Filial
+                </Button>
             </DialogFooter>
         </form>
     );
 }
 
 
-function PaymentConditionForm({ condition, onSave, onDone }: { condition?: PaymentCondition, onSave: (data: Partial<PaymentCondition>) => void, onDone: () => void }) {
+function PaymentConditionForm({ condition, onSave, onDone }: { condition?: PaymentCondition, onSave: (data: Partial<PaymentCondition>) => Promise<void>, onDone: () => void }) {
+    const [isSaving, setIsSaving] = useState(false);
     const [formData, setFormData] = useState<Partial<PaymentCondition>>(
         condition || { name: '', type: 'credit', fee: 0, feeType: 'percentage', maxInstallments: 12, isDeleted: false }
     );
@@ -629,9 +654,15 @@ function PaymentConditionForm({ condition, onSave, onDone }: { condition?: Payme
          setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData);
+        setIsSaving(true);
+        try {
+            await onSave(formData);
+            onDone();
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -689,8 +720,11 @@ function PaymentConditionForm({ condition, onSave, onDone }: { condition?: Payme
                 </div>
              )}
             <DialogFooter>
-                <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
-                <Button type="submit">Salvar</Button>
+                <Button type="button" variant="ghost" onClick={onDone} disabled={isSaving}>Cancelar</Button>
+                <Button type="submit" disabled={isSaving}>
+                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Salvar
+                </Button>
             </DialogFooter>
         </form>
     )
@@ -810,7 +844,7 @@ function PaymentConditions() {
                                                 </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent>
-                                                <DropdownMenuItem onSelect={() => openEditDialog(c)}>Editar</DropdownMenuItem>
+                                                <DropdownMenuItem onSelect={() => setTimeout(() => openEditDialog(c), 0)}>Editar</DropdownMenuItem>
                                                 <DropdownMenuItem onSelect={() => handleDelete(c.id)} className="text-destructive focus:text-destructive">Excluir</DropdownMenuItem>
                                             </DropdownMenuContent>
                                         </DropdownMenu>
@@ -825,6 +859,9 @@ function PaymentConditions() {
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>{editingCondition ? 'Editar' : 'Adicionar'} Condição de Pagamento</DialogTitle>
+                        <DialogDescription>
+                            Configure taxas e parcelamentos para esta forma de pagamento.
+                        </DialogDescription>
                     </DialogHeader>
                     <PaymentConditionForm 
                         condition={editingCondition}
@@ -851,9 +888,10 @@ function AnamnesisQuestionForm({
     onDone 
 }: { 
     question?: AnamnesisQuestion; 
-    onSave: (data: Partial<AnamnesisQuestion>) => void; 
+    onSave: (data: Partial<AnamnesisQuestion>) => Promise<void>; 
     onDone: () => void 
 }) {
+    const [isSaving, setIsSaving] = useState(false);
     const [formData, setFormData] = useState<Partial<AnamnesisQuestion>>(question || { label: '', type: 'text', isDeleted: false });
     
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -864,10 +902,15 @@ function AnamnesisQuestionForm({
         setFormData(prev => ({ ...prev, type: value }));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData);
-        onDone();
+        setIsSaving(true);
+        try {
+            await onSave(formData);
+            onDone();
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -896,8 +939,11 @@ function AnamnesisQuestionForm({
                 </Select>
             </div>
              <DialogFooter>
-                <Button variant="ghost" type="button" onClick={onDone}>Cancelar</Button>
-                <Button type="submit">Salvar Pergunta</Button>
+                <Button variant="ghost" type="button" onClick={onDone} disabled={isSaving}>Cancelar</Button>
+                <Button type="submit" disabled={isSaving}>
+                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Salvar Pergunta
+                </Button>
             </DialogFooter>
         </form>
     );
@@ -1028,6 +1074,9 @@ function AnamnesisSettings() {
                              <DialogContent>
                                 <DialogHeader>
                                     <DialogTitle>{editingQuestion ? 'Editar Pergunta' : 'Adicionar Pergunta'}</DialogTitle>
+                                    <DialogDescription>
+                                        Defina o texto da pergunta e o tipo de resposta esperada do cliente.
+                                    </DialogDescription>
                                 </DialogHeader>
                                 <AnamnesisQuestionForm
                                     question={editingQuestion}
@@ -1071,7 +1120,7 @@ function AnamnesisSettings() {
                                                     </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onSelect={() => openEditDialog(q)}>
+                                                    <DropdownMenuItem onSelect={() => setTimeout(() => openEditDialog(q), 0)}>
                                                         Editar
                                                     </DropdownMenuItem>
                                                     <DropdownMenuSeparator/>
@@ -1326,6 +1375,9 @@ function RolesSettings() {
                     <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>{editingProfile ? 'Editar Perfil' : 'Novo Perfil'}</DialogTitle>
+                            <DialogDescription>
+                                Defina o nome do perfil e as permissões de acesso para cada módulo do sistema.
+                            </DialogDescription>
                         </DialogHeader>
                         <PermissionProfileForm
                             profile={editingProfile}
@@ -1640,8 +1692,8 @@ function SuppliersSettings() {
                                             <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4"/></Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent>
-                                            <DropdownMenuItem onClick={() => { setEditingSupplier(s); setIsFormOpen(true); }}>Editar</DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => handleDelete(s.id)} className="text-destructive focus:text-destructive">Excluir</DropdownMenuItem>
+                                            <DropdownMenuItem onSelect={() => setTimeout(() => setEditingSupplier(s), 0) || setTimeout(() => setIsFormOpen(true), 0)}>Editar</DropdownMenuItem>
+                                            <DropdownMenuItem onSelect={() => handleDelete(s.id)} className="text-destructive focus:text-destructive">Excluir</DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </TableCell>
@@ -1654,6 +1706,9 @@ function SuppliersSettings() {
                 <DialogContent className="sm:max-w-xl">
                     <DialogHeader>
                         <DialogTitle>{editingSupplier ? 'Editar Fornecedor' : 'Novo Fornecedor'}</DialogTitle>
+                        <DialogDescription>
+                            Cadastre as informações de contato e identifique os produtos vinculados.
+                        </DialogDescription>
                     </DialogHeader>
                     <SupplierForm 
                         supplier={editingSupplier} 
@@ -1677,7 +1732,8 @@ export default function SettingsPage() {
 
 
 
-function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Supplier; products: Product[]; onSave: (data: Partial<Supplier>, productsToLink: string[], productsToUnlink: string[]) => void; onDone: () => void }) {
+function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Supplier; products: Product[]; onSave: (data: Partial<Supplier>, productsToLink: string[], productsToUnlink: string[]) => Promise<void>; onDone: () => void }) {
+    const [isSaving, setIsSaving] = useState(false);
     const [formData, setFormData] = useState<Partial<Supplier>>(supplier || { name: '', contactName: '', phone: '', email: '', address: '', isDeleted: false });
     const [linkedProductIds, setLinkedProductIds] = useState<string[]>([]);
     const [initialLinkedProductIds, setInitialLinkedProductIds] = useState<string[]>([]);
@@ -1699,11 +1755,17 @@ function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Suppl
         setLinkedProductIds(prev => prev.includes(productId) ? prev.filter(id => id !== productId) : [...prev, productId]);
     }
     
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const productsToLink = linkedProductIds.filter(id => !initialLinkedProductIds.includes(id));
-        const productsToUnlink = initialLinkedProductIds.filter(id => !linkedProductIds.includes(id));
-        onSave(formData, productsToLink, productsToUnlink);
+        setIsSaving(true);
+        try {
+            const productsToLink = linkedProductIds.filter(id => !initialLinkedProductIds.includes(id));
+            const productsToUnlink = initialLinkedProductIds.filter(id => !linkedProductIds.includes(id));
+            await onSave(formData, productsToLink, productsToUnlink);
+            onDone();
+        } finally {
+            setIsSaving(false);
+        }
     }
 
     const availableProducts = useMemo(() => {
@@ -1764,8 +1826,11 @@ function SupplierForm({ supplier, products, onSave, onDone }: { supplier?: Suppl
             </div>
             
             <DialogFooter>
-                <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
-                <Button type="submit">Salvar</Button>
+                <Button type="button" variant="ghost" onClick={onDone} disabled={isSaving}>Cancelar</Button>
+                <Button type="submit" disabled={isSaving}>
+                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Salvar
+                </Button>
             </DialogFooter>
         </form>
     );

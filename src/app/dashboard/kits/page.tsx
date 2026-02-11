@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
@@ -358,6 +358,9 @@ export default function KitsPage() {
                     <DialogContent className="sm:max-w-lg">
                         <DialogHeader>
                             <DialogTitle>{editingKit ? 'Editar Kit' : 'Adicionar Novo Kit'}</DialogTitle>
+                            <DialogDescription>
+                                {editingKit ? 'Atualize as regras e produtos deste kit.' : 'Crie um novo kit dinâmico definindo a quantidade de itens e o desconto aplicado.'}
+                            </DialogDescription>
                         </DialogHeader>
                         <KitForm
                             kit={editingKit}

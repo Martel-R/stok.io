@@ -120,9 +120,9 @@ export function PermissionProfileForm({
         return 'indeterminate';
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData);
+        await onSave(formData);
     }
 
     if (!organization) {

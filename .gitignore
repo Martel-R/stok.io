@@ -45,8 +45,8 @@ firebase-debug.log
 firestore-debug.log
 
 # IDEs
-.idea/
-.vscode/
+.idea/*
+.vscode/*
 
 # Local configuration
 docker-compose.dev.yml

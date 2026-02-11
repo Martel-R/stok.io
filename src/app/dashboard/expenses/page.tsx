@@ -119,9 +119,8 @@ function ExpenseForm({ expense, suppliers, users, onSave, onDone }: { expense?: 
                         <PopoverContent 
                             className="w-auto p-0" 
                             align="start" 
-                            onFocusOutside={(e) => e.preventDefault()}
                         >
-                            <Calendar mode="single" selected={displayDueDate} onSelect={handleDateChange} initialFocus />
+                            <Calendar mode="single" selected={displayDueDate} onSelect={handleDateChange} initialFocus={false} />
                         </PopoverContent>
                     </Popover>
                 </div>
@@ -240,9 +239,8 @@ function PaymentRegistrationForm({ expense, onSave, onDone }: { expense: Expense
                         <PopoverContent 
                             className="w-auto p-0" 
                             align="start"
-                            onFocusOutside={(e) => e.preventDefault()}
                         >
-                            <Calendar mode="single" selected={formData.paymentDate as Date} onSelect={handleDateChange} initialFocus />
+                            <Calendar mode="single" selected={formData.paymentDate as Date} onSelect={handleDateChange} initialFocus={false} />
                         </PopoverContent>
                     </Popover>
                 </div>

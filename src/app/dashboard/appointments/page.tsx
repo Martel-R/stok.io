@@ -177,9 +177,8 @@ function AppointmentForm({
                         <PopoverContent 
                             className="w-auto p-0" 
                             align="start"
-                            onFocusOutside={(e) => e.preventDefault()}
                         >
-                            <CalendarComponent mode="single" selected={formData.start} onSelect={handleDateChange} initialFocus />
+                            <CalendarComponent mode="single" selected={formData.start} onSelect={handleDateChange} initialFocus={false} />
                         </PopoverContent>
                     </Popover>
                 </div>

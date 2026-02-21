@@ -43,13 +43,22 @@ type ProductWithStock = Product & { stock: number };
 
 function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean; onOpenChange: (open: boolean) => void; onScan: (barcode: string) => void; }) {
     const [hasPermission, setHasPermission] = useState(true);
+    const [isTorchOn, setIsTorchOn] = useState(false);
+    const [hasTorch, setHasTorch] = useState(false);
     const scannerRef = useRef<Html5Qrcode | null>(null);
+    const audioCtxRef = useRef<AudioContext | null>(null);
     const { toast } = useToast();
     const regionId = "reader";
 
     const playBeep = () => {
         try {
-            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            if (!audioCtxRef.current) {
+                audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+            }
+            const audioCtx = audioCtxRef.current;
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
             const oscillator = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
 
@@ -63,7 +72,20 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
             oscillator.start();
             oscillator.stop(audioCtx.currentTime + 0.1); // 100ms duration
         } catch (e) {
-            console.error("Error playing synthetic beep:", e);
+            console.warn("Error playing synthetic beep:", e);
+        }
+    };
+
+    const toggleTorch = async () => {
+        if (!scannerRef.current || !hasTorch) return;
+        try {
+            const newState = !isTorchOn;
+            await scannerRef.current.applyVideoConstraints({
+                advanced: [{ torch: newState }] as any
+            });
+            setIsTorchOn(newState);
+        } catch (err) {
+            console.error("Error toggling torch:", err);
         }
     };
 
@@ -71,22 +93,22 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
         let isMounted = true;
 
         if (isOpen) {
+            setIsTorchOn(false);
+            setHasTorch(false);
             setTimeout(() => {
                 if (!isMounted || !document.getElementById(regionId)) return;
 
-                const html5QrCode = new Html5Qrcode(regionId, true); // Verbose enabled
+                const html5QrCode = new Html5Qrcode(regionId, true);
                 scannerRef.current = html5QrCode;
 
                 const config = { 
-                    fps: 25, 
+                    fps: 20, 
                     qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-                        const minEdgePercentage = 0.85; 
-                        const minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
-                        const qrboxSize = Math.max(Math.floor(minEdgeSize * minEdgePercentage), 180); 
-                        return {
-                            width: qrboxSize,
-                            height: Math.max(Math.floor(qrboxSize / 2), 100)
-                        };
+                        const widthPct = 0.85;
+                        const heightPct = 0.35; 
+                        const width = Math.max(Math.floor(viewfinderWidth * widthPct), 200);
+                        const height = Math.max(Math.floor(viewfinderHeight * heightPct), 100);
+                        return { width, height };
                     },
                     aspectRatio: 1.0,
                     experimentalFeatures: {
@@ -94,9 +116,8 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
                     },
                     formatsToSupport: [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 ],
                     videoConstraints: {
-                        width: { min: 640, ideal: 1280, max: 1920 },
-                        height: { min: 480, ideal: 720, max: 1080 },
-                        facingMode: "environment"
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
                     }
                 };
 
@@ -109,11 +130,30 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
                         onScan(decodedText);
                         stopScanner();
                     },
-                    (errorMessage) => {
-                        // Optional: low-level scanning noise, normally ignored but can be logged if needed
-                        // console.log("Scanner noise:", errorMessage);
+                    () => {} // Empty error callback for stability
+                ).then(() => {
+                    // Safe way to get the running track
+                    let track: MediaStreamTrack | undefined;
+                    try {
+                        if (typeof (html5QrCode as any).getRunningTrack === 'function') {
+                            track = (html5QrCode as any).getRunningTrack();
+                        } else {
+                            const videoElement = document.querySelector(`#${regionId} video`) as HTMLVideoElement;
+                            if (videoElement && videoElement.srcObject) {
+                                track = (videoElement.srcObject as MediaStream).getVideoTracks()[0];
+                            }
+                        }
+
+                        if (track) {
+                            const capabilities = track.getCapabilities() as any;
+                            if (capabilities.torch) {
+                                setHasTorch(true);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("Could not detect torch capabilities:", e);
                     }
-                ).catch(err => {
+                }).catch(err => {
                     console.error("Critical error starting scanner:", err);
                     if (isMounted) setHasPermission(false);
                 });

@@ -660,6 +660,70 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm, all
     );
 }
 
+function WeightInputModal({ product, isOpen, onOpenChange, onConfirm }: { product: ProductWithStock | null; isOpen: boolean; onOpenChange: (open: boolean) => void; onConfirm: (quantity: number) => void; }) {
+    const [quantity, setQuantity] = useState<string>('0');
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            setQuantity('0');
+            setTimeout(() => inputRef.current?.focus(), 100);
+        }
+    }, [isOpen]);
+
+    const handleConfirm = () => {
+        const num = parseFloat(quantity.replace(',', '.'));
+        if (num > 0) {
+            onConfirm(num);
+            onOpenChange(false);
+        }
+    };
+
+    if (!product) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Venda por Peso/Medida: {product.name}</DialogTitle>
+                    <DialogDescription>
+                        Informe a quantidade (ex: 0,100 para 100g) em <span className="font-bold">{product.unitOfMeasure || 'KG'}</span>.
+                        <br/>
+                        Preço por {product.unitOfMeasure || 'unidade'}: R${product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="weight-quantity">Quantidade ({product.unitOfMeasure || 'KG'})</Label>
+                        <Input
+                            id="weight-quantity"
+                            ref={inputRef}
+                            type="text"
+                            inputMode="decimal"
+                            value={quantity}
+                            onChange={(e) => setQuantity(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
+                            className="text-2xl h-14 text-center"
+                        />
+                    </div>
+                    {parseFloat(quantity.replace(',', '.')) > 0 && (
+                        <div className="text-center p-4 bg-muted rounded-lg">
+                            <p className="text-sm text-muted-foreground">Valor Total do Item</p>
+                            <p className="text-3xl font-bold">
+                                R$ {(product.price * parseFloat(quantity.replace(',', '.'))).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                        </div>
+                    )}
+                </div>
+                <DialogFooter>
+                    <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
+                    <Button onClick={handleConfirm} size="lg" className="w-full sm:w-auto">Adicionar ao Carrinho</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 export default function POSPage() {
   const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [combos, setCombos] = useState<Combo[]>([]);
@@ -673,6 +737,8 @@ export default function POSPage() {
   const [currentAttendanceId, setCurrentAttendanceId] = useState<string | undefined>(undefined);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [weightProduct, setWeightProduct] = useState<ProductWithStock | null>(null);
+  const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
   const { toast } = useToast();
   const { user, currentBranch, loading: authLoading, paymentConditions } = useAuth();
   const router = useRouter();
@@ -792,6 +858,20 @@ export default function POSPage() {
       setSelectedKit(null);
   };
 
+  const handleWeightConfirm = (quantity: number) => {
+    if (!weightProduct) return;
+    setCart((prev) => {
+        const existingItem = prev.find((cartItem) => cartItem.id === weightProduct.id && cartItem.itemType === 'product');
+        if (existingItem) {
+            return prev.map((ci) =>
+                ci.id === weightProduct.id ? { ...ci, quantity: ci.quantity + quantity } : ci
+            );
+        }
+        return [...prev, { ...weightProduct, quantity, itemType: 'product' }];
+    });
+    setWeightProduct(null);
+  };
+
   const addToCart = (item: ProductWithStock | Combo, type: 'product' | 'combo') => {
     if (currentAttendanceId) {
         toast({ title: 'Ação bloqueada', description: 'Finalize o pagamento do atendimento pendente antes de iniciar uma nova venda.', variant: 'destructive' });
@@ -806,6 +886,13 @@ export default function POSPage() {
             toast({ title: 'Fora de estoque', description: `${product.name} não está disponível.`, variant: 'destructive'});
             return;
         }
+
+        if (product.saleType === 'weight') {
+            setWeightProduct(product);
+            setIsWeightModalOpen(true);
+            return;
+        }
+
          setCart((prev) => {
             const existingItem = prev.find((cartItem) => cartItem.id === product.id && cartItem.itemType === 'product');
             if (existingItem) {
@@ -1369,6 +1456,12 @@ export default function POSPage() {
             allowNegative={currentBranch?.allowNegativeStock}
         />
     )}
+    <WeightInputModal
+        product={weightProduct}
+        isOpen={isWeightModalOpen}
+        onOpenChange={setIsWeightModalOpen}
+        onConfirm={handleWeightConfirm}
+    />
     <CheckoutModal
       isOpen={isCheckoutModalOpen}
       onOpenChange={setIsCheckoutModalOpen}

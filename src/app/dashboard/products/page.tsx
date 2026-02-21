@@ -148,7 +148,8 @@ function ProductForm({ product, suppliers, branches, onSave, onDone }: { product
     product || { 
         name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
         purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: '',
-        brand: '', model: '', isPerishable: false, branchIds: currentBranch ? [currentBranch.id] : []
+        brand: '', model: '', isPerishable: false, branchIds: currentBranch ? [currentBranch.id] : [],
+        saleType: 'unit', unitOfMeasure: 'UN'
     }
   );
   const [isUploading, setIsUploading] = useState(false);
@@ -163,7 +164,8 @@ function ProductForm({ product, suppliers, branches, onSave, onDone }: { product
         setFormData(product || { 
             name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
             purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: '',
-            brand: '', model: '', isPerishable: false, branchIds: currentBranch ? [currentBranch.id] : []
+            brand: '', model: '', isPerishable: false, branchIds: currentBranch ? [currentBranch.id] : [],
+            saleType: 'unit', unitOfMeasure: 'UN'
         });
     }, [product, currentBranch]);
 
@@ -302,6 +304,24 @@ function ProductForm({ product, suppliers, branches, onSave, onDone }: { product
                 <Barcode className="h-4 w-4"/>
             </Button>
            </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="saleType">Tipo de Venda</Label>
+          <Select value={formData.saleType || 'unit'} onValueChange={(val: 'unit' | 'weight') => setFormData(prev => ({...prev, saleType: val, unitOfMeasure: val === 'weight' ? 'KG' : 'UN'}))}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione o tipo..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="unit">Por Unidade</SelectItem>
+              <SelectItem value="weight">Por Peso/Medida</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="unitOfMeasure">Unidade de Medida</Label>
+          <Input id="unitOfMeasure" name="unitOfMeasure" value={formData.unitOfMeasure || ''} onChange={handleChange} placeholder="Ex: UN, KG, G, L" required />
         </div>
       </div>
        <div className="grid grid-cols-2 gap-4">

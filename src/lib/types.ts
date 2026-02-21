@@ -214,6 +214,7 @@ export interface Product {
   ncm?: string;
   cfop?: string;
   unitOfMeasure?: string;
+  saleType?: 'unit' | 'weight';
   isDeleted?: boolean;
 }
 

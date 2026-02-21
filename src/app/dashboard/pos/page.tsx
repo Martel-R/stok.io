@@ -47,31 +47,77 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
     const { toast } = useToast();
     const regionId = "reader";
 
+    const playBeep = () => {
+        try {
+            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5 note
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.1); // 100ms duration
+        } catch (e) {
+            console.error("Error playing synthetic beep:", e);
+        }
+    };
+
     useEffect(() => {
         let isMounted = true;
 
         if (isOpen) {
-            // Wait for the next tick to ensure the DOM element is rendered
             setTimeout(() => {
                 if (!isMounted || !document.getElementById(regionId)) return;
 
-                const html5QrCode = new Html5Qrcode(regionId);
+                const html5QrCode = new Html5Qrcode(regionId, true); // Verbose enabled
                 scannerRef.current = html5QrCode;
 
-                const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+                const config = { 
+                    fps: 25, 
+                    qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+                        const minEdgePercentage = 0.85; 
+                        const minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
+                        const qrboxSize = Math.max(Math.floor(minEdgeSize * minEdgePercentage), 180); 
+                        return {
+                            width: qrboxSize,
+                            height: Math.max(Math.floor(qrboxSize / 2), 100)
+                        };
+                    },
+                    aspectRatio: 1.0,
+                    experimentalFeatures: {
+                        useBarCodeDetectorIfSupported: true
+                    },
+                    formatsToSupport: [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 ],
+                    videoConstraints: {
+                        width: { min: 640, ideal: 1280, max: 1920 },
+                        height: { min: 480, ideal: 720, max: 1080 },
+                        facingMode: "environment"
+                    }
+                };
 
                 html5QrCode.start(
                     { facingMode: "environment" },
                     config,
                     (decodedText) => {
+                        console.log("Barcode detected successfully:", decodedText);
+                        playBeep();
                         onScan(decodedText);
                         stopScanner();
                     },
-                    undefined
+                    (errorMessage) => {
+                        // Optional: low-level scanning noise, normally ignored but can be logged if needed
+                        // console.log("Scanner noise:", errorMessage);
+                    }
                 ).catch(err => {
-                    console.error("Error starting scanner:", err);
+                    console.error("Critical error starting scanner:", err);
                     if (isMounted) setHasPermission(false);
                 });
+                console.log("Scanner started on element:", regionId);
             }, 100);
         }
 
@@ -94,7 +140,7 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
             if (!open) stopScanner();
             onOpenChange(open);
         }}>
-            <DialogContent>
+            <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>Escanear Código de Barras</DialogTitle>
                     <DialogDescription>Aponte a câmera para o código de barras do produto.</DialogDescription>
@@ -109,7 +155,19 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
                         </Alert>
                     )}
                     <div id={regionId} className="w-full h-full"></div>
+                    
+                    {/* Scanning Overlay */}
+                    {hasPermission && (
+                        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                            <div className="w-[70%] h-[43%] border-2 border-white/50 rounded-lg relative overflow-hidden">
+                                <div className="absolute top-0 left-0 w-full h-[2px] bg-red-500 shadow-[0_0_10px_red] animate-scan-line" />
+                            </div>
+                        </div>
+                    )}
                 </div>
+                <DialogFooter>
+                    <Button variant="outline" className="w-full" onClick={() => onOpenChange(false)}>Cancelar</Button>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     );

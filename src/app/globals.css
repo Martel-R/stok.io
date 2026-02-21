@@ -67,3 +67,15 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  .animate-scan-line {
+    animation: scan-anim 2s linear infinite;
+  }
+}
+
+@keyframes scan-anim {
+  0% { top: 0; }
+  50% { top: 100%; }
+  100% { top: 0; }
+}

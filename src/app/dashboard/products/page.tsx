@@ -34,108 +34,136 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { logUserActivity } from '@/lib/logging';
 import CurrencyInput from 'react-currency-input-field';
+import { Html5Qrcode } from 'html5-qrcode';
 
 
 type ProductWithStock = Product & { stock: number };
 
 function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean; onOpenChange: (open: boolean) => void; onScan: (barcode: string) => void; }) {
-    const videoRef = useRef<HTMLVideoElement>(null);
     const [hasPermission, setHasPermission] = useState(true);
-    const isScanningRef = useRef(false);
+    const scannerRef = useRef<Html5Qrcode | null>(null);
     const { toast } = useToast();
+    const regionId = "reader-products";
+
+    const playBeep = () => {
+        try {
+            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); 
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.1); 
+        } catch (e) {
+            console.error("Error playing synthetic beep:", e);
+        }
+    };
 
     useEffect(() => {
-        let stream: MediaStream | null = null;
-        let animationFrameId: number;
-
-        const startScan = async () => {
-            if (!isOpen || !(window as any).BarcodeDetector || isScanningRef.current) {
-                return;
-            }
-
-            try {
-                const barcodeDetector = new (window as any).BarcodeDetector({
-                    formats: ['ean_13', 'code_128', 'qr_code', 'upc_a', 'upc_e']
-                });
-                
-                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-                setHasPermission(true);
-
-                if (videoRef.current) {
-                    videoRef.current.srcObject = stream;
-                    await videoRef.current.play();
-                }
-
-                isScanningRef.current = true;
-
-                const detect = async () => {
-                    if (!isScanningRef.current) return;
-                    try {
-                        if (videoRef.current && videoRef.current.readyState === 4) {
-                            const barcodes = await barcodeDetector.detect(videoRef.current);
-                            if (barcodes.length > 0) {
-                                isScanningRef.current = false;
-                                onScan(barcodes[0].rawValue);
-                            }
-                        }
-                    } catch (error) {
-                       console.error("Barcode detection error:", error);
-                    }
-                    if (isScanningRef.current) {
-                       animationFrameId = requestAnimationFrame(detect);
-                    }
-                };
-                detect();
-
-            } catch (err) {
-                console.error("Error accessing camera for barcode scanning:", err);
-                setHasPermission(false);
-                toast({ title: "Permissão da câmera negada", description: "Por favor, permita o acesso à câmera.", variant: 'destructive' });
-            }
-        };
-        
-        const stopScan = () => {
-             cancelAnimationFrame(animationFrameId);
-             isScanningRef.current = false;
-             if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
-            if (videoRef.current) {
-                videoRef.current.srcObject = null;
-            }
-        };
+        let isMounted = true;
 
         if (isOpen) {
-            startScan();
+            setTimeout(() => {
+                if (!isMounted || !document.getElementById(regionId)) return;
+
+                const html5QrCode = new Html5Qrcode(regionId, true); // Verbose enabled
+                scannerRef.current = html5QrCode;
+
+                const config = { 
+                    fps: 25, 
+                    qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+                        const minEdgePercentage = 0.85;
+                        const minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
+                        const qrboxSize = Math.max(Math.floor(minEdgeSize * minEdgePercentage), 180);
+                        return {
+                            width: qrboxSize,
+                            height: Math.max(Math.floor(qrboxSize / 2), 100)
+                        };
+                    },
+                    aspectRatio: 1.0,
+                    experimentalFeatures: {
+                        useBarCodeDetectorIfSupported: true
+                    },
+                    formatsToSupport: [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 ],
+                    videoConstraints: {
+                        width: { min: 640, ideal: 1280, max: 1920 },
+                        height: { min: 480, ideal: 720, max: 1080 },
+                        facingMode: "environment"
+                    }
+                };
+
+                html5QrCode.start(
+                    { facingMode: "environment" },
+                    config,
+                    (decodedText) => {
+                        console.log("Barcode detected successfully (Products Page):", decodedText);
+                        playBeep();
+                        onScan(decodedText);
+                        stopScanner();
+                    },
+                    (errorMessage) => {
+                        // console.log("Scanner noise (Products Page):", errorMessage);
+                    }
+                ).catch(err => {
+                    console.error("Critical error starting scanner (Products Page):", err);
+                    if (isMounted) setHasPermission(false);
+                });
+                console.log("Scanner started on element:", regionId);
+            }, 100);
         }
 
         return () => {
-           stopScan();
+            isMounted = false;
+            stopScanner();
         };
-    }, [isOpen, onScan, toast]);
+    }, [isOpen]);
+
+    const stopScanner = () => {
+        if (scannerRef.current && scannerRef.current.isScanning) {
+            scannerRef.current.stop().then(() => {
+                scannerRef.current?.clear();
+            }).catch(err => console.error("Error stopping scanner:", err));
+        }
+    };
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => {
-            if (!open) isScanningRef.current = false;
+            if (!open) stopScanner();
             onOpenChange(open);
         }}>
-            <DialogContent>
+            <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>Escanear Código de Barras</DialogTitle>
                     <DialogDescription>Aponte a câmera para o código de barras do produto.</DialogDescription>
                 </DialogHeader>
-                <div className="p-4 bg-muted rounded-md">
-                    {hasPermission ? (
-                        <video ref={videoRef} className="w-full rounded-md" playsInline />
-                    ) : (
-                        <Alert variant="destructive">
-                            <AlertTitle>Acesso à Câmera Negado</AlertTitle>
+                <div className="p-4 bg-black rounded-md overflow-hidden min-h-[300px] flex items-center justify-center relative">
+                    {!hasPermission && (
+                        <Alert variant="destructive" className="z-10 absolute inset-4 w-auto">
+                            <AlertTitle>Erro na Câmera</AlertTitle>
                             <AlertDescription>
-                                Você precisa permitir o acesso à câmera para usar esta funcionalidade.
+                                Não foi possível acessar a câmera ou o scanner falhou ao iniciar.
                             </AlertDescription>
                         </Alert>
                     )}
+                    <div id={regionId} className="w-full h-full"></div>
+                    
+                    {hasPermission && (
+                        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                            <div className="w-[70%] h-[43%] border-2 border-white/50 rounded-lg relative overflow-hidden">
+                                <div className="absolute top-0 left-0 w-full h-[2px] bg-red-500 shadow-[0_0_10px_red] animate-scan-line" />
+                            </div>
+                        </div>
+                    )}
                 </div>
+                <DialogFooter>
+                    <Button variant="outline" className="w-full" onClick={() => onOpenChange(false)}>Cancelar</Button>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     );

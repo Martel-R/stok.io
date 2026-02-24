@@ -1,967 +1,83 @@
 
-
 // src/app/super-admin/page.tsx
 'use client';
 import * as React from 'react';
-import { useState, useEffect } from 'react';
-import { db, storage } from '@/lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, deleteDoc, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import type { Organization, User, PaymentStatus, EnabledModules, PermissionProfile, Subscription, PaymentRecord, PaymentRecordStatus, PricingPlan } from '@/lib/types';
+import { useState, useEffect, useMemo } from 'react';
+import { db } from '@/lib/firebase';
+import { collection, onSnapshot, doc, updateDoc, writeBatch, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import type { Organization, User, PaymentStatus, PricingPlan } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, PlusCircle, Pencil, DollarSign, Calendar as CalendarIcon, Edit, CheckCircle, LogIn, Tags, KeyRound, File } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuPortal } from '@/components/ui/dropdown-menu';
+import { MoreHorizontal, Loader2, ShieldAlert, Trash2, SlidersHorizontal, Users, DollarSign, Pencil, LogIn, Search, Filter, TrendingUp, AlertCircle, CheckCircle2, Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { PermissionProfileForm } from '@/components/permission-profile-form';
-import { format, eachMonthOfInterval, startOfMonth } from 'date-fns';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
-import { cn } from '@/lib/utils';
-import { Textarea } from '@/components/ui/textarea';
-import { allModuleConfig } from '@/components/module-permission-row';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { format } from 'date-fns';
+
+// Novos componentes refatorados
+import { PricingPlansSettings } from './_components/pricing-plans-settings';
+import { SubscriptionDialog } from './_components/subscription-dialog';
+import { ModulesSettingsDialog, OrgUsersDialog, OrgProfilesDialog } from './_components/org-management-dialogs';
+import { AdminInsights } from './_components/admin-insights';
+import { filterOrganizations, calculateStats, exportOrganizationData } from './super-admin.utils';
+import { toDate } from '@/lib/utils';
 
 type OrgWithUser = Organization & { owner?: User };
 
-// Helper to safely convert a Firestore Timestamp or a JS Date to a JS Date
-const toDate = (date: any): Date | undefined => {
-    if (!date) return undefined;
-    if (date instanceof Date) return date;
-    if (date instanceof Timestamp) return date.toDate();
-    return undefined;
-};
-
-function UserForm({ user, profiles, onSave, onDone }: { user?: User; profiles: PermissionProfile[]; onSave: (user: Partial<User>) => void; onDone: () => void }) {
-    const [formData, setFormData] = useState<Partial<User>>(
-        user || { name: '', email: '', role: '', password: '', avatar: 'https://placehold.co/100x100.png?text=👤', isDeleted: false }
-    );
-
-    useEffect(() => {
-        if (!user && profiles.length > 0) {
-            setFormData(prev => ({ ...prev, role: profiles[0].id }));
-        }
-        if (user) {
-             setFormData(user);
-        }
-    }, [user, profiles]);
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value } = e.target;
-        setFormData((prev) => ({ ...prev, [name]: value }));
-    };
-
-    const handleRoleChange = (roleId: string) => {
-        setFormData(prev => ({...prev, role: roleId}));
-    }
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave(formData as User);
-        onDone();
-    };
-    
-    const isEditing = !!user;
-
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-                <Label htmlFor="name">Nome do Usuário</Label>
-                <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} required />
-            </div>
-            <div>
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" name="email" type="email" value={formData.email || ''} onChange={handleChange} required disabled={isEditing}/>
-            </div>
-            {!isEditing && (
-                 <div>
-                    <Label htmlFor="password">Senha</Label>
-                    <Input id="password" name="password" type="password" value={formData.password || ''} onChange={handleChange} required minLength={6} />
-                </div>
-            )}
-            <div>
-                <Label htmlFor="role">Perfil</Label>
-                 <Select value={formData.role} onValueChange={handleRoleChange}>
-                    <SelectTrigger id="role">
-                        <SelectValue placeholder="Selecione um perfil" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {profiles.map(profile => (
-                            <SelectItem key={profile.id} value={profile.id}>{profile.name}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            </div>
-            <DialogFooter>
-                 <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
-                 <Button type="submit">Salvar Usuário</Button>
-            </DialogFooter>
-        </form>
-    );
-}
-
-function PlanForm({ plan, onSave, onDone }: { plan?: PricingPlan, onSave: (data: Partial<PricingPlan>) => void, onDone: () => void }) {
-    const [formData, setFormData] = useState<Partial<PricingPlan>>(plan || { name: '', price: 0, description: '', features: [], maxBranches: 1, maxUsers: 1, isFeatured: false, isDeleted: false });
-    const [featureInput, setFeatureInput] = useState('');
-
-    const handleFeatureAdd = () => {
-        if(featureInput.trim()) {
-            setFormData(prev => ({...prev, features: [...(prev.features || []), featureInput.trim()]}));
-            setFeatureInput('');
-        }
-    }
-
-    const handleFeatureRemove = (index: number) => {
-        setFormData(prev => ({...prev, features: prev.features?.filter((_, i) => i !== index)}));
-    }
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave(formData);
-    }
-    
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-                <Input name="name" value={formData.name || ''} onChange={e => setFormData(p => ({...p, name: e.target.value}))} placeholder="Nome do Plano" required />
-                <Input name="price" type="number" step="0.01" value={formData.price || ''} onChange={e => setFormData(p => ({...p, price: parseFloat(e.target.value) || 0}))} placeholder="Preço (ex: 99.90)" required />
-            </div>
-            <Textarea name="description" value={formData.description || ''} onChange={e => setFormData(p => ({...p, description: e.target.value}))} placeholder="Descrição do Plano" required />
-             <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <Label>Máx. Filiais</Label>
-                    <Input name="maxBranches" type="number" value={formData.maxBranches || ''} onChange={e => setFormData(p => ({...p, maxBranches: parseInt(e.target.value, 10) || 1}))} required />
-                </div>
-                <div className="space-y-2">
-                    <Label>Máx. Usuários</Label>
-                    <Input name="maxUsers" type="number" value={formData.maxUsers || ''} onChange={e => setFormData(p => ({...p, maxUsers: parseInt(e.target.value, 10) || 1}))} required />
-                </div>
-            </div>
-            <div className="space-y-2">
-                <Label>Funcionalidades</Label>
-                <div className="flex gap-2">
-                    <Input value={featureInput} onChange={e => setFeatureInput(e.target.value)} placeholder="Adicionar funcionalidade"/>
-                    <Button type="button" onClick={handleFeatureAdd}>Adicionar</Button>
-                </div>
-                <div className="space-y-1">
-                    {formData.features?.map((feat, i) => (
-                        <div key={i} className="flex items-center justify-between text-sm">
-                            <span>- {feat}</span>
-                            <Button type="button" size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleFeatureRemove(i)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
-                        </div>
-                    ))}
-                </div>
-            </div>
-             <div className="flex items-center space-x-2">
-                <Switch id="isFeatured" checked={formData.isFeatured} onCheckedChange={c => setFormData(p => ({...p, isFeatured: c}))} />
-                <Label htmlFor="isFeatured">Marcar como plano em destaque?</Label>
-            </div>
-             <div className="flex items-center space-x-2">
-                <Switch id="isActive" checked={!formData.isDeleted} onCheckedChange={c => setFormData(p => ({...p, isDeleted: !c}))} />
-                <Label htmlFor="isActive">Plano Ativo (visível na página de preços)</Label>
-            </div>
-            <DialogFooter>
-                <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>
-                <Button type="submit">Salvar Plano</Button>
-            </DialogFooter>
-        </form>
-    );
-}
-
-function PricingPlansSettings() {
-    const [plans, setPlans] = useState<PricingPlan[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingPlan, setEditingPlan] = useState<PricingPlan | undefined>(undefined);
-    const { toast } = useToast();
-
-    useEffect(() => {
-        const q = query(collection(db, 'pricingPlans'));
-        const unsub = onSnapshot(q, snap => {
-            setPlans(snap.docs.map(d => ({id: d.id, ...d.data()}) as PricingPlan).sort((a,b) => a.price - b.price));
-            setLoading(false);
-        });
-        return () => unsub();
-    }, []);
-
-    const handleSave = async (data: Partial<PricingPlan>) => {
-        try {
-            if(editingPlan?.id) {
-                await updateDoc(doc(db, 'pricingPlans', editingPlan.id), data);
-                toast({title: 'Plano atualizado!'});
-            } else {
-                await addDoc(collection(db, 'pricingPlans'), {...data, isDeleted: data.isDeleted === undefined ? false : data.isDeleted });
-                toast({title: 'Plano criado!'});
-            }
-            setIsFormOpen(false);
-        } catch(error) {
-            toast({title: 'Erro ao salvar o plano', variant: 'destructive'});
-        }
-    }
-    
-    const togglePlanStatus = async (plan: PricingPlan) => {
-        await updateDoc(doc(db, 'pricingPlans', plan.id), { isDeleted: !plan.isDeleted });
-        toast({title: `Plano ${!plan.isDeleted ? 'desativado' : 'ativado'} com sucesso.`});
-    }
-
-    return (
-        <Card>
-            <CardHeader>
-                 <div className="flex justify-between items-center">
-                    <div>
-                        <CardTitle>Planos de Preços</CardTitle>
-                        <CardDescription>Gerencie os planos de assinatura que serão exibidos publicamente.</CardDescription>
-                    </div>
-                    <Button onClick={() => { setEditingPlan(undefined); setIsFormOpen(true)}}>
-                        <PlusCircle className="mr-2"/> Adicionar Plano
-                    </Button>
-                 </div>
-            </CardHeader>
-            <CardContent>
-                 <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Nome</TableHead>
-                            <TableHead>Preço</TableHead>
-                            <TableHead>Limites</TableHead>
-                            <TableHead>Destaque</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead className="text-right">Ações</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {loading ? <TableRow><TableCell colSpan={6}><Skeleton className="h-5 w-full"/></TableCell></TableRow> :
-                        plans.map(plan => (
-                            <TableRow key={plan.id}>
-                                <TableCell className="font-semibold">{plan.name}</TableCell>
-                                <TableCell>R$ {plan.price.toLocaleString('pt-br', {minimumFractionDigits: 2})}</TableCell>
-                                <TableCell>
-                                    <div className='text-sm'>
-                                        <p>{plan.maxBranches} Filiais</p>
-                                        <p>{plan.maxUsers} Usuários</p>
-                                    </div>
-                                </TableCell>
-                                <TableCell>{plan.isFeatured ? <Badge>Sim</Badge> : 'Não'}</TableCell>
-                                <TableCell>
-                                    <Badge variant={!plan.isDeleted ? "secondary" : "outline"} className={cn(!plan.isDeleted && 'bg-green-100 text-green-800')}>
-                                        {!plan.isDeleted ? "Ativo" : "Inativo"}
-                                    </Badge>
-                                </TableCell>
-                                <TableCell className="text-right">
-                                    <Switch checked={!plan.isDeleted} onCheckedChange={() => togglePlanStatus(plan)} aria-label="Ativar/Desativar Plano" />
-                                    <Button variant="ghost" size="icon" onClick={() => { setEditingPlan(plan); setIsFormOpen(true);}}>
-                                        <Pencil className="h-4 w-4"/>
-                                    </Button>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </CardContent>
-             <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                <DialogContent className="sm:max-w-xl">
-                    <DialogHeader><DialogTitle>{editingPlan ? 'Editar Plano' : 'Novo Plano'}</DialogTitle></DialogHeader>
-                    <PlanForm plan={editingPlan} onSave={handleSave} onDone={() => setIsFormOpen(false)} />
-                </DialogContent>
-            </Dialog>
-        </Card>
-    );
-}
-
-function SubscriptionDialog({ organization, isOpen, onOpenChange, adminUser }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void, adminUser: User | null }) {
-    const { toast } = useToast();
-    const [subDetails, setSubDetails] = useState<Partial<Subscription>>(organization.subscription || {});
-    const [editingRecord, setEditingRecord] = useState<PaymentRecord | null>(null);
-    const [payingRecord, setPayingRecord] = useState<PaymentRecord | null>(null);
-    const [plans, setPlans] = useState<PricingPlan[]>([]);
-    
-    useEffect(() => {
-        const q = query(collection(db, 'pricingPlans'), where('isDeleted', '!=', true));
-        const unsub = onSnapshot(q, snap => {
-            setPlans(snap.docs.map(d => ({id: d.id, ...d.data()}) as PricingPlan));
-        });
-        return () => unsub();
-    }, []);
-
-    useEffect(() => {
-        setSubDetails(organization.subscription || {});
-    }, [organization.subscription]);
-    
-    const handlePlanChange = (planId: string) => {
-        const selectedPlan = plans.find(p => p.id === planId);
-        if (selectedPlan) {
-            setSubDetails(prev => ({
-                ...prev,
-                planId: selectedPlan.id,
-                planName: selectedPlan.name,
-                price: selectedPlan.price,
-                maxBranches: selectedPlan.maxBranches,
-                maxUsers: selectedPlan.maxUsers,
-            }));
-        }
-    };
-
-    const handleCreateOrUpdateSubscription = async () => {
-        if (!adminUser || !subDetails.planName || !subDetails.price) {
-            toast({title: 'Dados incompletos', description: 'Plano e preço são obrigatórios.', variant: 'destructive'});
-            return;
-        };
-
-        const startDate = toDate(subDetails.startDate);
-        const endDate = toDate(subDetails.endDate);
-
-        const paymentRecords = (subDetails.paymentRecords || []);
-        if (startDate && endDate) {
-             const months = eachMonthOfInterval({ start: startDate, end: endDate });
-             months.forEach((monthDate) => {
-                const alreadyExists = paymentRecords.some(p => {
-                    const pDate = toDate(p.date);
-                    return pDate && pDate.getMonth() === monthDate.getMonth() && pDate.getFullYear() === monthDate.getFullYear();
-                });
-                if (!alreadyExists) {
-                    paymentRecords.push({
-                        id: doc(collection(db, 'dummy')).id, // Temporary unique ID
-                        date: Timestamp.fromDate(startOfMonth(monthDate)),
-                        amount: subDetails.price || 0,
-                        status: 'pending',
-                    });
-                }
-            });
-        }
-
-        const newSubscriptionData: Subscription = {
-            ...subDetails,
-            planName: subDetails.planName,
-            price: subDetails.price,
-            startDate: subDetails.startDate || null,
-            endDate: subDetails.endDate || null,
-            maxBranches: subDetails.maxBranches || 1,
-            maxUsers: subDetails.maxUsers || 1,
-            paymentRecords,
-        };
-        try {
-            await updateDoc(doc(db, 'organizations', organization.id), {
-                subscription: newSubscriptionData
-            });
-            toast({ title: 'Assinatura salva e parcelas geradas com sucesso!' });
-        } catch (error) {
-            console.error(error);
-            toast({ title: 'Erro ao salvar assinatura', variant: 'destructive' });
-        }
-    }
-    
-    const handleRegisterPayment = async (updatedRecord: PaymentRecord) => {
-        if (!organization.subscription || !adminUser) return;
-    
-        const updatedRecords = organization.subscription.paymentRecords.map(record => {
-            if (record.id === updatedRecord.id) {
-                return { 
-                    ...updatedRecord, 
-                    status: 'paid' as PaymentRecordStatus, 
-                    recordedBy: adminUser.id,
-                    paidDate: new Date(),
-                };
-            }
-            return record;
-        });
-
-        try {
-            await updateDoc(doc(db, 'organizations', organization.id), {
-                'subscription.paymentRecords': updatedRecords
-            });
-            toast({ title: 'Pagamento registrado com sucesso!' });
-            setPayingRecord(null);
-        } catch (error) {
-            console.error(error);
-            toast({ title: 'Erro ao registrar pagamento', variant: 'destructive' });
-        }
-    };
-
-    const handleSaveRecord = async (recordToSave: PaymentRecord, boletoFile: File | null) => {
-        if (!organization.subscription) return;
-
-        let updatedRecord = { ...recordToSave };
-
-        if (boletoFile) {
-            try {
-                const filePath = `organizations/${organization.id}/boletos/${recordToSave.id}-${boletoFile.name}`;
-                const storageRef = ref(storage, filePath);
-                const snapshot = await uploadBytes(storageRef, boletoFile);
-                updatedRecord.boletoUrl = await getDownloadURL(snapshot.ref);
-            } catch (error) {
-                toast({ title: 'Erro ao fazer upload do boleto', variant: 'destructive' });
-                return;
-            }
-        }
-    
-        let updatedRecords;
-        const existingRecordIndex = organization.subscription.paymentRecords.findIndex(r => r.id === updatedRecord.id);
-    
-        if (existingRecordIndex > -1) {
-            updatedRecords = [...organization.subscription.paymentRecords];
-            updatedRecords[existingRecordIndex] = updatedRecord;
-            toast({ title: 'Parcela atualizada!' });
-        } else {
-            updatedRecords = [...(organization.subscription.paymentRecords || []), updatedRecord];
-            toast({ title: 'Nova parcela criada!' });
-        }
-    
-        try {
-            await updateDoc(doc(db, 'organizations', organization.id), { 'subscription.paymentRecords': updatedRecords });
-            setEditingRecord(null);
-        } catch (error) {
-            toast({ title: 'Erro ao salvar parcela', variant: 'destructive' });
-        }
-    };
-    
-    const handleDeleteRecord = async (recordId: string) => {
-        if (!organization.subscription) return;
-        const updatedRecords = organization.subscription.paymentRecords.filter(r => r.id !== recordId);
-        try {
-            await updateDoc(doc(db, 'organizations', organization.id), { 'subscription.paymentRecords': updatedRecords });
-            toast({ title: 'Parcela excluída!', variant: 'destructive' });
-        } catch (error) {
-            toast({ title: 'Erro ao excluir parcela', variant: 'destructive' });
-        }
-    };
-
-    const openNewRecordForm = () => {
-        setEditingRecord({
-            id: doc(collection(db, 'dummy')).id,
-            date: Timestamp.now(),
-            amount: subDetails.price || 0,
-            status: 'pending'
-        });
-    };
-    
-    if (!isOpen) return null;
-
-    return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-4xl">
-                <DialogHeader>
-                    <DialogTitle>Gerenciar Assinatura: {organization.name}</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-6 py-4 max-h-[70vh] overflow-y-auto">
-                    <div className="space-y-4 p-4 border rounded-lg">
-                        <h3 className="font-semibold">Detalhes do Contrato</h3>
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="planName">Plano</Label>
-                                <Select value={subDetails.planId} onValueChange={handlePlanChange}>
-                                    <SelectTrigger><SelectValue placeholder="Selecione um plano..." /></SelectTrigger>
-                                    <SelectContent>
-                                        {plans.map(p => <SelectItem key={p.id} value={p.id}>{p.name} (R$ {p.price.toFixed(2)})</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                         </div>
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                             <div className="space-y-2">
-                                <Label>Data de Início</Label>
-                                <Popover>
-                                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{subDetails.startDate ? format(toDate(subDetails.startDate)!, 'dd/MM/yyyy') : 'Escolha uma data'}</Button></PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={toDate(subDetails.startDate)} onSelect={d => setSubDetails(p => ({...p, startDate: d}))} /></PopoverContent>
-                                </Popover>
-                             </div>
-                             <div className="space-y-2">
-                                <Label>Data de Fim</Label>
-                                 <Popover>
-                                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{subDetails.endDate ? format(toDate(subDetails.endDate)!, 'dd/MM/yyyy') : 'Escolha uma data'}</Button></PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={toDate(subDetails.endDate)} onSelect={d => setSubDetails(p => ({...p, endDate: d}))} /></PopoverContent>
-                                </Popover>
-                             </div>
-                         </div>
-                         <Button onClick={handleCreateOrUpdateSubscription}>Salvar Contrato e Gerar Parcelas</Button>
-                    </div>
-
-                     <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                            <h3 className="font-semibold">Histórico de Parcelas</h3>
-                            <Button variant="outline" size="sm" onClick={openNewRecordForm}>
-                                <PlusCircle className="mr-2 h-4 w-4" />
-                                Criar Parcela
-                            </Button>
-                        </div>
-                        <div className="max-h-96 overflow-y-auto mt-2 pr-2">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Vencimento</TableHead>
-                                        <TableHead>Valor</TableHead>
-                                        <TableHead>Data Pag.</TableHead>
-                                        <TableHead>Valor Pago</TableHead>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead className="text-right">Ações</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {subDetails.paymentRecords && subDetails.paymentRecords.length > 0 ? (
-                                        subDetails.paymentRecords.sort((a,b) => toDate(a.date)!.getTime() - toDate(b.date)!.getTime()).map((p) => (
-                                            <TableRow key={p.id}>
-                                                <TableCell>{p.date ? format(toDate(p.date)!, 'dd/MM/yyyy') : 'N/A'}</TableCell>
-                                                <TableCell>R$ {p.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</TableCell>
-                                                <TableCell>{p.paidDate ? format(toDate(p.paidDate)!, 'dd/MM/yyyy') : '-'}</TableCell>
-                                                <TableCell>{p.paidAmount ? `R$ ${p.paidAmount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`: '-'}</TableCell>
-                                                <TableCell>
-                                                     <Badge className={cn(p.status === 'paid' && 'bg-green-100 text-green-800')} variant={p.status === 'paid' ? 'secondary' : 'destructive'}>
-                                                        {p.status}
-                                                    </Badge>
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    <AlertDialog>
-                                                        <DropdownMenu>
-                                                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal/></Button></DropdownMenuTrigger>
-                                                            <DropdownMenuContent>
-                                                                {p.boletoUrl && <DropdownMenuItem asChild><a href={p.boletoUrl} target="_blank" rel="noopener noreferrer"><File className="mr-2 h-4 w-4" />Ver Boleto</a></DropdownMenuItem>}
-                                                                {p.status === 'pending' && <DropdownMenuItem onSelect={() => setPayingRecord(p)}>Registrar Pagamento</DropdownMenuItem>}
-                                                                <DropdownMenuItem onSelect={() => setEditingRecord(p)}>Editar</DropdownMenuItem>
-                                                                <AlertDialogTrigger asChild>
-                                                                    <DropdownMenuItem className="text-destructive">Excluir</DropdownMenuItem>
-                                                                </AlertDialogTrigger>
-                                                            </DropdownMenuContent>
-                                                        </DropdownMenu>
-                                                        <AlertDialogContent>
-                                                            <AlertDialogHeader>
-                                                                <AlertDialogTitle>Excluir Parcela?</AlertDialogTitle>
-                                                                <AlertDialogDescription>Deseja realmente excluir a parcela com vencimento em {p.date ? format(toDate(p.date)!, 'dd/MM/yyyy') : 'N/A'}?</AlertDialogDescription>
-                                                            </AlertDialogHeader>
-                                                            <AlertDialogFooter>
-                                                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                                <AlertDialogAction onClick={() => handleDeleteRecord(p.id)} className={buttonVariants({ variant: "destructive" })}>Sim, Excluir</AlertDialogAction>
-                                                            </AlertDialogFooter>
-                                                        </AlertDialogContent>
-                                                    </AlertDialog>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))
-                                    ) : (
-                                        <TableRow><TableCell colSpan={6} className="text-center">Nenhuma parcela gerada.</TableCell></TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </div>
-                     </div>
-                </div>
-
-                {editingRecord && (
-                    <Dialog open={!!editingRecord} onOpenChange={(open) => !open && setEditingRecord(null)}>
-                        <DialogContent>
-                            <DialogHeader><DialogTitle>Editar Parcela</DialogTitle></DialogHeader>
-                            <EditRecordForm record={editingRecord} onSave={handleSaveRecord} onCancel={() => setEditingRecord(null)} organizationId={organization.id} />
-                        </DialogContent>
-                    </Dialog>
-                )}
-
-                <RegisterPaymentDialog 
-                    record={payingRecord}
-                    isOpen={!!payingRecord}
-                    onOpenChange={(open) => !open && setPayingRecord(null)}
-                    onSave={handleRegisterPayment}
-                />
-            </DialogContent>
-        </Dialog>
-    )
-}
-
-function EditRecordForm({record, onSave, onCancel, organizationId}: {record: PaymentRecord, onSave: (r: PaymentRecord, file: File | null) => void, onCancel: () => void, organizationId: string}) {
-    const [formData, setFormData] = useState(record);
-    const [boletoFile, setBoletoFile] = useState<File | null>(null);
-    const [isUploading, setIsUploading] = useState(false);
-
-    useEffect(() => {
-        setFormData(record);
-        setBoletoFile(null);
-    }, [record]);
-    
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsUploading(true);
-        await onSave(formData, boletoFile);
-        setIsUploading(false);
-    }
-    
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-             <div className="space-y-2">
-                <Label>Data de Vencimento</Label>
-                <Popover>
-                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{formData.date ? format(toDate(formData.date)!, 'dd/MM/yyyy') : 'Escolha uma data'}</Button></PopoverTrigger>
-                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={toDate(formData.date)} onSelect={d => setFormData(p => ({...p, date: d ? Timestamp.fromDate(d) : p.date}))} /></PopoverContent>
-                </Popover>
-            </div>
-             <div className="space-y-2">
-                <Label>Valor (R$)</Label>
-                <Input type="number" value={formData.amount} onChange={e => setFormData(p => ({...p, amount: parseFloat(e.target.value) || 0}))} />
-            </div>
-             <div className="space-y-2">
-                <Label>Anexar Novo Boleto/Comprovante (Opcional)</Label>
-                <Input type="file" onChange={e => setBoletoFile(e.target.files?.[0] || null)} accept="application/pdf,image/*"/>
-                 {formData.boletoUrl && (
-                     <a href={formData.boletoUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-500 underline">Ver boleto atual</a>
-                 )}
-            </div>
-             <DialogFooter>
-                 <Button type="button" variant="ghost" onClick={onCancel} disabled={isUploading}>Cancelar</Button>
-                 <Button type="submit" disabled={isUploading}>
-                    {isUploading && <Loader2 className="mr-2 animate-spin"/>}
-                    Salvar
-                 </Button>
-            </DialogFooter>
-        </form>
-    );
-}
-
-function RegisterPaymentDialog({
-    record, isOpen, onOpenChange, onSave
-}: {
-    record: PaymentRecord | null,
-    isOpen: boolean,
-    onOpenChange: (open: boolean) => void,
-    onSave: (record: PaymentRecord) => void,
-}) {
-    const [formData, setFormData] = useState<Partial<PaymentRecord>>({});
-
-    useEffect(() => {
-        if (record) {
-            setFormData({
-                ...record,
-                paidDate: new Date(),
-                paidAmount: record.amount,
-                paymentMethod: '',
-                notes: '',
-            });
-        }
-    }, [record]);
-
-
-    if (!isOpen || !record) return null;
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave(formData as PaymentRecord);
-    };
-
-    return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Registrar Pagamento de Parcela</DialogTitle>
-                     <DialogDescription>
-                        Vencimento em {format(toDate(record.date)!, 'dd/MM/yyyy')} no valor de R$ {record.amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}.
-                    </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-                     <div className="grid grid-cols-2 gap-4">
-                         <div className="space-y-2">
-                            <Label>Data do Pagamento</Label>
-                            <Popover>
-                                <PopoverTrigger asChild>
-                                    <Button variant="outline" className="w-full justify-start font-normal"><CalendarIcon className="mr-2 h-4 w-4"/>{formData.paidDate ? format(toDate(formData.paidDate)!, 'dd/MM/yyyy') : 'Selecione'}</Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
-                                    <Calendar mode="single" selected={toDate(formData.paidDate)} onSelect={(d) => setFormData(p => ({...p, paidDate: d}))} />
-                                </PopoverContent>
-                            </Popover>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Valor Pago (R$)</Label>
-                            <Input type="number" value={formData.paidAmount || ''} onChange={e => setFormData(p => ({...p, paidAmount: parseFloat(e.target.value) || 0}))}/>
-                        </div>
-                     </div>
-                     <div className="space-y-2">
-                        <Label>Forma de Pagamento</Label>
-                        <Input value={formData.paymentMethod || ''} onChange={e => setFormData(p => ({...p, paymentMethod: e.target.value}))} placeholder="Ex: PIX, Boleto, Cartão..."/>
-                     </div>
-                     <div className="space-y-2">
-                        <Label>Observações</Label>
-                        <Textarea value={formData.notes || ''} onChange={e => setFormData(p => ({...p, notes: e.target.value}))} />
-                     </div>
-                    <DialogFooter>
-                        <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                        <Button type="submit">Confirmar Pagamento</Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
-    );
-}
-
-
-
-function ModulesSettingsDialog({ organization, isOpen, onOpenChange }: { organization: Organization, isOpen: boolean, onOpenChange: (open: boolean) => void }) {
-    const { toast } = useToast();
-    const [isUpdating, setIsUpdating] = useState<string | null>(null);
-
-    const handleModuleToggle = async (module: keyof EnabledModules, checked: boolean) => {
-        const newPermissions = checked ? { view: true, edit: true, delete: true } : { view: false, edit: false, delete: false };
-        
-        setIsUpdating(module);
-        try {
-            const orgRef = doc(db, 'organizations', organization.id);
-            await updateDoc(orgRef, { [`enabledModules.${module}`]: newPermissions });
-            toast({ title: `Módulo ${checked ? 'habilitado' : 'desabilitado'}!` });
-        } catch (error) {
-            console.error("Error updating module:", error);
-            toast({ title: 'Erro ao salvar alteração', variant: 'destructive' });
-        } finally {
-            setIsUpdating(null);
-        }
-    };
-
-    if (!isOpen) return null;
-
-    const enabledModules = organization.enabledModules || {} as EnabledModules;
-
-    return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                    <DialogTitle>Gerenciar Módulos</DialogTitle>
-                    <DialogDescription>Habilite ou desabilite funcionalidades para a organização "{organization.name}".</DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto pr-2">
-                     {allModuleConfig.map(mod => (
-                        <div key={mod.key} className="flex flex-row items-center justify-between rounded-lg border p-4">
-                            <div className="flex flex-col">
-                                <Label htmlFor={`module-${mod.key}`} className="text-base">{mod.label}</Label>
-                                {isUpdating === mod.key && <span className="text-[10px] text-muted-foreground animate-pulse">Salvando...</span>}
-                            </div>
-                            <Switch
-                                id={`module-${mod.key}`}
-                                checked={!!enabledModules[mod.key]?.view}
-                                disabled={isUpdating === mod.key}
-                                onCheckedChange={(checked) => handleModuleToggle(mod.key, checked)}
-                            />
-                        </div>
-                    ))}
-                </div>
-            </DialogContent>
-        </Dialog>
-    );
-}
-
-function OrgUsersDialog({ organization, isOpen, onOpenChange }: { organization: OrgWithUser | null; isOpen: boolean; onOpenChange: (open: boolean) => void }) {
-    const { toast } = useToast();
-    const { createUser, resetUserPassword } = useAuth();
-    const [users, setUsers] = useState<User[]>([]);
-    const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
-
-    useEffect(() => {
-        if (!isOpen || !organization) return;
-        setLoading(true);
-        const qUsers = query(collection(db, 'users'), where('organizationId', '==', organization.id));
-        const qProfiles = query(collection(db, 'permissionProfiles'), where('organizationId', '==', organization.id));
-        
-        const unsubUsers = onSnapshot(qUsers, (snapshot) => {
-            setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
-            setLoading(false);
-        });
-        const unsubProfiles = onSnapshot(qProfiles, (snapshot) => {
-             setProfiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile)));
-        });
-
-        return () => { unsubUsers(); unsubProfiles(); }
-    }, [isOpen, organization]);
-
-    const getProfileName = (roleId: string) => profiles.find(p => p.id === roleId)?.name || 'N/A';
-    
-    const handleSaveUser = async (userToSave: Partial<User>) => {
-        if (!organization) return;
-        if (editingUser?.id) {
-            await updateDoc(doc(db, "users", editingUser.id), { role: userToSave.role, name: userToSave.name });
-            toast({ title: 'Usuário atualizado!' });
-        } else {
-            const { success, error } = await createUser(userToSave.email!, userToSave.name!, userToSave.role!, organization.id, undefined, userToSave.password);
-            if (success) toast({ title: 'Usuário criado!' });
-            else toast({ title: 'Erro ao criar', description: error, variant: 'destructive' });
-        }
-        setIsFormOpen(false);
-    };
-    
-    const handleResetPassword = async (email: string) => {
-        const { success, error } = await resetUserPassword(email);
-        if (success) {
-            toast({ title: 'E-mail de redefinição enviado!' });
-        } else {
-            toast({ title: 'Erro ao redefinir senha', description: error, variant: 'destructive' });
-        }
-    };
-    
-    if (!isOpen || !organization) return null;
-
-    return (
-         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-4xl">
-                 <DialogHeader>
-                    <DialogTitle>Gerenciar Usuários de "{organization.name}"</DialogTitle>
-                </DialogHeader>
-                 <div className="py-4">
-                     <div className="flex justify-end mb-4">
-                        <Button onClick={() => { setEditingUser(undefined); setIsFormOpen(true); }}><PlusCircle className="mr-2" /> Adicionar</Button>
-                    </div>
-                     <Table>
-                        <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Email</TableHead><TableHead>Perfil</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
-                        <TableBody>
-                            {loading ? <TableRow><TableCell colSpan={4} className="text-center"><Loader2 className="animate-spin mx-auto"/></TableCell></TableRow> :
-                             users.map(u => (
-                                <TableRow key={u.id}>
-                                    <TableCell>{u.name}</TableCell>
-                                    <TableCell>{u.email}</TableCell>
-                                    <TableCell><Badge variant="secondary">{getProfileName(u.role)}</Badge></TableCell>
-                                    <TableCell className="text-right">
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal /></Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent>
-                                                <DropdownMenuItem onSelect={() => { setEditingUser(u); setIsFormOpen(true); }}>Editar</DropdownMenuItem>
-                                                <DropdownMenuItem onSelect={() => handleResetPassword(u.email)}>Redefinir Senha</DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    </TableCell>
-                                </TableRow>
-                             ))
-                            }
-                        </TableBody>
-                    </Table>
-                 </div>
-                 {isFormOpen && (
-                     <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                         <DialogContent>
-                             <DialogHeader><DialogTitle>{editingUser ? 'Editar Usuário' : 'Novo Usuário'}</DialogTitle></DialogHeader>
-                             <UserForm user={editingUser} profiles={profiles} onSave={handleSaveUser} onDone={() => setIsFormOpen(false)} />
-                         </DialogContent>
-                     </Dialog>
-                 )}
-            </DialogContent>
-        </Dialog>
-    )
-}
-
-function OrgProfilesDialog({ organization, isOpen, onOpenChange }: { organization: OrgWithUser | null; isOpen: boolean; onOpenChange: (open: boolean) => void }) {
-    const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingProfile, setEditingProfile] = useState<PermissionProfile | undefined>(undefined);
-    const { toast } = useToast();
-
-    useEffect(() => {
-        if (!isOpen || !organization) return;
-        setLoading(true);
-        const q = query(collection(db, 'permissionProfiles'), where('organizationId', '==', organization.id));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
-            setProfiles(data);
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, [isOpen, organization]);
-
-    const handleSave = async (profileData: Partial<PermissionProfile>) => {
-        if (!organization) return;
-        try {
-            if (editingProfile?.id) {
-                await updateDoc(doc(db, 'permissionProfiles', editingProfile.id), profileData);
-                toast({ title: 'Perfil atualizado!' });
-            } else {
-                await addDoc(collection(db, 'permissionProfiles'), { ...profileData, organizationId: organization.id });
-                toast({ title: 'Perfil criado!' });
-            }
-            setIsFormOpen(false);
-            setEditingProfile(undefined);
-        } catch (error) {
-            toast({ title: 'Erro ao salvar perfil', variant: 'destructive' });
-        }
-    };
-
-    const handleDelete = async (id: string) => {
-        await deleteDoc(doc(db, 'permissionProfiles', id));
-        toast({ title: 'Perfil excluído!', variant: 'destructive' });
-    };
-
-    if (!isOpen || !organization) return null;
-
-    return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-4xl">
-                <DialogHeader>
-                    <DialogTitle>Gerenciar Perfis de "{organization.name}"</DialogTitle>
-                </DialogHeader>
-                 <div className="py-4">
-                     <div className="flex justify-end mb-4">
-                        <Button onClick={() => { setEditingProfile(undefined); setIsFormOpen(true); }}><PlusCircle className="mr-2" /> Adicionar Perfil</Button>
-                    </div>
-                     <Table>
-                        <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Permissões</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
-                        <TableBody>
-                            {loading ? <TableRow><TableCell colSpan={3} className="text-center"><Loader2 className="animate-spin mx-auto"/></TableCell></TableRow> :
-                             profiles.map(p => (
-                                <TableRow key={p.id}>
-                                    <TableCell>{p.name}</TableCell>
-                                    <TableCell>
-                                        <div className="flex flex-wrap gap-1">
-                                            {Object.entries(p.permissions).filter(([, perms]) => perms.view).map(([key]) => <Badge key={key} variant="outline">{key}</Badge>)}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <Button variant="ghost" size="sm" onClick={() => { setEditingProfile(p); setIsFormOpen(true); }}>Editar</Button>
-                                    </TableCell>
-                                </TableRow>
-                             ))
-                            }
-                        </TableBody>
-                    </Table>
-                 </div>
-                 {isFormOpen && (
-                     <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                         <DialogContent className="max-w-2xl">
-                             <DialogHeader><DialogTitle>{editingProfile ? 'Editar Perfil' : 'Novo Perfil'}</DialogTitle></DialogHeader>
-                             <PermissionProfileForm profile={editingProfile} organization={organization} onSave={handleSave} onDelete={handleDelete} onDone={() => setIsFormOpen(false)} />
-                         </DialogContent>
-                     </Dialog>
-                 )}
-            </DialogContent>
-        </Dialog>
-    )
-}
-
-function SuperAdminPage() {
+export default function SuperAdminPage() {
     const { user, loading: authLoading, startImpersonation } = useAuth();
     const router = useRouter();
-    const [organizations, setOrganizations] = useState<OrgWithUser[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
-    const [isModuleDialogOpen, setIsModuleDialogOpen] = useState(false);
-    const [isUsersDialogOpen, setIsUsersDialogOpen] = useState(false);
-    const [isProfilesDialogOpen, setIsProfilesDialogOpen] = useState(false);
-    const [isSubscriptionDialogOpen, setIsSubscriptionDialogOpen] = useState(false);
     const { toast } = useToast();
 
-    const selectedOrg = React.useMemo(() => 
+    const [organizations, setOrganizations] = useState<OrgWithUser[]>([]);
+    const [plans, setPlans] = useState<PricingPlan[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [isExporting, setIsExporting] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState<string>('all');
+
+    // Estado para Diálogos
+    const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+    const [dialogs, setDialogs] = useState({
+        modules: false,
+        users: false,
+        profiles: false,
+        subscription: false
+    });
+
+    const selectedOrg = useMemo(() => 
         organizations.find(org => org.id === selectedOrgId) || null
     , [organizations, selectedOrgId]);
 
+    const handleExportBackup = async (org: OrgWithUser) => {
+        setIsExporting(org.id);
+        try {
+            await exportOrganizationData(org.id, org.name);
+            toast({ title: 'Backup concluído!', description: `O arquivo Excel de "${org.name}" foi gerado.` });
+        } catch (error) {
+            console.error("Erro no backup:", error);
+            toast({ title: 'Erro no backup', description: 'Não foi possível exportar os dados.', variant: 'destructive' });
+        } finally {
+            setIsExporting(null);
+        }
+    };
+
+    // Redirecionamento de segurança
     useEffect(() => {
         if (!authLoading && user && user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL && !user.isImpersonating) {
             router.push('/dashboard');
         }
     }, [user, authLoading, router]);
 
+    // Carregamento de dados
     useEffect(() => {
         if (user && user.email === process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
             const unsubscribeOrgs = onSnapshot(collection(db, 'organizations'), async (orgSnapshot) => {
@@ -969,14 +85,33 @@ function SuperAdminPage() {
                 const usersSnapshot = await getDocs(query(collection(db, 'users')));
                 const usersData = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
 
-                const orgsWithUsers = orgsData.map(org => ({ ...org, owner: usersData.find(u => u.id === org.ownerId) }));
+                const orgsWithUsers = orgsData.map(org => ({ 
+                    ...org, 
+                    owner: usersData.find(u => u.id === org.ownerId) 
+                }));
                 
                 setOrganizations(orgsWithUsers);
                 setLoading(false);
             });
-            return () => unsubscribeOrgs();
+
+            const unsubscribePlans = onSnapshot(collection(db, 'pricingPlans'), (snapshot) => {
+                setPlans(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PricingPlan)));
+            });
+
+            return () => {
+                unsubscribeOrgs();
+                unsubscribePlans();
+            };
         }
     }, [user]);
+
+    // Métricas para o Dashboard
+    const stats = useMemo(() => calculateStats(organizations), [organizations]);
+
+    // Filtro de organizações
+    const filteredOrgs = useMemo(() => 
+        filterOrganizations(organizations, searchTerm, statusFilter)
+    , [organizations, searchTerm, statusFilter]);
 
     const handleStatusChange = async (orgId: string, status: PaymentStatus) => {
         await updateDoc(doc(db, 'organizations', orgId), { paymentStatus: status });
@@ -984,134 +119,364 @@ function SuperAdminPage() {
     };
     
     const handleDeleteOrganization = async (orgId: string) => {
-        const collectionsToDelete = ['users', 'branches', 'products', 'combos', 'kits', 'sales', 'stockEntries', 'paymentConditions', 'permissionProfiles', 'anamnesisQuestions', 'customers', 'attendances', 'appointments', 'services'];
+        if (!orgId || orgId !== selectedOrg?.id) {
+            toast({ title: 'Erro de validação', description: 'O ID da organização é inválido ou não corresponde à seleção.', variant: 'destructive' });
+            return;
+        }
+
+        // Lista exaustiva de todas as coleções que possuem o campo 'organizationId'
+        const collectionsToDelete = [
+            'users', 'branches', 'products', 'combos', 'kits', 'sales', 
+            'stockEntries', 'paymentConditions', 'permissionProfiles', 
+            'anamnesisQuestions', 'customers', 'attendances', 'appointments', 
+            'services', 'expenses', 'clinicalRecords', 'formTemplates', 
+            'customerFormTemplates'
+        ];
+
         try {
             const batch = writeBatch(db);
+            
+            // O loop garante isolamento total: apenas documentos vinculados ao orgId são selecionados
             for (const collectionName of collectionsToDelete) {
                 const q = query(collection(db, collectionName), where("organizationId", "==", orgId));
                 const snapshot = await getDocs(q);
                 snapshot.forEach(doc => batch.delete(doc.ref));
             }
+
+            // Por fim, deleta o documento principal da organização
             batch.delete(doc(db, 'organizations', orgId));
+            
             await batch.commit();
-            toast({ title: 'Organização e dados vinculados excluídos!', variant: 'destructive' });
+            
+            toast({ title: 'Organização excluída!', description: `Todos os dados de "${selectedOrg.name}" foram removidos com segurança.` });
+            setIsDeleteDialogOpen(false);
+            setSelectedOrgId(null);
         } catch (error) {
-            toast({ title: 'Erro ao excluir organização', variant: 'destructive' });
+            console.error("Erro na deleção atômica:", error);
+            toast({ title: 'Erro ao excluir organização', description: 'Ocorreu uma falha na deleção em massa.', variant: 'destructive' });
         }
     };
 
     const getStatusBadge = (status: PaymentStatus) => {
-        const variants = { active: "bg-green-100 text-green-800", overdue: "bg-yellow-100 text-yellow-800", locked: "destructive" };
-        return <Badge variant={status === 'locked' ? 'destructive' : 'secondary'} className={variants[status]}>{status}</Badge>;
+        const configs = { 
+            active: { label: "Ativo", class: "bg-green-100 text-green-800 border-green-200" }, 
+            overdue: { label: "Vencido", class: "bg-amber-100 text-amber-800 border-amber-200" }, 
+            locked: { label: "Bloqueado", class: "bg-red-100 text-red-800 border-red-200" } 
+        };
+        const config = configs[status] || { label: status, class: "" };
+        return <Badge variant="outline" className={config.class}>{config.label}</Badge>;
     }
     
-    const handleOpenDialog = (org: OrgWithUser, type: 'modules' | 'users' | 'profiles' | 'subscription') => {
+    const openDialog = (org: OrgWithUser, type: keyof typeof dialogs) => {
         setSelectedOrgId(org.id);
-        if (type === 'modules') setIsModuleDialogOpen(true);
-        if (type === 'users') setIsUsersDialogOpen(true);
-        if (type === 'profiles') setIsProfilesDialogOpen(true);
-        if (type === 'subscription') setIsSubscriptionDialogOpen(true);
+        setTimeout(() => {
+            setDialogs(prev => ({ ...prev, [type]: true }));
+        }, 100);
+    };
+
+    const openDeleteAlert = (org: OrgWithUser) => {
+        setSelectedOrgId(org.id);
+        setTimeout(() => {
+            setIsDeleteDialogOpen(true);
+        }, 100);
     };
 
     if (authLoading || !user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
-        return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-muted/30">
+                <div className="flex flex-col items-center gap-2">
+                    <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground font-medium">Autenticando...</p>
+                </div>
+            </div>
+        );
     }
 
     return (
-        <div className="min-h-screen bg-muted p-4 sm:p-6 lg:p-8">
-            <Card className="max-w-7xl mx-auto">
-                <CardHeader>
+        <div className="min-h-screen bg-muted/30 p-4 sm:p-6 lg:p-8 space-y-6">
+            <div className="max-w-7xl mx-auto space-y-6">
+                {/* Header */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
-                       <ShieldAlert className="h-8 w-8 text-destructive" />
-                       <div>
-                         <CardTitle>Painel Super Admin</CardTitle>
-                         <CardDescription>Gerenciamento de todas as organizações e planos do sistema.</CardDescription>
-                       </div>
+                        <div className="bg-destructive/10 p-3 rounded-xl">
+                            <ShieldAlert className="h-8 w-8 text-destructive" />
+                        </div>
+                        <div>
+                            <h1 className="text-2xl font-bold tracking-tight">Painel Super Admin</h1>
+                            <p className="text-muted-foreground">Visão geral do sistema Stok.io</p>
+                        </div>
                     </div>
-                </CardHeader>
-                <CardContent>
-                     <Tabs defaultValue="organizations">
-                        <TabsList>
-                            <TabsTrigger value="organizations">Organizações</TabsTrigger>
-                            <TabsTrigger value="plans">Planos</TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="organizations" className="mt-4">
-                            <Table>
-                                <TableHeader><TableRow><TableHead>Organização</TableHead><TableHead>Proprietário</TableHead><TableHead>Status Pag.</TableHead><TableHead>Próx. Venc.</TableHead><TableHead>Acessar</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
-                                <TableBody>
-                                    {loading ? (
-                                        <TableRow>
-                                            <TableCell colSpan={6} className="h-24 text-center">
-                                                <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
-                                            </TableCell>
-                                        </TableRow>
-                                    ) : organizations.map((org) => (
-                                        <TableRow key={org.id}>
-                                            <TableCell className="font-medium">{org.name}</TableCell>
-                                            <TableCell>{org.owner?.name || 'N/A'}</TableCell>
-                                            <TableCell>{getStatusBadge(org.paymentStatus)}</TableCell>
-                                            <TableCell>
-                                                {org.subscription?.paymentRecords
-                                                    ?.filter(p => p.status === 'pending')
-                                                    .sort((a,b) => toDate(a.date)!.getTime() - toDate(b.date)!.getTime())
-                                                    [0] 
-                                                    ? format(toDate(org.subscription.paymentRecords.find(p => p.status === 'pending')!.date)!, 'dd/MM/yyyy') 
-                                                    : <Badge variant="outline">N/A</Badge>
-                                                }
-                                            </TableCell>
-                                            <TableCell>
-                                                <Button variant="outline" size="sm" onClick={() => startImpersonation(org.id)}>
-                                                    <LogIn className="mr-2 h-4 w-4"/>
-                                                    Acessar Painel
-                                                </Button>
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <AlertDialog>
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                                            <DropdownMenuSeparator />
-                                                             <div className="p-2">
-                                                                <Select defaultValue={org.paymentStatus} onValueChange={(s: PaymentStatus) => handleStatusChange(org.id, s)}>
-                                                                    <SelectTrigger><SelectValue placeholder="Mudar Status" /></SelectTrigger>
-                                                                    <SelectContent><SelectItem value="active">Ativo</SelectItem><SelectItem value="overdue">Vencido</SelectItem><SelectItem value="locked">Bloqueado</SelectItem></SelectContent>
-                                                                </Select>
-                                                             </div>
-                                                            <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'subscription')}><DollarSign className="mr-2 h-4 w-4" /> Gerenciar Assinatura</DropdownMenuItem>
-                                                            <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'users')}><Users className="mr-2 h-4 w-4" /> Gerenciar Usuários</DropdownMenuItem>
-                                                            <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'profiles')}><Pencil className="mr-2 h-4 w-4" /> Gerenciar Perfis</DropdownMenuItem>
-                                                            <DropdownMenuItem onSelect={() => handleOpenDialog(org, 'modules')}><SlidersHorizontal className="mr-2 h-4 w-4" /> Gerenciar Módulos</DropdownMenuItem>
-                                                            <DropdownMenuSeparator />
-                                                             <AlertDialogTrigger asChild><DropdownMenuItem className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Excluir Organização</DropdownMenuItem></AlertDialogTrigger>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                    <AlertDialogContent>
-                                                        <AlertDialogHeader><AlertDialogTitle>Excluir "{org.name}"?</AlertDialogTitle><AlertDialogDescription>Essa ação é irreversível e excluirá a organização e todos os seus dados.</AlertDialogDescription></AlertDialogHeader>
-                                                        <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteOrganization(org.id)} className={buttonVariants({ variant: "destructive" })}>Sim, excluir</AlertDialogAction></AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </TabsContent>
-                         <TabsContent value="plans" className="mt-4">
-                            <PricingPlansSettings />
-                        </TabsContent>
-                    </Tabs>
-                </CardContent>
-            </Card>
-             {selectedOrg && <ModulesSettingsDialog organization={selectedOrg} isOpen={isModuleDialogOpen} onOpenChange={setIsModuleDialogOpen} />}
-             {selectedOrg && <OrgUsersDialog organization={selectedOrg} isOpen={isUsersDialogOpen} onOpenChange={setIsUsersDialogOpen} />}
-             {selectedOrg && <OrgProfilesDialog organization={selectedOrg} isOpen={isProfilesDialogOpen} onOpenChange={setIsProfilesDialogOpen} />}
-             {selectedOrg && <SubscriptionDialog organization={selectedOrg} isOpen={isSubscriptionDialogOpen} onOpenChange={setIsSubscriptionDialogOpen} adminUser={user}/>}
+                    <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="bg-background px-3 py-1">
+                            {user.email}
+                        </Badge>
+                    </div>
+                </div>
+
+                {/* Stats Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="border-l-4 border-l-primary">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <p className="text-sm font-medium text-muted-foreground">MRR (Receita Recorrente)</p>
+                                <TrendingUp className="h-4 w-4 text-primary" />
+                            </div>
+                            <div className="mt-2 flex items-baseline gap-2">
+                                <p className="text-3xl font-bold">R$ {stats.mrr?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                <p className="text-xs text-muted-foreground">mensal</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card className="border-l-4 border-l-green-500">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <p className="text-sm font-medium text-muted-foreground">Organizações Ativas</p>
+                                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                            </div>
+                            <div className="mt-2 flex items-baseline gap-2">
+                                <p className="text-3xl font-bold">{stats.active}</p>
+                                <p className="text-xs text-muted-foreground">{((stats.active/stats.total)*100 || 0).toFixed(0)}% do total</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card className="border-l-4 border-l-amber-500">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <p className="text-sm font-medium text-muted-foreground">Valor em Atraso</p>
+                                <AlertCircle className="h-4 w-4 text-amber-500" />
+                            </div>
+                            <div className="mt-2 flex items-baseline gap-2">
+                                <p className="text-3xl font-bold text-amber-600">R$ {stats.overdueRevenue?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                <p className="text-xs text-muted-foreground">{stats.overdue} orgs. pendentes</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card className="border-l-4 border-l-red-500">
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                                <p className="text-sm font-medium text-muted-foreground">Bloqueadas / Inativas</p>
+                                <ShieldAlert className="h-4 w-4 text-red-500" />
+                            </div>
+                            <div className="mt-2 flex items-baseline gap-2">
+                                <p className="text-3xl font-bold">{stats.locked}</p>
+                                <p className="text-xs text-muted-foreground">acesso suspenso</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <Card className="shadow-sm">
+                    <CardHeader className="pb-3">
+                        <Tabs defaultValue="organizations" className="w-full">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                                <TabsList>
+                                    <TabsTrigger value="organizations">Organizações</TabsTrigger>
+                                    <TabsTrigger value="plans">Planos Globais</TabsTrigger>
+                                    <TabsTrigger value="insights">Relatórios & Insights</TabsTrigger>
+                                </TabsList>
+                                
+                                <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+                                    <div className="relative w-full sm:w-64">
+                                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Buscar organização ou dono..."
+                                            className="pl-9"
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                        />
+                                    </div>
+                                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                        <SelectTrigger className="w-full sm:w-[150px]">
+                                            <div className="flex items-center gap-2">
+                                                <Filter className="h-3.5 w-3.5" />
+                                                <SelectValue placeholder="Status" />
+                                            </div>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">Todos Status</SelectItem>
+                                            <SelectItem value="active">Ativos</SelectItem>
+                                            <SelectItem value="overdue">Vencidos</SelectItem>
+                                            <SelectItem value="locked">Bloqueados</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            <TabsContent value="organizations" className="m-0">
+                                <div className="rounded-md border overflow-hidden">
+                                    <Table>
+                                        <TableHeader className="bg-muted/50">
+                                            <TableRow>
+                                                <TableHead className="font-semibold">Organização</TableHead>
+                                                <TableHead className="font-semibold">Proprietário</TableHead>
+                                                <TableHead className="font-semibold">Status Pag.</TableHead>
+                                                <TableHead className="font-semibold">Próx. Vencimento</TableHead>
+                                                <TableHead className="font-semibold">Acesso Rápido</TableHead>
+                                                <TableHead className="text-right font-semibold">Ações</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {loading ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={6} className="h-24 text-center">
+                                                        <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+                                                    </TableCell>
+                                                </TableRow>
+                                            ) : filteredOrgs.length === 0 ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                                                        Nenhuma organização encontrada.
+                                                    </TableCell>
+                                                </TableRow>
+                                            ) : filteredOrgs.map((org) => (
+                                                <TableRow key={org.id} className="hover:bg-muted/30 transition-colors">
+                                                    <TableCell className="font-semibold py-4">{org.name}</TableCell>
+                                                    <TableCell>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-sm font-medium">{org.owner?.name || 'N/A'}</span>
+                                                            <span className="text-xs text-muted-foreground">{org.owner?.email}</span>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>{getStatusBadge(org.paymentStatus)}</TableCell>
+                                                    <TableCell>
+                                                        {org.subscription?.paymentRecords
+                                                            ?.filter(p => p.status === 'pending')
+                                                            .sort((a,b) => toDate(a.date)!.getTime() - toDate(b.date)!.getTime())
+                                                            [0] 
+                                                            ? format(toDate(org.subscription.paymentRecords.find(p => p.status === 'pending')!.date)!, 'dd/MM/yyyy') 
+                                                            : <Badge variant="secondary" className="font-normal opacity-50">N/A</Badge>
+                                                        }
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Button variant="outline" size="sm" onClick={() => startImpersonation(org.id)} className="h-8 gap-2 hover:bg-primary hover:text-primary-foreground transition-all">
+                                                            <LogIn className="h-3.5 w-3.5"/>
+                                                            Acessar Painel
+                                                        </Button>
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end" className="w-56">
+                                                                <DropdownMenuLabel>Gestão Financeira</DropdownMenuLabel>
+                                                                
+                                                                <DropdownMenuSub>
+                                                                    <DropdownMenuSubTrigger>
+                                                                        <div className="flex items-center">
+                                                                            <TrendingUp className="mr-2 h-4 w-4" />
+                                                                            <span>Mudar Status</span>
+                                                                        </div>
+                                                                    </DropdownMenuSubTrigger>
+                                                                    <DropdownMenuPortal>
+                                                                        <DropdownMenuSubContent>
+                                                                            <DropdownMenuItem onSelect={() => handleStatusChange(org.id, 'active')}>
+                                                                                <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" /> Ativo
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuItem onSelect={() => handleStatusChange(org.id, 'overdue')}>
+                                                                                <AlertCircle className="mr-2 h-4 w-4 text-amber-500" /> Vencido
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuItem onSelect={() => handleStatusChange(org.id, 'locked')}>
+                                                                                <ShieldAlert className="mr-2 h-4 w-4 text-red-500" /> Bloqueado
+                                                                            </DropdownMenuItem>
+                                                                        </DropdownMenuSubContent>
+                                                                    </DropdownMenuPortal>
+                                                                </DropdownMenuSub>
+
+                                                                <DropdownMenuItem onSelect={() => openDialog(org, 'subscription')}>
+                                                                    <DollarSign className="mr-2 h-4 w-4" /> Assinatura e Parcelas
+                                                                </DropdownMenuItem>
+
+                                                                <DropdownMenuItem 
+                                                                    onSelect={() => handleExportBackup(org)}
+                                                                    disabled={isExporting === org.id}
+                                                                >
+                                                                    {isExporting === org.id ? (
+                                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                                    ) : (
+                                                                        <Download className="mr-2 h-4 w-4" />
+                                                                    )}
+                                                                    Exportar Backup (Excel)
+                                                                </DropdownMenuItem>
+
+                                                                <DropdownMenuSeparator />
+                                                                <DropdownMenuLabel>Configurações</DropdownMenuLabel>
+                                                                <DropdownMenuItem onSelect={() => openDialog(org, 'users')}>
+                                                                    <Users className="mr-2 h-4 w-4" /> Usuários da Org
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem onSelect={() => openDialog(org, 'profiles')}>
+                                                                    <Pencil className="mr-2 h-4 w-4" /> Perfis de Acesso
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem onSelect={() => openDialog(org, 'modules')}>
+                                                                    <SlidersHorizontal className="mr-2 h-4 w-4" /> Módulos Habilitados
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuSeparator />
+                                                                <DropdownMenuItem onSelect={() => openDeleteAlert(org)} className="text-destructive focus:text-destructive">
+                                                                    <Trash2 className="mr-2 h-4 w-4" /> Excluir Organização
+                                                                </DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </TabsContent>
+
+                            <TabsContent value="plans" className="m-0 pt-4">
+                                <PricingPlansSettings />
+                            </TabsContent>
+
+                            <TabsContent value="insights" className="m-0 pt-4">
+                                <AdminInsights organizations={organizations} plans={plans} />
+                            </TabsContent>
+                        </Tabs>
+                    </CardHeader>
+                </Card>
+            </div>
+
+            {/* Renderização condicional de diálogos para performance */}
+            {selectedOrg && (
+                <>
+                    <ModulesSettingsDialog 
+                        organization={selectedOrg} 
+                        isOpen={dialogs.modules} 
+                        onOpenChange={(open) => setDialogs(p => ({...p, modules: open}))} 
+                    />
+                    <OrgUsersDialog 
+                        organization={selectedOrg} 
+                        isOpen={dialogs.users} 
+                        onOpenChange={(open) => setDialogs(p => ({...p, users: open}))} 
+                    />
+                    <OrgProfilesDialog 
+                        organization={selectedOrg} 
+                        isOpen={dialogs.profiles} 
+                        onOpenChange={(open) => setDialogs(p => ({...p, profiles: open}))} 
+                    />
+                    <SubscriptionDialog 
+                        organization={selectedOrg} 
+                        isOpen={dialogs.subscription} 
+                        onOpenChange={(open) => setDialogs(p => ({...p, subscription: open}))} 
+                        adminUser={user}
+                    />
+                    
+                    <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    Deseja realmente excluir a organização <strong>{selectedOrg.name}</strong> e todos os seus dados? Esta ação não pode ser desfeita.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteOrganization(selectedOrg.id)} className={buttonVariants({ variant: "destructive" })}>Sim, excluir tudo</AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                </>
+            )}
         </div>
     );
 }
-
-export default SuperAdminPage;
-
-
-    

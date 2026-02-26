@@ -857,8 +857,8 @@ export default function POSPage() {
             e.preventDefault();
             searchInputRef.current?.focus();
         }
-        // F4 - Focus Quantity
-        if (e.key === 'F4') {
+        // Alt + Q - Focus Quantity
+        if (e.altKey && (e.key === 'q' || e.key === 'Q')) {
             e.preventDefault();
             e.stopPropagation();
             quantityInputRef.current?.focus();
@@ -1408,7 +1408,7 @@ export default function POSPage() {
                             value={globalQuantity}
                             onChange={(e) => setGlobalQuantity(Math.max(1, parseInt(e.target.value) || 1))}
                             className="text-center font-bold"
-                            title="Quantidade [F4]"
+                            title="Quantidade [Alt+Q]"
                         />
                     </div>
                     <div className="relative flex-grow">

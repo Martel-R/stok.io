@@ -1067,7 +1067,8 @@ export default function POSPage() {
     if (!unitProduct) return;
     
     if (unitId === 'base') {
-        addToCart(unitProduct, 'product');
+        // Pass the current globalQuantity so it doesn't trigger the modal again
+        addToCart(unitProduct, 'product', globalQuantity);
     } else {
         const unit = unitProduct.saleUnits?.find(u => u.id === unitId);
         if (unit) {

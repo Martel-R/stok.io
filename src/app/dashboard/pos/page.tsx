@@ -1419,6 +1419,22 @@ export default function POSPage() {
                             className="w-full rounded-lg bg-background pl-8"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && searchQuery.trim() !== '') {
+                                    e.preventDefault();
+                                    // Try to find the first item in the current active tab
+                                    if (activeTab === 'products' && filteredProducts.length > 0) {
+                                        addToCart(filteredProducts[0], 'product');
+                                        setSearchQuery('');
+                                    } else if (activeTab === 'combos' && filteredCombos.length > 0) {
+                                        addToCart(filteredCombos[0], 'combo');
+                                        setSearchQuery('');
+                                    } else if (activeTab === 'kits' && filteredKits.length > 0) {
+                                        setSelectedKit(filteredKits[0]);
+                                        setSearchQuery('');
+                                    }
+                                }
+                            }}
                         />
                     </div>
                     <Button variant="outline" size="icon" onClick={() => setIsScannerOpen(true)}>

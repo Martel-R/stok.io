@@ -299,6 +299,34 @@ function CheckoutModal({
   const paidAmount = useMemo(() => payments.reduce((acc, p) => acc + p.amount, 0), [payments]);
   const remainingAmount = useMemo(() => grandTotal - paidAmount, [grandTotal, paidAmount]);
 
+  // Keyboard Shortcuts for Modal
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleModalKeyDown = (e: KeyboardEvent) => {
+        // Enter to submit (if not in a focused input that handles enter differently)
+        if (e.key === 'Enter' && !isProcessing && Math.abs(remainingAmount) <= 0.01) {
+            const target = e.target as HTMLElement;
+            if (target.tagName !== 'TEXTAREA') {
+                e.preventDefault();
+                handleSubmit();
+            }
+        }
+        // F1 - Add payment
+        if (e.key === 'F1') {
+            e.preventDefault();
+            handleAddPayment();
+        }
+        // Escape is handled by Dialog but we can ensure it here
+        if (e.key === 'Escape') {
+            onOpenChange(false);
+        }
+    };
+
+    window.addEventListener('keydown', handleModalKeyDown);
+    return () => window.removeEventListener('keydown', handleModalKeyDown);
+  }, [isOpen, isProcessing, remainingAmount, payments, grandTotal]);
+
   useEffect(() => {
     if (isOpen) {
       if (grandTotal > 0 && paymentConditions.length > 0) {
@@ -404,10 +432,10 @@ function CheckoutModal({
                     <Label htmlFor={`amount-${index}`}>Valor</Label>
                     <Input
                       id={`amount-${index}`}
-                      type="number"
-                      value={payment.amount}
-                      onChange={(e) => handlePaymentChange(index, 'amount', parseFloat(e.target.value) || 0)}
-                      className="text-right"
+                      type="text"
+                      value={formatCurrency(payment.amount)}
+                      onChange={(e) => handlePaymentChange(index, 'amount', parseCurrencyToNumber(e.target.value))}
+                      className="text-right font-mono"
                     />
                  </div>
               </div>
@@ -447,20 +475,20 @@ function CheckoutModal({
           )})}
           {remainingAmount > 0.01 && (
              <Button variant="outline" onClick={handleAddPayment} className="w-full">
-                <PlusCircle className="mr-2 h-4 w-4"/> Adicionar Outra Forma de Pagamento
+                <PlusCircle className="mr-2 h-4 w-4"/> Adicionar Outra Forma de Pagamento [F1]
              </Button>
           )}
         </div>
         <DialogFooter className="grid grid-cols-2 gap-4">
             <div className="text-left">
-                <p>Total Pago: <span className="font-bold">R${paidAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></p>
+                <p>Total Pago: <span className="font-bold">{formatCurrency(paidAmount)}</span></p>
                 <p className={remainingAmount !== 0 ? 'text-destructive' : ''}>
-                    Restante: <span className="font-bold">R${remainingAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    Restante: <span className="font-bold">{formatCurrency(remainingAmount)}</span>
                 </p>
             </div>
             <Button onClick={handleSubmit} disabled={isProcessing}>
                 {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4"/>}
-                Confirmar Pagamento
+                Confirmar Pagamento [Enter]
             </Button>
         </DialogFooter>
       </DialogContent>

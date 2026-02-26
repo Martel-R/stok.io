@@ -33,6 +33,19 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Html5Qrcode } from 'html5-qrcode';
 
 
+const formatCurrency = (value: number | string) => {
+    const amount = typeof value === 'string' ? parseFloat(value.replace(/[^\d]/g, '')) / 100 : value;
+    if (isNaN(amount)) return 'R$ 0,00';
+    return new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+    }).format(amount);
+};
+
+const parseCurrencyToNumber = (value: string) => {
+    return parseFloat(value.replace(/[^\d]/g, '')) / 100 || 0;
+};
+
 type CartItem = 
     | (ProductWithStock & { itemType: 'product'; quantity: number }) 
     | (Combo & { itemType: 'combo'; quantity: number })

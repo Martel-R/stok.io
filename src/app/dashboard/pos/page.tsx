@@ -1185,21 +1185,6 @@ export default function POSPage() {
     return [];
   }, [activeTab, filteredProducts, filteredCombos, filteredKits]);
 
-  const handleEnterSelection = () => {
-    const items = filteredItemsInTab;
-    if (items.length > 0 && highlightedIndex < items.length) {
-        const item = items[highlightedIndex];
-        if (activeTab === 'products') {
-            addToCart(item as ProductWithStock, 'product');
-        } else if (activeTab === 'combos') {
-            addToCart(item as Combo, 'combo');
-        } else if (activeTab === 'kits') {
-            setSelectedKit(item as Kit);
-        }
-        setSearchQuery('');
-    }
-  };
-
   const handleScan = (barcode: string) => {
     setIsScannerOpen(false);
     
@@ -1561,7 +1546,20 @@ export default function POSPage() {
                                     setHighlightedIndex(prev => Math.max(prev - 1, 0));
                                 } else if (e.key === 'Enter' && searchQuery.trim() !== '') {
                                     e.preventDefault();
-                                    handleEnterSelection();
+                                    const items = filteredItemsInTab;
+                                    if (items.length > 0 && highlightedIndex < items.length) {
+                                        const item = items[highlightedIndex];
+                                        if (activeTab === 'products') {
+                                            addToCart(item as ProductWithStock, 'product');
+                                        } else if (activeTab === 'combos') {
+                                            addToCart(item as Combo, 'combo');
+                                        } else if (activeTab === 'kits') {
+                                            setSelectedKit(item as Kit);
+                                        }
+                                        toast({ title: "Item adicionado!", description: `${item.name} adicionado ao carrinho.` });
+                                        setSearchQuery('');
+                                        setHighlightedIndex(0);
+                                    }
                                 }
                             }}
                         />

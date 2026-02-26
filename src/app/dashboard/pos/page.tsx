@@ -1072,12 +1072,15 @@ export default function POSPage() {
         const unit = unitProduct.saleUnits?.find(u => u.id === unitId);
         if (unit) {
             // Add as a special cart item representing the unit
+            // We multiply the globalQuantity by the unit's multiplier
+            const finalQty = globalQuantity * unit.multiplier;
+            
             const cartItem: CartItem = {
                 ...unitProduct,
                 id: `${unitProduct.id}-${unit.id}`,
                 name: `${unitProduct.name} (${unit.name})`,
                 price: unit.price,
-                quantity: globalQuantity * unit.multiplier,
+                quantity: finalQty,
                 itemType: 'product'
             };
             setCart(prev => [...prev, cartItem]);
@@ -1095,31 +1098,45 @@ export default function POSPage() {
     }
 
     const allowNegative = currentBranch?.allowNegativeStock ?? false;
-    const qtyToAdd = forcedQuantity !== undefined ? forcedQuantity : globalQuantity;
+    
+    // CRITICAL: We only use globalQuantity if it's NOT a product with units (because unit selection handles it)
+    // AND it's NOT a weight-based product (because weight modal handles it)
+    // AND forcedQuantity is not provided.
+    
+    const product = type === 'product' ? item as ProductWithStock : null;
+    const hasUnits = product?.saleUnits && product.saleUnits.length > 0;
+    const isWeight = product?.saleType === 'weight';
 
-    if (type === 'product') {
-        const product = item as ProductWithStock;
-        
-        // If has sale units and no unit is forced, open unit selection
-        if (product.saleUnits && product.saleUnits.length > 0 && forcedQuantity === undefined) {
+    if (type === 'product' && product) {
+        // 1. Handle Unit Selection (Triggers modal)
+        if (hasUnits && forcedQuantity === undefined) {
             setUnitProduct(product);
             setIsUnitModalOpen(true);
             return;
         }
 
+        // 2. Handle Weight Selection (Triggers modal)
+        if (isWeight && forcedQuantity === undefined) {
+            setWeightProduct(product);
+            setIsWeightModalOpen(true);
+            return;
+        }
+    }
+
+    const qtyToAdd = forcedQuantity !== undefined ? forcedQuantity : globalQuantity;
+
+    if (type === 'product' && product) {
         if (product.stock <= 0 && !allowNegative) {
             toast({ title: 'Fora de estoque', description: `${product.name} não está disponível.`, variant: 'destructive'});
             return;
         }
 
-        if (product.saleType === 'weight' && forcedQuantity === undefined) {
-            setWeightProduct(product);
-            setIsWeightModalOpen(true);
-            return;
-        }
-
          setCart((prev) => {
-            const existingItem = prev.find((cartItem) => cartItem.id === product.id && cartItem.itemType === 'product');
+            const existingId = hasUnits && forcedQuantity === undefined ? `${product.id}` : (forcedQuantity !== undefined ? product.id : product.id);
+            // To simplify, we'll use item.id for basic products
+            const itemKey = product.id; 
+
+            const existingItem = prev.find((cartItem) => cartItem.id === itemKey && cartItem.itemType === 'product');
             if (existingItem) {
                 if (existingItem.quantity + qtyToAdd > (existingItem as ProductWithStock).stock && !allowNegative) {
                      toast({ title: 'Limite de estoque atingido', description: `Você não pode adicionar mais de ${(existingItem as ProductWithStock).stock} unidades de ${existingItem.name}.`, variant: 'destructive'});

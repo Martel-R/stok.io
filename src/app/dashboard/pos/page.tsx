@@ -1072,15 +1072,15 @@ export default function POSPage() {
         const unit = unitProduct.saleUnits?.find(u => u.id === unitId);
         if (unit) {
             // Add as a special cart item representing the unit
-            // We multiply the globalQuantity by the unit's multiplier
-            const finalQty = globalQuantity * unit.multiplier;
-            
-            const cartItem: CartItem = {
+            // quantity is the billing quantity (e.g. 1 box)
+            // we add a custom property 'stockMultiplier' to handle stock deduction later
+            const cartItem: any = {
                 ...unitProduct,
                 id: `${unitProduct.id}-${unit.id}`,
                 name: `${unitProduct.name} (${unit.name})`,
                 price: unit.price,
-                quantity: finalQty,
+                quantity: globalQuantity,
+                stockMultiplier: unit.multiplier,
                 itemType: 'product'
             };
             setCart(prev => [...prev, cartItem]);
@@ -1209,12 +1209,13 @@ export default function POSPage() {
     for (const p of products) {
         const unit = p.saleUnits?.find(u => u.barcode === barcode);
         if (unit) {
-            const cartItem: CartItem = {
+            const cartItem: any = {
                 ...p,
                 id: `${p.id}-${unit.id}`,
                 name: `${p.name} (${unit.name})`,
                 price: unit.price,
-                quantity: globalQuantity * unit.multiplier,
+                quantity: globalQuantity,
+                stockMultiplier: unit.multiplier,
                 itemType: 'product'
             };
             setCart(prev => [...prev, cartItem]);
@@ -1291,10 +1292,11 @@ export default function POSPage() {
         // Create stock entries first for products, combos, and kits
         for (const item of cart) {
             if (item.itemType === 'product') {
+                 const multiplier = (item as any).stockMultiplier || 1;
                  const entry: Omit<StockEntry, 'id'> = {
-                    productId: item.id,
+                    productId: (item as any).id.split('-')[0], // Get original product ID
                     productName: item.name,
-                    quantity: -item.quantity,
+                    quantity: -(item.quantity * multiplier),
                     type: 'sale',
                     date: saleDate,
                     userId: user.id,

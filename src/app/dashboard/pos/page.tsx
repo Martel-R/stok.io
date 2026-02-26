@@ -860,6 +860,7 @@ export default function POSPage() {
         // F4 - Focus Quantity
         if (e.key === 'F4') {
             e.preventDefault();
+            e.stopPropagation();
             quantityInputRef.current?.focus();
             quantityInputRef.current?.select();
         }

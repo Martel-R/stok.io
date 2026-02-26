@@ -304,28 +304,50 @@ function CheckoutModal({
     if (!isOpen) return;
 
     const handleModalKeyDown = (e: KeyboardEvent) => {
+        // Alt + Number (1-9) to select payment condition for the LAST payment entry
+        if (e.altKey && /^[1-9]$/.test(e.key)) {
+            const index = parseInt(e.key) - 1;
+            if (paymentConditions[index]) {
+                e.preventDefault();
+                const lastIdx = payments.length - 1;
+                handlePaymentChange(lastIdx, 'conditionId', paymentConditions[index].id);
+                // Safer focus using requestAnimationFrame
+                requestAnimationFrame(() => {
+                    const el = document.getElementById(`amount-${lastIdx}`);
+                    if (el instanceof HTMLInputElement) {
+                        el.focus();
+                        el.select();
+                    }
+                });
+            }
+        }
+
         // Enter to submit (if not in a focused input that handles enter differently)
         if (e.key === 'Enter' && !isProcessing && Math.abs(remainingAmount) <= 0.01) {
             const target = e.target as HTMLElement;
             if (target.tagName !== 'TEXTAREA') {
                 e.preventDefault();
+                e.stopPropagation();
                 handleSubmit();
             }
         }
         // F1 - Add payment
         if (e.key === 'F1') {
             e.preventDefault();
+            e.stopPropagation();
             handleAddPayment();
         }
         // Escape is handled by Dialog but we can ensure it here
         if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
             onOpenChange(false);
         }
     };
 
     window.addEventListener('keydown', handleModalKeyDown);
     return () => window.removeEventListener('keydown', handleModalKeyDown);
-  }, [isOpen, isProcessing, remainingAmount, payments, grandTotal]);
+  }, [isOpen, isProcessing, remainingAmount, payments, paymentConditions]);
 
   useEffect(() => {
     if (isOpen) {
@@ -424,7 +446,11 @@ function CheckoutModal({
                         <SelectValue placeholder="Selecione..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {paymentConditions.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        {paymentConditions.map((c, i) => (
+                            <SelectItem key={c.id} value={c.id}>
+                                {c.name} {i < 9 && <span className="text-[10px] opacity-50 ml-1">[Alt+{i+1}]</span>}
+                            </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                  </div>
@@ -435,7 +461,6 @@ function CheckoutModal({
                       type="text"
                       value={formatCurrency(payment.amount)}
                       onChange={(e) => handlePaymentChange(index, 'amount', parseCurrencyToNumber(e.target.value))}
-                      className="text-right font-mono"
                     />
                  </div>
               </div>
@@ -479,16 +504,22 @@ function CheckoutModal({
              </Button>
           )}
         </div>
-        <DialogFooter className="grid grid-cols-2 gap-4">
-            <div className="text-left">
-                <p>Total Pago: <span className="font-bold">{formatCurrency(paidAmount)}</span></p>
-                <p className={remainingAmount !== 0 ? 'text-destructive' : ''}>
-                    Restante: <span className="font-bold">{formatCurrency(remainingAmount)}</span>
-                </p>
+        <DialogFooter className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t pt-4">
+            <div className="flex flex-col text-sm">
+                <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Total Pago:</span>
+                    <span className="font-bold">{formatCurrency(paidAmount)}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Restante:</span>
+                    <span className={cn("font-bold", remainingAmount !== 0 ? 'text-destructive' : 'text-green-600')}>
+                        {formatCurrency(remainingAmount)}
+                    </span>
+                </div>
             </div>
-            <Button onClick={handleSubmit} disabled={isProcessing}>
+            <Button onClick={handleSubmit} disabled={isProcessing} className="w-full sm:w-auto px-8">
                 {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4"/>}
-                Confirmar Pagamento [Enter]
+                Finalizar [Enter]
             </Button>
         </DialogFooter>
       </DialogContent>

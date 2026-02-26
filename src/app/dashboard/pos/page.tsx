@@ -886,6 +886,7 @@ export default function POSPage() {
   const [currentAttendanceId, setCurrentAttendanceId] = useState<string | undefined>(undefined);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [weightProduct, setWeightProduct] = useState<ProductWithStock | null>(null);
   const [unitProduct, setUnitProduct] = useState<ProductWithStock | null>(null);
   const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
@@ -1173,6 +1174,32 @@ export default function POSPage() {
     }
   };
   
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [searchQuery, activeTab]);
+
+  const filteredItemsInTab = useMemo(() => {
+    if (activeTab === 'products') return filteredProducts;
+    if (activeTab === 'combos') return filteredCombos;
+    if (activeTab === 'kits') return filteredKits;
+    return [];
+  }, [activeTab, filteredProducts, filteredCombos, filteredKits]);
+
+  const handleEnterSelection = () => {
+    const items = filteredItemsInTab;
+    if (items.length > 0 && highlightedIndex < items.length) {
+        const item = items[highlightedIndex];
+        if (activeTab === 'products') {
+            addToCart(item as ProductWithStock, 'product');
+        } else if (activeTab === 'combos') {
+            addToCart(item as Combo, 'combo');
+        } else if (activeTab === 'kits') {
+            setSelectedKit(item as Kit);
+        }
+        setSearchQuery('');
+    }
+  };
+
   const handleScan = (barcode: string) => {
     setIsScannerOpen(false);
     
@@ -1526,19 +1553,15 @@ export default function POSPage() {
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             onKeyDown={(e) => {
-                                if (e.key === 'Enter' && searchQuery.trim() !== '') {
+                                if (e.key === 'ArrowDown') {
                                     e.preventDefault();
-                                    // Try to find the first item in the current active tab
-                                    if (activeTab === 'products' && filteredProducts.length > 0) {
-                                        addToCart(filteredProducts[0], 'product');
-                                        setSearchQuery('');
-                                    } else if (activeTab === 'combos' && filteredCombos.length > 0) {
-                                        addToCart(filteredCombos[0], 'combo');
-                                        setSearchQuery('');
-                                    } else if (activeTab === 'kits' && filteredKits.length > 0) {
-                                        setSelectedKit(filteredKits[0]);
-                                        setSearchQuery('');
-                                    }
+                                    setHighlightedIndex(prev => Math.min(prev + 1, filteredItemsInTab.length - 1));
+                                } else if (e.key === 'ArrowUp') {
+                                    e.preventDefault();
+                                    setHighlightedIndex(prev => Math.max(prev - 1, 0));
+                                } else if (e.key === 'Enter' && searchQuery.trim() !== '') {
+                                    e.preventDefault();
+                                    handleEnterSelection();
                                 }
                             }}
                         />
@@ -1567,11 +1590,14 @@ export default function POSPage() {
                             </div>
                         ) : (
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {filteredProducts.map((product) => (
+                            {filteredProducts.map((product, index) => (
                                 <Card 
                                 key={product.id} 
                                 onClick={() => addToCart(product, 'product')} 
-                                className="cursor-pointer hover:shadow-lg transition-shadow relative"
+                                className={cn(
+                                    "cursor-pointer hover:shadow-lg transition-all relative",
+                                    index === highlightedIndex && activeTab === 'products' && "ring-2 ring-primary shadow-lg scale-105 bg-accent/10 z-10"
+                                )}
                                 >
                                 <Badge className="absolute top-1 right-1" variant={product.stock > 0 ? "secondary" : "destructive"}>
                                     {product.stock > 0 ? product.stock : 'Esgotado'}
@@ -1595,11 +1621,14 @@ export default function POSPage() {
                             </div>
                         ) : (
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {filteredCombos.map((combo) => (
+                            {filteredCombos.map((combo, index) => (
                                 <Card 
                                 key={combo.id} 
                                 onClick={() => addToCart(combo, 'combo')} 
-                                className="cursor-pointer hover:shadow-lg transition-shadow relative"
+                                className={cn(
+                                    "cursor-pointer hover:shadow-lg transition-all relative",
+                                    index === highlightedIndex && activeTab === 'combos' && "ring-2 ring-primary shadow-lg scale-105 bg-accent/10 z-10"
+                                )}
                                 >
                                 <CardContent className="p-2 flex flex-col items-center justify-center">
                                     <Image src={combo.imageUrl} alt={combo.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="combo offer"/>
@@ -1620,11 +1649,14 @@ export default function POSPage() {
                             </div>
                         ) : (
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {filteredKits.map((kit) => (
+                            {filteredKits.map((kit, index) => (
                                 <Card 
                                 key={kit.id} 
                                 onClick={() => setSelectedKit(kit)} 
-                                className="cursor-pointer hover:shadow-lg transition-shadow relative"
+                                className={cn(
+                                    "cursor-pointer hover:shadow-lg transition-all relative",
+                                    index === highlightedIndex && activeTab === 'kits' && "ring-2 ring-primary shadow-lg scale-105 bg-accent/10 z-10"
+                                )}
                                 >
                                 <CardContent className="p-2 flex flex-col items-center justify-center">
                                     <Image src={kit.imageUrl} alt={kit.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="kit offer"/>

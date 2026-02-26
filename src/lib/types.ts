@@ -189,6 +189,14 @@ export interface Supplier {
     isDeleted?: boolean;
 }
 
+export interface SaleUnit {
+  id: string;
+  name: string;      // Ex: "Carteira", "Unidade", "Caixa"
+  multiplier: number; // Quantidade da unidade mínima (ex: 20 para carteira se a mínima for cigarro avulso)
+  price: number;      // Preço específico para esta unidade
+  barcode?: string;   // Código de barras específico para esta unidade (opcional)
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -215,6 +223,7 @@ export interface Product {
   cfop?: string;
   unitOfMeasure?: string;
   saleType?: 'unit' | 'weight';
+  saleUnits?: SaleUnit[]; // Unidades de venda alternativas (Ex: atacado, fracionado)
   isDeleted?: boolean;
 }
 

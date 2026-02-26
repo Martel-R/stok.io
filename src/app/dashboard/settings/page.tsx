@@ -134,22 +134,25 @@ function UsersTable() {
     const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
+    const [userToDelete, setUserToDelete] = useState<User | undefined>(undefined);
     const { toast } = useToast();
     const { createUser, user: adminUser, deleteUser } = useAuth();
+    const organizationId = adminUser?.organizationId;
     
     const userCount = useMemo(() => users.length, [users]);
     const maxUsers = adminUser?.organization?.subscription?.maxUsers || 1;
     const canAddUser = userCount < maxUsers;
 
     useEffect(() => {
-        if (!adminUser?.organizationId) {
+        if (!organizationId) {
             setLoading(false);
             return;
         }
 
-        const qUsers = query(collection(db, 'users'), where('organizationId', '==', adminUser.organizationId));
-        const qProfiles = query(collection(db, 'permissionProfiles'), where('organizationId', '==', adminUser.organizationId), where('isDeleted', '!=', true));
+        const qUsers = query(collection(db, 'users'), where('organizationId', '==', organizationId));
+        const qProfiles = query(collection(db, 'permissionProfiles'), where('organizationId', '==', organizationId), where('isDeleted', '!=', true));
         
         const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
             const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
@@ -172,13 +175,13 @@ function UsersTable() {
             unsubscribeUsers();
             unsubscribeProfiles();
         }
-    }, [adminUser, toast]);
+    }, [organizationId, toast]);
 
-    const getProfileName = (roleId: string) => {
+    const getProfileLabel = (roleId: string) => {
         const profile = profiles.find(p => p.id === roleId);
-        if (profile) return <Badge variant="secondary">{profile.name}</Badge>;
-        if (roleId === 'admin') return <Badge variant="default">Admin</Badge>;
-        return <Badge variant="outline">{roleId}</Badge>;
+        if (profile) return { name: profile.name, variant: 'secondary' as const };
+        if (roleId === 'admin') return { name: 'Admin', variant: 'default' as const };
+        return { name: roleId, variant: 'outline' as const };
     }
     
     const openEditDialog = (user: User) => {
@@ -231,16 +234,26 @@ function UsersTable() {
         setIsFormOpen(false);
     };
 
-    const handleDelete = async (userToDelete: User) => {
-        if (userToDelete.id === adminUser?.id) {
+    const confirmDelete = async () => {
+        if (!userToDelete) return;
+        const targetUser = userToDelete;
+        setIsDeleteDialogOpen(false);
+        setUserToDelete(undefined);
+
+        if (targetUser.id === adminUser?.id) {
             toast({title: 'Ação não permitida', description: 'Você não pode excluir sua própria conta.', variant: 'destructive'});
             return;
         }
-        const { success, error } = await deleteUser(userToDelete.id);
-        if (success) {
-            toast({ title: 'Usuário excluído com sucesso!' });
-        } else {
-            toast({ title: 'Erro ao excluir usuário', description: error, variant: 'destructive' });
+        
+        try {
+            const { success, error } = await deleteUser(targetUser.id);
+            if (success) {
+                toast({ title: 'Usuário excluído com sucesso!' });
+            } else {
+                toast({ title: 'Erro ao excluir usuário', description: error, variant: 'destructive' });
+            }
+        } catch (error) {
+            toast({ title: 'Erro ao excluir usuário', variant: 'destructive' });
         }
     };
 
@@ -291,48 +304,44 @@ function UsersTable() {
                                 </TableRow>
                             ))
                         ) : users.length > 0 ? (
-                            users.map((user) => (
+                            users.map((user) => {
+                                const profile = getProfileLabel(user.role);
+                                return (
                                 <TableRow key={user.id}>
                                     <TableCell className="font-medium">{user.name}</TableCell>
                                     <TableCell>{user.email}</TableCell>
-                                    <TableCell>{getProfileName(user.role)}</TableCell>
+                                    <TableCell><Badge variant={profile.variant}>{profile.name}</Badge></TableCell>
                                     <TableCell>
                                         <Badge variant={user.isDeleted ? 'outline' : 'default'}>
                                             {user.isDeleted ? 'Inativo' : 'Ativo'}
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-right">
-                                         <AlertDialog>
-                                            <DropdownMenu>
+                                        <DropdownMenu>
                                             <DropdownMenuTrigger asChild>
                                                 <Button variant="ghost" className="h-8 w-8 p-0">
-                                                <span className="sr-only">Abrir menu</span>
-                                                <MoreHorizontal className="h-4 w-4" />
+                                                    <span className="sr-only">Abrir menu</span>
+                                                    <MoreHorizontal className="h-4 w-4" />
                                                 </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
                                                 <DropdownMenuItem onSelect={() => setTimeout(() => openEditDialog(user), 0)}>Editar</DropdownMenuItem>
-                                                <AlertDialogTrigger asChild>
-                                                    <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive" disabled={user.id === adminUser?.id}>Excluir</DropdownMenuItem>
-                                                </AlertDialogTrigger>
+                                                <DropdownMenuItem 
+                                                    className="text-destructive focus:text-destructive-foreground focus:bg-destructive" 
+                                                    disabled={user.id === adminUser?.id}
+                                                    onSelect={() => {
+                                                        setUserToDelete(user);
+                                                        setIsDeleteDialogOpen(true);
+                                                    }}
+                                                >
+                                                    Excluir
+                                                </DropdownMenuItem>
                                             </DropdownMenuContent>
-                                            </DropdownMenu>
-                                            <AlertDialogContent>
-                                                <AlertDialogHeader>
-                                                    <AlertDialogTitle>Excluir usuário?</AlertDialogTitle>
-                                                    <AlertDialogDescription>
-                                                        Esta ação irá desativar a conta do usuário, impedindo o login. O registro será mantido para fins históricos.
-                                                    </AlertDialogDescription>
-                                                </AlertDialogHeader>
-                                                <AlertDialogFooter>
-                                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                    <AlertDialogAction onClick={() => handleDelete(user)} className={buttonVariants({ variant: "destructive" })}>Confirmar Exclusão</AlertDialogAction>
-                                                </AlertDialogFooter>
-                                            </AlertDialogContent>
-                                         </AlertDialog>
+                                        </DropdownMenu>
                                     </TableCell>
                                 </TableRow>
-                            ))
+                                );
+                            })
                         ) : (
                              <TableRow>
                                 <TableCell colSpan={5} className="text-center">Nenhum usuário encontrado.</TableCell>
@@ -340,6 +349,21 @@ function UsersTable() {
                         )}
                     </TableBody>
                 </Table>
+
+                <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Excluir usuário?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                Esta ação irá desativar a conta do usuário, impedindo o login. O registro será mantido para fins históricos.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel onClick={() => setUserToDelete(undefined)}>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={confirmDelete} className={buttonVariants({ variant: "destructive" })}>Confirmar Exclusão</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             </CardContent>
         </Card>
     )
@@ -347,6 +371,7 @@ function UsersTable() {
 
 function BranchesSettings() {
     const { user: currentUser, branches, setCurrentBranch } = useAuth();
+    const organizationId = currentUser?.organizationId;
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -358,14 +383,14 @@ function BranchesSettings() {
     const canAddBranch = branchCount < maxBranches;
 
     useEffect(() => {
-        if (!currentUser?.organizationId) return;
-        const q = query(collection(db, 'users'), where('organizationId', '==', currentUser.organizationId));
+        if (!organizationId) return;
+        const q = query(collection(db, 'users'), where('organizationId', '==', organizationId));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setAllUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as User));
             setLoading(false);
         });
         return () => unsubscribe();
-    }, [currentUser]);
+    }, [organizationId]);
 
     const openEditDialog = (branch: Branch) => {
         setEditingBranch(branch);
@@ -520,6 +545,14 @@ function BranchForm({ branch, users, onSave, onDone }: { branch?: Branch; users:
     );
     const [open, setOpen] = useState(false);
 
+    useEffect(() => {
+        if (branch) {
+            setFormData(branch);
+        } else {
+            setFormData({ name: '', cnpj: '', location: '', userIds: currentUser ? [currentUser.id] : [], taxRate: 8, allowNegativeStock: false, isDeleted: false });
+        }
+    }, [branch, currentUser]);
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value, type } = e.target;
         setFormData(prev => ({ ...prev, [name]: type === 'number' ? parseFloat(value) || 0 : value }));
@@ -641,6 +674,14 @@ function PaymentConditionForm({ condition, onSave, onDone }: { condition?: Payme
     const [formData, setFormData] = useState<Partial<PaymentCondition>>(
         condition || { name: '', type: 'credit', fee: 0, feeType: 'percentage', maxInstallments: 12, isDeleted: false }
     );
+
+    useEffect(() => {
+        if (condition) {
+            setFormData(condition);
+        } else {
+            setFormData({ name: '', type: 'credit', fee: 0, feeType: 'percentage', maxInstallments: 12, isDeleted: false });
+        }
+    }, [condition]);
     
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value, type } = e.target;
@@ -734,20 +775,21 @@ function PaymentConditions() {
     const [conditions, setConditions] = useState<PaymentCondition[]>([]);
     const [loading, setLoading] = useState(true);
     const { user } = useAuth();
+    const organizationId = user?.organizationId;
     const { toast } = useToast();
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingCondition, setEditingCondition] = useState<PaymentCondition | undefined>(undefined);
 
     useEffect(() => {
-        if (!user?.organizationId) return;
-        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
+        if (!organizationId) return;
+        const q = query(collection(db, 'paymentConditions'), where('organizationId', '==', organizationId), where('isDeleted', '!=', true));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentCondition));
             setConditions(data);
             setLoading(false);
         });
         return () => unsubscribe();
-    }, [user]);
+    }, [organizationId]);
 
     const handleSave = async (data: Partial<PaymentCondition>) => {
         if (!user?.organizationId) {
@@ -1276,6 +1318,7 @@ function BrandingSettings() {
 
 function RolesSettings() {
     const { user } = useAuth();
+    const organizationId = user?.organizationId;
     const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -1283,18 +1326,18 @@ function RolesSettings() {
     const { toast } = useToast();
 
     useEffect(() => {
-        if (!user?.organizationId) {
+        if (!organizationId) {
             setLoading(false);
             return;
         }
-        const q = query(collection(db, 'permissionProfiles'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
+        const q = query(collection(db, 'permissionProfiles'), where('organizationId', '==', organizationId), where('isDeleted', '!=', true));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PermissionProfile));
             setProfiles(data);
             setLoading(false);
         });
         return () => unsubscribe();
-    }, [user]);
+    }, [organizationId]);
 
     const handleSave = async (profileData: Partial<PermissionProfile>) => {
         if (!user?.organizationId) return;
@@ -1583,24 +1626,25 @@ function SuppliersSettings() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<Supplier | undefined>(undefined);
     const { user, currentBranch } = useAuth();
+    const organizationId = user?.organizationId;
     const { toast } = useToast();
     
     useEffect(() => {
-        if (!user?.organizationId) return;
+        if (!organizationId) return;
 
-        const qSuppliers = query(collection(db, 'suppliers'), where('organizationId', '==', user.organizationId), where('isDeleted', '!=', true));
+        const qSuppliers = query(collection(db, 'suppliers'), where('organizationId', '==', organizationId), where('isDeleted', '!=', true));
         const unsubSuppliers = onSnapshot(qSuppliers, (snapshot) => {
             setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
             setLoading(false);
         });
 
-        const qProducts = query(collection(db, 'products'), where('organizationId', '==', user.organizationId));
+        const qProducts = query(collection(db, 'products'), where('organizationId', '==', organizationId));
         const unsubProducts = onSnapshot(qProducts, (snapshot) => {
              setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
         });
 
         return () => { unsubSuppliers(); unsubProducts(); };
-    }, [user]);
+    }, [organizationId]);
 
     const productsForCurrentBranch = useMemo(() => {
         if (!currentBranch) return [];

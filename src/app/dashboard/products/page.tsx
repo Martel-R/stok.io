@@ -33,9 +33,21 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { logUserActivity } from '@/lib/logging';
-import CurrencyInput from 'react-currency-input-field';
 import { Html5Qrcode } from 'html5-qrcode';
 
+
+const formatCurrency = (value: number | string) => {
+    const amount = typeof value === 'string' ? parseFloat(value.replace(/[^\d]/g, '')) / 100 : value;
+    if (isNaN(amount)) return 'R$ 0,00';
+    return new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+    }).format(amount);
+};
+
+const parseCurrencyToNumber = (value: string) => {
+    return parseFloat(value.replace(/[^\d]/g, '')) / 100 || 0;
+};
 
 type ProductWithStock = Product & { stock: number };
 
@@ -233,7 +245,7 @@ function ProductForm({ product, suppliers, branches, onSave, onDone }: { product
         name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
         purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: '',
         brand: '', model: '', isPerishable: false, branchIds: currentBranch ? [currentBranch.id] : [],
-        saleType: 'unit', unitOfMeasure: 'UN'
+        saleType: 'unit', unitOfMeasure: 'UN', saleUnits: []
     }
   );
   const [isUploading, setIsUploading] = useState(false);
@@ -249,22 +261,9 @@ function ProductForm({ product, suppliers, branches, onSave, onDone }: { product
             name: '', category: '', price: 0, imageUrl: '', lowStockThreshold: 10, isSalable: true, barcode: '', order: undefined,
             purchasePrice: 0, marginValue: 0, marginType: 'percentage', supplierId: undefined, supplierName: '',
             brand: '', model: '', isPerishable: false, branchIds: currentBranch ? [currentBranch.id] : [],
-            saleType: 'unit', unitOfMeasure: 'UN'
+            saleType: 'unit', unitOfMeasure: 'UN', saleUnits: []
         });
     }, [product, currentBranch]);
-
-    useEffect(() => {
-        const { purchasePrice = 0, marginValue = 0, marginType = 'percentage' } = formData;
-        if (purchasePrice > 0) {
-            let newPrice = 0;
-            if (marginType === 'percentage') {
-                newPrice = purchasePrice * (1 + marginValue / 100);
-            } else {
-                newPrice = purchasePrice + marginValue;
-            }
-            setFormData(prev => ({...prev, price: newPrice}));
-        }
-    }, [formData.purchasePrice, formData.marginValue, formData.marginType]);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -356,6 +355,34 @@ function ProductForm({ product, suppliers, branches, onSave, onDone }: { product
     });
 };
 
+  const handleAddSaleUnit = () => {
+    const newUnit = {
+      id: crypto.randomUUID(),
+      name: '',
+      multiplier: 1,
+      price: 0,
+      barcode: ''
+    };
+    setFormData(prev => ({
+      ...prev,
+      saleUnits: [...(prev.saleUnits || []), newUnit]
+    }));
+  };
+
+  const handleRemoveSaleUnit = (id: string) => {
+    setFormData(prev => ({
+      ...prev,
+      saleUnits: (prev.saleUnits || []).filter(u => u.id !== id)
+    }));
+  };
+
+  const handleSaleUnitChange = (id: string, field: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      saleUnits: (prev.saleUnits || []).map(u => u.id === id ? { ...u, [field]: value } : u)
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const supplier = suppliers.find(s => s.id === formData.supplierId);
@@ -408,6 +435,55 @@ function ProductForm({ product, suppliers, branches, onSave, onDone }: { product
           <Input id="unitOfMeasure" name="unitOfMeasure" value={formData.unitOfMeasure || ''} onChange={handleChange} placeholder="Ex: UN, KG, G, L" required />
         </div>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardTitle className="text-sm font-bold">Unidades de Venda (Compostas/Fracionadas)</CardTitle>
+          <Button type="button" variant="outline" size="sm" onClick={handleAddSaleUnit}>
+            <PlusCircle className="h-4 w-4 mr-2" /> Adicionar Unidade
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {(formData.saleUnits || []).length === 0 && (
+            <p className="text-xs text-muted-foreground italic text-center py-2">Nenhuma unidade extra configurada. O sistema usará o preço base.</p>
+          )}
+          {(formData.saleUnits || []).map((unit) => (
+            <div key={unit.id} className="grid grid-cols-12 gap-2 p-2 border rounded-md relative group">
+              <div className="col-span-4">
+                <Label className="text-[10px]">Unidade (Ex: Carteira)</Label>
+                <Input size={1} className="h-8 text-xs" value={unit.name} onChange={(e) => handleSaleUnitChange(unit.id, 'name', e.target.value)} placeholder="Unidade" />
+              </div>
+              <div className="col-span-2">
+                <Label className="text-[10px]">Qtde Base</Label>
+                <Input type="number" className="h-8 text-xs" value={unit.multiplier} onChange={(e) => handleSaleUnitChange(unit.id, 'multiplier', parseFloat(e.target.value))} />
+              </div>
+              <div className="col-span-3">
+                <Label className="text-[10px]">Preço Unit.</Label>
+                <Input
+                  className="h-8 text-xs"
+                  value={formatCurrency(unit.price)}
+                  onChange={(e) => {
+                    const numValue = parseCurrencyToNumber(e.target.value);
+                    if (unit.price !== numValue) {
+                        handleSaleUnitChange(unit.id, 'price', numValue);
+                    }
+                  }}
+                />
+              </div>
+              <div className="col-span-2">
+                <Label className="text-[10px]">Código</Label>
+                <Input className="h-8 text-xs" value={unit.barcode} onChange={(e) => handleSaleUnitChange(unit.id, 'barcode', e.target.value)} />
+              </div>
+              <div className="col-span-1 flex items-end">
+                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleRemoveSaleUnit(unit.id)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
        <div className="grid grid-cols-2 gap-4">
         <div>
           <Label htmlFor="brand">Marca</Label>
@@ -425,33 +501,109 @@ function ProductForm({ product, suppliers, branches, onSave, onDone }: { product
             <div className="grid grid-cols-2 gap-4 items-start">
                  <div className="space-y-2">
                     <Label htmlFor="purchasePrice">Preço de Compra</Label>
-                    <Input id="purchasePrice" name="purchasePrice" type="number" step="0.01" value={formData.purchasePrice || ''} onChange={handleChange} required />
+                    <Input
+                        id="purchasePrice"
+                        name="purchasePrice"
+                        placeholder="R$ 0,00"
+                        value={formatCurrency(formData.purchasePrice || 0)}
+                        onChange={(e) => {
+                            const numValue = parseCurrencyToNumber(e.target.value);
+                            setFormData(prev => {
+                                const { marginValue = 0, marginType = 'percentage' } = prev;
+                                let newPrice = 0;
+                                if (numValue > 0) {
+                                    if (marginType === 'percentage') {
+                                        newPrice = numValue * (1 + marginValue / 100);
+                                    } else {
+                                        newPrice = numValue + marginValue;
+                                    }
+                                }
+                                return { ...prev, purchasePrice: numValue, price: newPrice };
+                            });
+                        }}
+                        required
+                    />
                  </div>
                  <div className="space-y-2">
                     <Label htmlFor="marginValue">Margem de Lucro</Label>
                      <div className="flex items-center gap-2">
-                        <Input id="marginValue" name="marginValue" type="number" step="0.01" value={formData.marginValue || ''} onChange={handleChange} />
+                        <Input 
+                            id="marginValue" 
+                            name="marginValue" 
+                            type="number" 
+                            step="0.01" 
+                            value={formData.marginValue || ''} 
+                            onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setFormData(prev => {
+                                    const { purchasePrice = 0, marginType = 'percentage' } = prev;
+                                    let newPrice = 0;
+                                    if (purchasePrice > 0) {
+                                        if (marginType === 'percentage') {
+                                            newPrice = purchasePrice * (1 + val / 100);
+                                        } else {
+                                            newPrice = purchasePrice + val;
+                                        }
+                                    }
+                                    return { ...prev, marginValue: val, price: newPrice };
+                                });
+                            }} 
+                        />
                          <RadioGroup
                             value={formData.marginType}
-                            onValueChange={(val: 'percentage' | 'fixed') => setFormData(prev => ({...prev, marginType: val}))}
+                            onValueChange={(val: 'percentage' | 'fixed') => {
+                                setFormData(prev => {
+                                    const { purchasePrice = 0, marginValue = 0 } = prev;
+                                    let newPrice = 0;
+                                    if (purchasePrice > 0) {
+                                        if (val === 'percentage') {
+                                            newPrice = purchasePrice * (1 + marginValue / 100);
+                                        } else {
+                                            newPrice = purchasePrice + marginValue;
+                                        }
+                                    }
+                                    return { ...prev, marginType: val, price: newPrice };
+                                });
+                            }}
                             className="flex"
                         >
-                           <Button type="button" variant={formData.marginType === 'percentage' ? 'secondary' : 'outline'} size="icon" onClick={() => setFormData(prev => ({...prev, marginType: 'percentage'}))}><Percent/></Button>
-                           <Button type="button" variant={formData.marginType === 'fixed' ? 'secondary' : 'outline'} size="icon" onClick={() => setFormData(prev => ({...prev, marginType: 'fixed'}))}><Tag/></Button>
+                           <Button type="button" variant={formData.marginType === 'percentage' ? 'secondary' : 'outline'} size="icon" onClick={() => {
+                                const val = 'percentage';
+                                setFormData(prev => {
+                                    const { purchasePrice = 0, marginValue = 0 } = prev;
+                                    let newPrice = 0;
+                                    if (purchasePrice > 0) {
+                                        newPrice = purchasePrice * (1 + marginValue / 100);
+                                    }
+                                    return { ...prev, marginType: val, price: newPrice };
+                                });
+                           }}><Percent/></Button>
+                           <Button type="button" variant={formData.marginType === 'fixed' ? 'secondary' : 'outline'} size="icon" onClick={() => {
+                                const val = 'fixed';
+                                setFormData(prev => {
+                                    const { purchasePrice = 0, marginValue = 0 } = prev;
+                                    let newPrice = 0;
+                                    if (purchasePrice > 0) {
+                                        newPrice = purchasePrice + marginValue;
+                                    }
+                                    return { ...prev, marginType: val, price: newPrice };
+                                });
+                           }}><Tag/></Button>
                         </RadioGroup>
                     </div>
                  </div>
             </div>
              <div>
                 <Label htmlFor="price">Preço de Venda (Calculado)</Label>
-                <CurrencyInput
+                <Input
                     id="price"
                     name="price"
                     required
-                    value={formData.price}
-                    onValueChange={(value) => {
-                        const numValue = parseFloat(value || '0');
+                    value={formatCurrency(formData.price || 0)}
+                    onChange={(e) => {
+                        const numValue = parseCurrencyToNumber(e.target.value);
                         setFormData(prev => {
+                            if (prev.price === numValue) return prev;
                             const newForm = {...prev, price: numValue};
                             const { purchasePrice = 0 } = newForm;
                             if (purchasePrice > 0) {
@@ -465,11 +617,6 @@ function ProductForm({ product, suppliers, branches, onSave, onDone }: { product
                             return newForm;
                         });
                     }}
-                    prefix="R$ "
-                    decimalSeparator=","
-                    groupSeparator="."
-                    decimalsLimit={2}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 />
              </div>
         </CardContent>
@@ -1463,11 +1610,15 @@ export default function ProductsPage() {
                     <Label htmlFor="newPrice">Novo Preço de Venda</Label>
                     <Input
                         id="newPrice"
-                        type="number"
-                        value={newPrice}
-                        onChange={(e) => setNewPrice(parseFloat(e.target.value) || '')}
-                        placeholder="Ex: 99.90"
-                        step="0.01"
+                        name="newPrice"
+                        placeholder="R$ 0,00"
+                        value={formatCurrency(newPrice || 0)}
+                        onChange={(e) => {
+                            const numValue = parseCurrencyToNumber(e.target.value);
+                            if (newPrice !== numValue) {
+                                setNewPrice(numValue);
+                            }
+                        }}
                     />
                 </div>
                 <DialogFooter>

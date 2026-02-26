@@ -211,58 +211,86 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (effectiveOrgId) {
           runDataIntegrityCheck(effectiveOrgId); // Non-blocking
 
-          // Parallelize organization and profile fetching
-          const [orgDoc, profilesSnap] = await Promise.all([
-            getDoc(doc(db, 'organizations', effectiveOrgId)),
-            getDocs(query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId)))
-          ]);
+          const orgRef = doc(db, 'organizations', effectiveOrgId);
+          const profilesQuery = query(collection(db, 'permissionProfiles'), where('organizationId', '==', effectiveOrgId));
 
-          if (!orgDoc.exists()) {
-              setUser(null); setLoading(false); return;
-          }
-          const orgData = { id: orgDoc.id, ...orgDoc.data() } as Organization;
-          const profiles = profilesSnap.docs.map(p => ({ id: p.id, ...p.data() } as PermissionProfile));
-          
-          const orgModules = orgData.enabledModules || {};
-          let finalPermissions: Partial<EnabledModules> = {};
+          const orgPromise = new Promise<void>((resolve) => {
+              const unsub = onSnapshot(orgRef, (orgDoc) => {
+                  if (!orgDoc.exists()) {
+                      setUser(null);
+                      resolve();
+                      return;
+                  }
+                  const orgData = { id: orgDoc.id, ...orgDoc.data() } as Organization;
+                  
+                  // Now we need the latest profiles to calculate permissions
+                  getDocs(profilesQuery).then(profilesSnap => {
+                      const profiles = profilesSnap.docs.map(p => ({ id: p.id, ...p.data() } as PermissionProfile));
+                      const orgModules = orgData.enabledModules || {};
+                      let finalPermissions: Partial<EnabledModules> = {};
 
-          if (isImpersonating || baseUser.role === 'admin') {
-              Object.keys(orgModules).forEach(key => {
-                  const moduleKey = key as keyof EnabledModules;
-                  if (orgModules[moduleKey]) finalPermissions[moduleKey] = { view: true, edit: true, delete: true };
-              });
-          } else {
-              const userProfile = profiles.find(p => p.id === baseUser.role);
-              if (userProfile?.permissions) {
-                  Object.keys(orgModules).forEach(key => {
-                      const moduleKey = key as keyof EnabledModules;
-                      if (orgModules[moduleKey]) finalPermissions[moduleKey] = userProfile.permissions[moduleKey] || { view: false, edit: false, delete: false };
+                      if (isImpersonating || baseUser.role === 'admin') {
+                          Object.keys(orgModules).forEach(key => {
+                              const moduleKey = key as keyof EnabledModules;
+                              if (orgModules[moduleKey]) finalPermissions[moduleKey] = { view: true, edit: true, delete: true };
+                          });
+                      } else {
+                          const userProfile = profiles.find(p => p.id === baseUser.role);
+                          if (userProfile?.permissions) {
+                              Object.keys(orgModules).forEach(key => {
+                                  const moduleKey = key as keyof EnabledModules;
+                                  if (orgModules[moduleKey]) finalPermissions[moduleKey] = userProfile.permissions[moduleKey] || { view: false, edit: false, delete: false };
+                              });
+                          }
+                      }
+
+                      setUser(prev => {
+                          const newUser = { ...baseUser, isImpersonating, organization: orgData, enabledModules: finalPermissions as EnabledModules, paymentStatus: orgData.paymentStatus };
+                          // Only update if something meaningful changed to avoid loops
+                          if (JSON.stringify(prev) === JSON.stringify(newUser)) return prev;
+                          return newUser;
+                      });
+                      resolve();
                   });
-              }
-          }
-
-          finalUserData = { ...finalUserData, organization: orgData, enabledModules: finalPermissions as EnabledModules, paymentStatus: orgData.paymentStatus };
-          setUser(finalUserData);
+              });
+              unsubscribers.push(unsub);
+          });
 
           const branchesQuery = query(collection(db, 'branches'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
           const conditionsQuery = query(collection(db, 'paymentConditions'), where('organizationId', '==', effectiveOrgId), where('isDeleted', '!=', true));
 
-          const [branchSnap, conditionsSnap] = await Promise.all([getDocs(branchesQuery), getDocs(conditionsQuery)]);
+          const branchesPromise = new Promise<void>((resolve) => {
+            const unsub = onSnapshot(branchesQuery, (snapshot) => {
+                const allOrgBranches = snapshot.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
+                const userBranches = isImpersonating || baseUser.role === 'admin' ? allOrgBranches : allOrgBranches.filter(b => b.userIds.includes(baseUser.id));
+                setBranches(userBranches);
+                
+                setCurrentBranchState(prev => {
+                    const currentId = prev?.id || localStorage.getItem('currentBranchId');
+                    const updatedBranch = userBranches.find(b => b.id === currentId);
+                    const finalBranch = updatedBranch || userBranches[0] || null;
+                    
+                    if (finalBranch) {
+                        localStorage.setItem('currentBranchId', finalBranch.id);
+                    } else {
+                        localStorage.removeItem('currentBranchId');
+                    }
+                    return finalBranch;
+                });
+                resolve();
+            });
+            unsubscribers.push(unsub);
+          });
 
-          const allOrgBranches = branchSnap.docs.map(b => ({ id: b.id, ...b.data() } as Branch));
-          const userBranches = isImpersonating || baseUser.role === 'admin' ? allOrgBranches : allOrgBranches.filter(b => b.userIds.includes(baseUser.id));
-          setBranches(userBranches);
-          setPaymentConditions(conditionsSnap.docs.map(d => ({id: d.id, ...d.data()}) as PaymentCondition));
-          
-          const storedBranchId = localStorage.getItem('currentBranchId');
-          const storedBranch = userBranches.find(b => b.id === storedBranchId);
-          const newCurrentBranch = storedBranch || userBranches[0] || null;
-          setCurrentBranchState(newCurrentBranch);
-          if (newCurrentBranch) {
-              localStorage.setItem('currentBranchId', newCurrentBranch.id);
-          } else {
-              localStorage.removeItem('currentBranchId');
-          }
+          const conditionsPromise = new Promise<void>((resolve) => {
+              const unsub = onSnapshot(conditionsQuery, (snapshot) => {
+                  setPaymentConditions(snapshot.docs.map(d => ({id: d.id, ...d.data()}) as PaymentCondition));
+                  resolve();
+              });
+              unsubscribers.push(unsub);
+          });
+
+          await Promise.all([orgPromise, branchesPromise, conditionsPromise]);
       } else {
           setUser(null);
       }
@@ -273,7 +301,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return () => authUnsubscribe();
   }, []);
   
-  const signup = async (email: string, pass: string, name: string): Promise<{ success: boolean; error?: string, isFirstUser?: boolean }> => {
+  const signup = React.useCallback(async (email: string, pass: string, name: string): Promise<{ success: boolean; error?: string, isFirstUser?: boolean }> => {
     setLoading(true);
     try {
       const usersSnapshot = await getDocs(collection(db, "users"));
@@ -357,9 +385,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       // setLoading will be set to false by onAuthStateChanged listener
     }
-  };
+  }, []);
 
-  const createUser = async (email: string, name: string, role: string, organizationId: string, customerId?: string, password?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
+  const createUser = React.useCallback(async (email: string, name: string, role: string, organizationId: string, customerId?: string, password?: string): Promise<{ success: boolean; error?: string; userId?: string; }> => {
     try {
         const orgDoc = await getDoc(doc(db, 'organizations', organizationId));
         if(!orgDoc.exists()) return { success: false, error: 'Organização não encontrada.'};
@@ -414,33 +442,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return { success: false, error: errorMessage };
     }
-  }
+  }, []);
   
-  const deleteUser = async (userId: string): Promise<{ success: boolean; error?: string; }> => {
-      if (!user) {
-          return { success: false, error: "Usuário não autenticado." };
-      }
-      try {
-        const userRef = doc(db, 'users', userId);
-        await updateDoc(userRef, { isDeleted: true });
+  const deleteUser = React.useCallback(async (userId: string): Promise<{ success: boolean; error?: string; }> => {
+    if (!user) {
+        return { success: false, error: "Usuário não autenticado." };
+    }
+    try {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, { isDeleted: true });
 
-        logUserActivity({
-            userId: user.id,
-            userName: user.name,
-            organizationId: user.organizationId,
-            action: 'user_deleted',
-            details: { deletedUserId: userId }
-        });
+      logUserActivity({
+          userId: user.id,
+          userName: user.name,
+          organizationId: user.organizationId,
+          action: 'user_deleted',
+          details: { deletedUserId: userId }
+      });
 
-        return { success: true };
-      } catch (error: any) {
-          console.error("Error deleting user:", error);
-          return { success: false, error: "Ocorreu um erro ao excluir o usuário." };
-      }
-  };
+      return { success: true };
+    } catch (error: any) {
+        console.error("Error deleting user:", error);
+        return { success: false, error: "Ocorreu um erro ao excluir o usuário." };
+    }
+}, [user]);
 
 
-  const login = async (email: string, pass: string): Promise<boolean> => {
+  const login = React.useCallback(async (email: string, pass: string): Promise<boolean> => {
     setLoading(true);
     loginCancelledRef.current = false;
     try {
@@ -465,9 +493,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
         return false;
     }
-  };
+  }, []);
 
-  const loginWithGoogle = async (): Promise<boolean> => {
+  const loginWithGoogle = React.useCallback(async (): Promise<boolean> => {
     setLoading(true);
     loginCancelledRef.current = false;
     try {
@@ -521,14 +549,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
         return false;
     }
-  }
+  }, []);
 
-  const cancelLogin = () => {
+  const cancelLogin = React.useCallback(() => {
       loginCancelledRef.current = true;
       setLoading(false);
-  }
+  }, []);
 
-  const logout = async () => {
+  const logout = React.useCallback(async () => {
     setLoading(true);
     try {
         if(user) {
@@ -549,27 +577,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
         setLoading(false);
     }
-  };
+  }, [user, router]);
 
-  const startImpersonation = (orgId: string) => {
+  const startImpersonation = React.useCallback((orgId: string) => {
     localStorage.setItem('impersonatedOrgId', orgId);
     router.push('/dashboard');
     window.location.reload(); 
-  };
+  }, [router]);
   
-  const stopImpersonation = () => {
+  const stopImpersonation = React.useCallback(() => {
     localStorage.removeItem('impersonatedOrgId');
     localStorage.removeItem('currentBranchId');
     router.push('/super-admin');
     window.location.reload();
-  };
+  }, [router]);
 
-  const setCurrentBranch = (branch: Branch) => {
+  const setCurrentBranch = React.useCallback((branch: Branch) => {
     localStorage.setItem('currentBranchId', branch.id);
     setCurrentBranchState(branch);
-  }
+  }, []);
 
-  const updateUserProfile = async (data: Partial<User>) => {
+  const updateUserProfile = React.useCallback(async (data: Partial<User>) => {
     if (!auth.currentUser || !user) {
         return { success: false, error: 'Usuário não autenticado.'};
     }
@@ -591,9 +619,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error('Error updating profile:', error);
         return { success: false, error: 'Falha ao atualizar o perfil.' };
     }
-  };
+  }, [user]);
 
-  const changeUserPassword = async (currentPass: string, newPass: string) => {
+  const changeUserPassword = React.useCallback(async (currentPass: string, newPass: string) => {
     if (!auth.currentUser || !auth.currentUser.email) {
         return { success: false, error: 'Usuário não autenticado.' };
     }
@@ -612,9 +640,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return { success: false, error: message };
     }
-  };
+  }, []);
 
-  const sendPasswordReset = async (email: string) => {
+  const sendPasswordReset = React.useCallback(async (email: string) => {
     setLoading(true);
     try {
       await sendPasswordResetEmail(auth, email);
@@ -629,9 +657,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
         setLoading(false);
     }
-  };
+  }, []);
 
-  const resetUserPassword = async (email: string) => {
+  const resetUserPassword = React.useCallback(async (email: string) => {
       if (!user || user.email !== process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL) {
           return { success: false, error: "Ação não permitida." };
       }
@@ -646,23 +674,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
           return { success: false, error: message };
       }
-  };
+  }, [user]);
 
-  const updateOrganizationModules = async (modules: EnabledModules) => {
+  const updateOrganizationModules = React.useCallback(async (modules: EnabledModules) => {
     if (!user?.organizationId) {
         throw new Error("Organização não encontrada.");
     }
     const orgRef = doc(db, 'organizations', user.organizationId);
     await updateDoc(orgRef, { enabledModules: modules });
-  };
+  }, [user?.organizationId]);
   
-  const updateOrganizationBranding = async (branding: BrandingSettings) => {
+  const updateOrganizationBranding = React.useCallback(async (branding: BrandingSettings) => {
     if (!user?.organizationId) {
         throw new Error("Organização não encontrada.");
     }
     const orgRef = doc(db, 'organizations', user.organizationId);
     await updateDoc(orgRef, { branding: branding });
-  };
+  }, [user?.organizationId]);
 
   const isAuthenticated = !!user;
   
@@ -701,8 +729,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, loading, pathname, router, user]);
 
 
+  const authValue = React.useMemo(() => ({
+    isAuthenticated,
+    user,
+    organizations,
+    branches,
+    paymentConditions,
+    currentBranch,
+    loading,
+    login,
+    loginWithGoogle,
+    logout,
+    signup,
+    createUser,
+    deleteUser,
+    cancelLogin,
+    setCurrentBranch,
+    updateUserProfile,
+    changeUserPassword,
+    sendPasswordReset,
+    resetUserPassword,
+    updateOrganizationModules,
+    updateOrganizationBranding,
+    startImpersonation,
+    stopImpersonation,
+  }), [
+    isAuthenticated,
+    user,
+    organizations,
+    branches,
+    paymentConditions,
+    currentBranch,
+    loading,
+    login,
+    loginWithGoogle,
+    logout,
+    signup,
+    createUser,
+    deleteUser,
+    cancelLogin,
+    setCurrentBranch,
+    updateUserProfile,
+    changeUserPassword,
+    sendPasswordReset,
+    resetUserPassword,
+    updateOrganizationModules,
+    updateOrganizationBranding,
+    startImpersonation,
+    stopImpersonation,
+  ]);
+
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, loginWithGoogle, logout, loading, signup, createUser, cancelLogin, branches, currentBranch, setCurrentBranch, updateUserProfile, changeUserPassword, sendPasswordReset, resetUserPassword, updateOrganizationModules, updateOrganizationBranding, startImpersonation, stopImpersonation, organizations, paymentConditions, deleteUser }}>
+    <AuthContext.Provider value={authValue}>
       {children}
     </AuthContext.Provider>
   );

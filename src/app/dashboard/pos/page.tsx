@@ -773,14 +773,34 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm, all
 
 function WeightInputModal({ product, isOpen, onOpenChange, onConfirm }: { product: ProductWithStock | null; isOpen: boolean; onOpenChange: (open: boolean) => void; onConfirm: (quantity: number) => void; }) {
     const [quantity, setQuantity] = useState<string>('0');
+    const [totalValue, setTotalValue] = useState<number>(0);
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (isOpen) {
             setQuantity('0');
+            setTotalValue(0);
             setTimeout(() => inputRef.current?.focus(), 100);
         }
     }, [isOpen]);
+
+    const handleQuantityChange = (val: string) => {
+        setQuantity(val);
+        const num = parseFloat(val.replace(',', '.')) || 0;
+        if (product) {
+            setTotalValue(num * product.price);
+        }
+    };
+
+    const handleValueChange = (val: string) => {
+        const numValue = parseCurrencyToNumber(val);
+        setTotalValue(numValue);
+        if (product && product.price > 0) {
+            const calculatedQty = numValue / product.price;
+            // Use more decimal places for weight precision if needed, e.g., 3 for grams
+            setQuantity(calculatedQty.toFixed(3).replace('.', ','));
+        }
+    };
 
     const handleConfirm = () => {
         const num = parseFloat(quantity.replace(',', '.'));
@@ -798,12 +818,12 @@ function WeightInputModal({ product, isOpen, onOpenChange, onConfirm }: { produc
                 <DialogHeader>
                     <DialogTitle>Venda por Peso/Medida: {product.name}</DialogTitle>
                     <DialogDescription>
-                        Informe a quantidade (ex: 0,100 para 100g) em <span className="font-bold">{product.unitOfMeasure || 'KG'}</span>.
+                        Informe a quantidade ou o valor desejado.
                         <br/>
-                        Preço por {product.unitOfMeasure || 'unidade'}: R${product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        Preço por {product.unitOfMeasure || 'unidade'}: {formatCurrency(product.price)}
                     </DialogDescription>
                 </DialogHeader>
-                <div className="py-4 space-y-4">
+                <div className="py-4 space-y-6">
                     <div className="space-y-2">
                         <Label htmlFor="weight-quantity">Quantidade ({product.unitOfMeasure || 'KG'})</Label>
                         <Input
@@ -812,23 +832,48 @@ function WeightInputModal({ product, isOpen, onOpenChange, onConfirm }: { produc
                             type="text"
                             inputMode="decimal"
                             value={quantity}
-                            onChange={(e) => setQuantity(e.target.value)}
+                            onChange={(e) => handleQuantityChange(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
-                            className="text-2xl h-14 text-center"
+                            className="text-2xl h-14 text-center font-mono"
                         />
                     </div>
-                    {parseFloat(quantity.replace(',', '.')) > 0 && (
-                        <div className="text-center p-4 bg-muted rounded-lg">
-                            <p className="text-sm text-muted-foreground">Valor Total do Item</p>
-                            <p className="text-3xl font-bold">
-                                {formatCurrency(product.price * parseFloat(quantity.replace(',', '.')))}
+
+                    <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                            <span className="w-full border-t" />
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-background px-2 text-muted-foreground">Ou informe o valor</span>
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="weight-value">Valor Total (R$)</Label>
+                        <Input
+                            id="weight-value"
+                            type="text"
+                            value={formatCurrency(totalValue)}
+                            onChange={(e) => handleValueChange(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
+                            className="text-2xl h-14 text-center font-mono"
+                        />
+                    </div>
+
+                    {totalValue > 0 && (
+                        <div className="text-center p-4 bg-primary/10 rounded-lg border border-primary/20">
+                            <p className="text-sm text-muted-foreground">Resumo da Inclusão</p>
+                            <p className="text-2xl font-bold text-primary">
+                                {formatCurrency(totalValue)}
+                            </p>
+                            <p className="text-xs opacity-70">
+                                {quantity} {product.unitOfMeasure || 'unidade'} x {formatCurrency(product.price)}
                             </p>
                         </div>
                     )}
                 </div>
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                    <Button onClick={handleConfirm} size="lg" className="w-full sm:w-auto">Adicionar ao Carrinho</Button>
+                    <Button onClick={handleConfirm} size="lg" className="w-full sm:w-auto">Confirmar Inclusão</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

@@ -808,7 +808,7 @@ function WeightInputModal({ product, isOpen, onOpenChange, onConfirm }: { produc
                         <div className="text-center p-4 bg-muted rounded-lg">
                             <p className="text-sm text-muted-foreground">Valor Total do Item</p>
                             <p className="text-3xl font-bold">
-                                R$ {(product.price * parseFloat(quantity.replace(',', '.'))).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                {formatCurrency(product.price * parseFloat(quantity.replace(',', '.')))}
                             </p>
                         </div>
                     )}
@@ -817,6 +817,44 @@ function WeightInputModal({ product, isOpen, onOpenChange, onConfirm }: { produc
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
                     <Button onClick={handleConfirm} size="lg" className="w-full sm:w-auto">Adicionar ao Carrinho</Button>
                 </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function UnitSelectionModal({ product, isOpen, onOpenChange, onConfirm }: { product: ProductWithStock | null; isOpen: boolean; onOpenChange: (open: boolean) => void; onConfirm: (unitId: string | 'base') => void; }) {
+    if (!product) return null;
+    const saleUnits = product.saleUnits || [];
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Escolha a Unidade: {product.name}</DialogTitle>
+                    <DialogDescription>Selecione a unidade de venda para este produto.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                    <Button 
+                        variant="outline" 
+                        className="h-20 flex flex-col items-center justify-center gap-1"
+                        onClick={() => onConfirm('base')}
+                    >
+                        <span className="font-bold">{product.unitOfMeasure || 'Unidade Base'}</span>
+                        <span className="text-sm text-muted-foreground">{formatCurrency(product.price)}</span>
+                    </Button>
+                    {saleUnits.map((unit) => (
+                        <Button 
+                            key={unit.id}
+                            variant="outline" 
+                            className="h-20 flex flex-col items-center justify-center gap-1"
+                            onClick={() => onConfirm(unit.id)}
+                        >
+                            <span className="font-bold">{unit.name}</span>
+                            <span className="text-sm text-muted-foreground">{formatCurrency(unit.price)}</span>
+                            <span className="text-[10px] opacity-70">Multiplicador: x{unit.multiplier}</span>
+                        </Button>
+                    ))}
+                </div>
             </DialogContent>
         </Dialog>
     );
@@ -836,6 +874,7 @@ export default function POSPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [weightProduct, setWeightProduct] = useState<ProductWithStock | null>(null);
+  const [unitProduct, setUnitProduct] = useState<ProductWithStock | null>(null);
   const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
   const [isUnitModalOpen, setIsUnitModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('products');
@@ -1010,6 +1049,31 @@ export default function POSPage() {
     setWeightProduct(null);
   };
 
+  const handleUnitConfirm = (unitId: string | 'base') => {
+    if (!unitProduct) return;
+    
+    if (unitId === 'base') {
+        addToCart(unitProduct, 'product');
+    } else {
+        const unit = unitProduct.saleUnits?.find(u => u.id === unitId);
+        if (unit) {
+            // Add as a special cart item representing the unit
+            const cartItem: CartItem = {
+                ...unitProduct,
+                id: `${unitProduct.id}-${unit.id}`,
+                name: `${unitProduct.name} (${unit.name})`,
+                price: unit.price,
+                quantity: globalQuantity * unit.multiplier,
+                itemType: 'product'
+            };
+            setCart(prev => [...prev, cartItem]);
+            setGlobalQuantity(1);
+        }
+    }
+    setUnitProduct(null);
+    setIsUnitModalOpen(false);
+  };
+
   const addToCart = (item: ProductWithStock | Combo, type: 'product' | 'combo', forcedQuantity?: number) => {
     if (currentAttendanceId) {
         toast({ title: 'Ação bloqueada', description: 'Finalize o pagamento do atendimento pendente antes de iniciar uma nova venda.', variant: 'destructive' });
@@ -1021,6 +1085,14 @@ export default function POSPage() {
 
     if (type === 'product') {
         const product = item as ProductWithStock;
+        
+        // If has sale units and no unit is forced, open unit selection
+        if (product.saleUnits && product.saleUnits.length > 0 && forcedQuantity === undefined) {
+            setUnitProduct(product);
+            setIsUnitModalOpen(true);
+            return;
+        }
+
         if (product.stock <= 0 && !allowNegative) {
             toast({ title: 'Fora de estoque', description: `${product.name} não está disponível.`, variant: 'destructive'});
             return;
@@ -1090,6 +1162,26 @@ export default function POSPage() {
   
   const handleScan = (barcode: string) => {
     setIsScannerOpen(false);
+    
+    // Check if barcode belongs to an alternative unit
+    for (const p of products) {
+        const unit = p.saleUnits?.find(u => u.barcode === barcode);
+        if (unit) {
+            const cartItem: CartItem = {
+                ...p,
+                id: `${p.id}-${unit.id}`,
+                name: `${p.name} (${unit.name})`,
+                price: unit.price,
+                quantity: globalQuantity * unit.multiplier,
+                itemType: 'product'
+            };
+            setCart(prev => [...prev, cartItem]);
+            setGlobalQuantity(1);
+            toast({ title: "Unidade adicionada!", description: `${p.name} (${unit.name}) adicionado.` });
+            return;
+        }
+    }
+
     const product = products.find(p => p.barcode === barcode);
     if (product) {
         addToCart(product, 'product');
@@ -1635,6 +1727,12 @@ export default function POSPage() {
         isOpen={isWeightModalOpen}
         onOpenChange={setIsWeightModalOpen}
         onConfirm={handleWeightConfirm}
+    />
+    <UnitSelectionModal
+        product={unitProduct}
+        isOpen={isUnitModalOpen}
+        onOpenChange={setIsUnitModalOpen}
+        onConfirm={handleUnitConfirm}
     />
     <CheckoutModal
       isOpen={isCheckoutModalOpen}

@@ -771,7 +771,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm, all
     );
 }
 
-function WeightInputModal({ product, isOpen, onOpenChange, onConfirm }: { product: ProductWithStock | null; isOpen: boolean; onOpenChange: (open: boolean) => void; onConfirm: (quantity: number) => void; }) {
+function WeightInputModal({ product, isOpen, onOpenChange, onConfirm }: { product: ProductWithStock | null; isOpen: boolean; onOpenChange: (open: boolean) => void; onConfirm: (quantity: number, totalValue: number) => void; }) {
     const [quantity, setQuantity] = useState<string>('0');
     const [totalValue, setTotalValue] = useState<number>(0);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -788,7 +788,9 @@ function WeightInputModal({ product, isOpen, onOpenChange, onConfirm }: { produc
         setQuantity(val);
         const num = parseFloat(val.replace(',', '.')) || 0;
         if (product) {
-            setTotalValue(num * product.price);
+            const calculatedTotal = num * product.price;
+            // Round to 2 decimals to match currency expectation
+            setTotalValue(Math.round(calculatedTotal * 100) / 100);
         }
     };
 
@@ -797,7 +799,6 @@ function WeightInputModal({ product, isOpen, onOpenChange, onConfirm }: { produc
         setTotalValue(numValue);
         if (product && product.price > 0) {
             const calculatedQty = numValue / product.price;
-            // Use more decimal places for weight precision if needed, e.g., 3 for grams
             setQuantity(calculatedQty.toFixed(3).replace('.', ','));
         }
     };
@@ -805,7 +806,7 @@ function WeightInputModal({ product, isOpen, onOpenChange, onConfirm }: { produc
     const handleConfirm = () => {
         const num = parseFloat(quantity.replace(',', '.'));
         if (num > 0) {
-            onConfirm(num);
+            onConfirm(num, totalValue);
             onOpenChange(false);
         }
     };
@@ -1102,9 +1103,9 @@ export default function POSPage() {
       setSelectedKit(null);
   };
 
-  const handleWeightConfirm = (quantity: number) => {
+  const handleWeightConfirm = (quantity: number, totalValue: number) => {
     if (!weightProduct) return;
-    addToCart(weightProduct, 'product', quantity);
+    addToCart(weightProduct, 'product', quantity, totalValue);
     setWeightProduct(null);
   };
 
@@ -1137,7 +1138,7 @@ export default function POSPage() {
     setIsUnitModalOpen(false);
   };
 
-  const addToCart = (item: ProductWithStock | Combo, type: 'product' | 'combo', forcedQuantity?: number) => {
+  const addToCart = (item: ProductWithStock | Combo, type: 'product' | 'combo', forcedQuantity?: number, forcedTotal?: number) => {
     if (currentAttendanceId) {
         toast({ title: 'Ação bloqueada', description: 'Finalize o pagamento do atendimento pendente antes de iniciar uma nova venda.', variant: 'destructive' });
         return;
@@ -1178,8 +1179,11 @@ export default function POSPage() {
         }
 
          setCart((prev) => {
-            const existingId = hasUnits && forcedQuantity === undefined ? `${product.id}` : (forcedQuantity !== undefined ? product.id : product.id);
-            // To simplify, we'll use item.id for basic products
+            // If we have a forcedTotal, we treat it as a unique line item
+            if (forcedTotal !== undefined) {
+                 return [...prev, { ...product, quantity: qtyToAdd, total: forcedTotal, itemType: 'product', id: `${product.id}-${Date.now()}` } as any];
+            }
+
             const itemKey = product.id; 
 
             const existingItem = prev.find((cartItem) => cartItem.id === itemKey && cartItem.itemType === 'product');
@@ -1292,8 +1296,8 @@ export default function POSPage() {
 
             if (item.itemType === 'product') {
                 const price = (item as ProductWithStock).price || (item as AttendanceItem).price || 0;
-                itemTotal = price * item.quantity;
-                itemOriginalTotal = itemTotal;
+                itemTotal = (item as any).total !== undefined ? (item as any).total : price * item.quantity;
+                itemOriginalTotal = (item as any).total !== undefined ? (item as any).total : price * item.quantity;
             } else if (item.itemType === 'combo') {
                 itemTotal = item.finalPrice * item.quantity;
                 itemOriginalTotal = item.originalPrice * item.quantity;
@@ -1391,7 +1395,7 @@ export default function POSPage() {
             if (item.itemType === 'product' || item.itemType === 'service') {
                 const price = (item as any).price || 0;
                 baseItem.price = price;
-                baseItem.total = price * item.quantity;
+                baseItem.total = (item as any).total !== undefined ? (item as any).total : price * item.quantity;
             }
             if (item.itemType === 'kit') {
                 baseItem.chosenProducts = item.chosenProducts.map(p => ({id: p.id, name: p.name, price: p.price}));

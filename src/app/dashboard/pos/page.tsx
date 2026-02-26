@@ -837,9 +837,56 @@ export default function POSPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [weightProduct, setWeightProduct] = useState<ProductWithStock | null>(null);
   const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
+  const [isUnitModalOpen, setIsUnitModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('products');
+  const [globalQuantity, setGlobalQuantity] = useState(1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const quantityInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { user, currentBranch, loading: authLoading, paymentConditions } = useAuth();
   const router = useRouter();
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+        // Ignore if any modal is open
+        if (isCheckoutModalOpen || isScannerOpen || !!selectedKit || isWeightModalOpen || isUnitModalOpen) return;
+
+        // F2 - Focus Search
+        if (e.key === 'F2') {
+            e.preventDefault();
+            searchInputRef.current?.focus();
+        }
+        // F4 - Focus Quantity
+        if (e.key === 'F4') {
+            e.preventDefault();
+            quantityInputRef.current?.focus();
+            quantityInputRef.current?.select();
+        }
+        // F8 - Checkout
+        if (e.key === 'F8' && cart.length > 0) {
+            e.preventDefault();
+            setIsCheckoutModalOpen(true);
+        }
+        // F9 - Clear Cart
+        if (e.key === 'F9' && cart.length > 0) {
+            e.preventDefault();
+            handleClearCart();
+        }
+        // Alt + 1-5 - Switch Tabs
+        if (e.altKey && ['1', '2', '3', '4', '5'].includes(e.key)) {
+            const tabs = ['pending', 'products', 'combos', 'kits', 'history'];
+            const index = parseInt(e.key) - 1;
+            if (tabs[index]) {
+                e.preventDefault();
+                setActiveTab(tabs[index]);
+            }
+        }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isCheckoutModalOpen, isScannerOpen, selectedKit, isWeightModalOpen, isUnitModalOpen, cart.length]);
 
   useEffect(() => {
     if (authLoading || !currentBranch || !user?.organizationId) {
@@ -958,25 +1005,18 @@ export default function POSPage() {
 
   const handleWeightConfirm = (quantity: number) => {
     if (!weightProduct) return;
-    setCart((prev) => {
-        const existingItem = prev.find((cartItem) => cartItem.id === weightProduct.id && cartItem.itemType === 'product');
-        if (existingItem) {
-            return prev.map((ci) =>
-                ci.id === weightProduct.id ? { ...ci, quantity: ci.quantity + quantity } : ci
-            );
-        }
-        return [...prev, { ...weightProduct, quantity, itemType: 'product' }];
-    });
+    addToCart(weightProduct, 'product', quantity);
     setWeightProduct(null);
   };
 
-  const addToCart = (item: ProductWithStock | Combo, type: 'product' | 'combo') => {
+  const addToCart = (item: ProductWithStock | Combo, type: 'product' | 'combo', forcedQuantity?: number) => {
     if (currentAttendanceId) {
         toast({ title: 'Ação bloqueada', description: 'Finalize o pagamento do atendimento pendente antes de iniciar uma nova venda.', variant: 'destructive' });
         return;
     }
 
     const allowNegative = currentBranch?.allowNegativeStock ?? false;
+    const qtyToAdd = forcedQuantity !== undefined ? forcedQuantity : globalQuantity;
 
     if (type === 'product') {
         const product = item as ProductWithStock;
@@ -985,7 +1025,7 @@ export default function POSPage() {
             return;
         }
 
-        if (product.saleType === 'weight') {
+        if (product.saleType === 'weight' && forcedQuantity === undefined) {
             setWeightProduct(product);
             setIsWeightModalOpen(true);
             return;
@@ -994,15 +1034,15 @@ export default function POSPage() {
          setCart((prev) => {
             const existingItem = prev.find((cartItem) => cartItem.id === product.id && cartItem.itemType === 'product');
             if (existingItem) {
-                if (existingItem.quantity >= (existingItem as ProductWithStock).stock && !allowNegative) {
+                if (existingItem.quantity + qtyToAdd > (existingItem as ProductWithStock).stock && !allowNegative) {
                      toast({ title: 'Limite de estoque atingido', description: `Você não pode adicionar mais de ${(existingItem as ProductWithStock).stock} unidades de ${existingItem.name}.`, variant: 'destructive'});
                     return prev;
                 }
                 return prev.map((ci) =>
-                ci.id === product.id ? { ...ci, quantity: ci.quantity + 1 } : ci
+                ci.id === product.id ? { ...ci, quantity: ci.quantity + qtyToAdd } : ci
                 );
             }
-            return [...prev, { ...product, quantity: 1, itemType: 'product' }];
+            return [...prev, { ...product, quantity: qtyToAdd, itemType: 'product' }];
         });
     } else {
         const combo = item as Combo;
@@ -1010,7 +1050,7 @@ export default function POSPage() {
         if (!allowNegative) {
             for (const comboProduct of combo.products) {
                 const productInStore = products.find(p => p.id === comboProduct.productId);
-                if (!productInStore || productInStore.stock < comboProduct.quantity) {
+                if (!productInStore || productInStore.stock < comboProduct.quantity * qtyToAdd) {
                     toast({ title: 'Estoque insuficiente para o combo', description: `O produto ${comboProduct.productName} não tem estoque suficiente para montar o combo ${combo.name}.`, variant: 'destructive'});
                     return;
                 }
@@ -1029,16 +1069,21 @@ export default function POSPage() {
                             return acc + (pInCombo ? pInCombo.quantity * c.quantity : 0);
                         }, 0);
 
-                        if (!productInStore || productInStore.stock < (cartProduct?.quantity || 0) + cartComboUsage + comboProduct.quantity) {
+                        if (!productInStore || productInStore.stock < (cartProduct?.quantity || 0) + cartComboUsage + (comboProduct.quantity * qtyToAdd)) {
                             toast({ title: 'Estoque insuficiente para o combo', description: `O produto ${comboProduct.productName} não tem estoque suficiente para adicionar outro combo ${combo.name}.`, variant: 'destructive'});
                             return prev;
                         }
                     }
                 }
-                return prev.map(ci => ci.id === combo.id ? {...ci, quantity: ci.quantity + 1} : ci);
+                return prev.map(ci => ci.id === combo.id ? {...ci, quantity: ci.quantity + qtyToAdd} : ci);
             }
-            return [...prev, {...combo, quantity: 1, itemType: 'combo'}];
+            return [...prev, {...combo, quantity: qtyToAdd, itemType: 'combo'}];
         });
+    }
+
+    // Reset global quantity to 1 after adding
+    if (forcedQuantity === undefined) {
+        setGlobalQuantity(1);
     }
   };
   
@@ -1345,23 +1390,37 @@ export default function POSPage() {
               <CardDescription>Selecione os produtos, combos ou kits para adicionar ao carrinho.</CardDescription>
           </CardHeader>
           <CardContent className="flex-grow flex flex-col">
-            <Tabs defaultValue="products" className="flex-grow flex flex-col" onValueChange={() => setSearchQuery('')}>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-grow flex flex-col">
                  <TabsList className="grid w-full grid-flow-col auto-cols-fr">
-                    {user?.enabledModules?.appointments?.view && <TabsTrigger value="pending"><UserCheck className="mr-2 h-4 w-4"/> Atendimentos</TabsTrigger>}
-                    <TabsTrigger value="products"><Package className="mr-2 h-4 w-4"/> Produtos</TabsTrigger>
-                    {user?.enabledModules?.combos?.view && <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/> Combos</TabsTrigger>}
-                    {user?.enabledModules?.kits?.view && <TabsTrigger value="kits"><Component className="mr-2 h-4 w-4"/> Kits</TabsTrigger>}
-                    <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/> Histórico</TabsTrigger>
+                    {user?.enabledModules?.appointments?.view && <TabsTrigger value="pending"><UserCheck className="mr-2 h-4 w-4"/><span className="hidden sm:inline">Atendimentos</span> <span className="text-[10px] ml-1 opacity-70">[Alt+1]</span></TabsTrigger>}
+                    <TabsTrigger value="products"><Package className="mr-2 h-4 w-4"/><span className="hidden sm:inline">Produtos</span> <span className="text-[10px] ml-1 opacity-70">[Alt+2]</span></TabsTrigger>
+                    {user?.enabledModules?.combos?.view && <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/><span className="hidden sm:inline">Combos</span> <span className="text-[10px] ml-1 opacity-70">[Alt+3]</span></TabsTrigger>}
+                    {user?.enabledModules?.kits?.view && <TabsTrigger value="kits"><Component className="mr-2 h-4 w-4"/><span className="hidden sm:inline">Kits</span> <span className="text-[10px] ml-1 opacity-70">[Alt+4]</span></TabsTrigger>}
+                    <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/><span className="hidden sm:inline">Histórico</span> <span className="text-[10px] ml-1 opacity-70">[Alt+5]</span></TabsTrigger>
                 </TabsList>
                 <div className="relative pt-4 flex gap-2">
-                    <Search className="absolute left-2.5 top-6.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        type="search"
-                        placeholder="Buscar item..."
-                        className="w-full rounded-lg bg-background pl-8"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
+                    <div className="w-20">
+                        <Input
+                            ref={quantityInputRef}
+                            type="number"
+                            min="1"
+                            value={globalQuantity}
+                            onChange={(e) => setGlobalQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="text-center font-bold"
+                            title="Quantidade [F4]"
+                        />
+                    </div>
+                    <div className="relative flex-grow">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            ref={searchInputRef}
+                            type="search"
+                            placeholder="Buscar item... [F2]"
+                            className="w-full rounded-lg bg-background pl-8"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </div>
                     <Button variant="outline" size="icon" onClick={() => setIsScannerOpen(true)}>
                         <Barcode />
                     </Button>
@@ -1469,7 +1528,7 @@ export default function POSPage() {
           <CardHeader>
              <div className="flex justify-between items-center">
                  <CardTitle>Carrinho</CardTitle>
-                 {cart.length > 0 && <Button variant="ghost" size="sm" onClick={handleClearCart}>Limpar</Button>}
+                 {cart.length > 0 && <Button variant="ghost" size="sm" onClick={handleClearCart}>Limpar [F9]</Button>}
              </div>
              {currentAttendanceId && <CardDescription>Pagamento para atendimento</CardDescription>}
              {selectedCustomer && !currentAttendanceId && (
@@ -1538,7 +1597,7 @@ export default function POSPage() {
              </div>
              <Button className="w-full mt-4" size="lg" onClick={() => setIsCheckoutModalOpen(true)} disabled={cart.length === 0}>
                  <CreditCard className="mr-2 h-4 w-4" />
-                 Finalizar Compra
+                 Finalizar Compra [F8]
              </Button>
           </CardFooter>
         </Card>

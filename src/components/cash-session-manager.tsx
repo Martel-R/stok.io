@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useState } from 'react';
 import { doc, collection, writeBatch, serverTimestamp, setDoc, query, where, getDocs } from 'firebase/firestore';
@@ -12,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { CashSession, CashTransaction } from '@/lib/types';
 import { Loader2, Play, StopCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { SupervisorAuthorizationDialog } from './supervisor-authorization-dialog';
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -28,15 +28,27 @@ export function CashAdjustmentDialog({ isOpen, onOpenChange, session }: { isOpen
     const [amount, setAmount] = useState('0,00');
     const [description, setDescription] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isAuthOpen, setIsAuthOpen] = useState(false);
     const { toast } = useToast();
 
-    const handleAdjustment = async () => {
-        if (!user || !currentBranch) return;
-        const val = parseFloat(amount.replace('.', '').replace(',', '.')) || 0;
+    const handleConfirmClick = () => {
+        const val = parseFloat(amount.replace(/\./g, '').replace(',', '.')) || 0;
         if (val <= 0) {
             toast({ title: 'Informe um valor válido', variant: 'destructive' });
             return;
         }
+
+        // Se o usuário tem permissão direta, executa. Senão, pede autorização.
+        if (user?.canAuthorizeCashAdjustment || user?.role === 'admin' || user?.role === 'manager') {
+            executeAdjustment();
+        } else {
+            setIsAuthOpen(true);
+        }
+    };
+
+    const executeAdjustment = async (supervisorId?: string, supervisorName?: string) => {
+        if (!user || !currentBranch) return;
+        const val = parseFloat(amount.replace(/\./g, '').replace(',', '.')) || 0;
 
         setIsProcessing(true);
         try {
@@ -53,21 +65,16 @@ export function CashAdjustmentDialog({ isOpen, onOpenChange, session }: { isOpen
                 amount: type === 'withdrawal' ? -val : val,
                 date: serverTimestamp(),
                 description: description || (type === 'withdrawal' ? 'Sangria de Caixa' : 'Reforço de Caixa'),
+                ...(supervisorId && { supervisorId, supervisorName })
             };
 
             batch.set(transactionRef, transactionData);
 
-            // For deposits/withdrawals, we update totalExpenses or a new field if we want more detail
-            // Usually, withdrawals increase expenses (outflow) and deposits are extra inflow.
-            // Let's keep it simple: withdrawals increment totalExpenses
             if (type === 'withdrawal') {
                 batch.update(sessionRef, {
                     totalExpenses: (session.totalExpenses || 0) + val
                 });
             } else {
-                // Deposit: reduces expenses or increases sales? 
-                // Better: just adjust totalExpenses (can be negative) or add to openingBalance?
-                // Standard: Withdrawals add to totalExpenses.
                 batch.update(sessionRef, {
                     totalExpenses: (session.totalExpenses || 0) - val
                 });
@@ -87,6 +94,7 @@ export function CashAdjustmentDialog({ isOpen, onOpenChange, session }: { isOpen
     };
 
     return (
+        <>
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
@@ -131,13 +139,27 @@ export function CashAdjustmentDialog({ isOpen, onOpenChange, session }: { isOpen
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                    <Button onClick={handleAdjustment} disabled={isProcessing}>
+                    <Button onClick={handleConfirmClick} disabled={isProcessing}>
                         {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Confirmar
                     </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+
+        <SupervisorAuthorizationDialog
+            isOpen={isAuthOpen}
+            onOpenChange={setIsAuthOpen}
+            onAuthorized={executeAdjustment}
+            actionDescription={`Ajuste de Caixa: ${type === 'withdrawal' ? 'Sangria' : 'Reforço'}`}
+            permissionRequired="canAuthorizeCashAdjustment"
+            adjustmentDetails={{
+                type: type === 'withdrawal' ? 'sangria' : 'reforço',
+                amount: parseFloat(amount.replace(/\./g, '').replace(',', '.')) || 0,
+                reason: description || 'Sem descrição'
+            }}
+        />
+        </>
     );
 }
 
@@ -153,7 +175,7 @@ export function OpenSessionDialog
         
         setIsProcessing(true);
         try {
-            const amount = parseFloat(openingBalance.replace('.', '').replace(',', '.')) || 0;
+            const amount = parseFloat(openingBalance.replace(/\./g, '').replace(',', '.')) || 0;
             const sessionRef = doc(collection(db, 'cashSessions'));
             const sessionId = sessionRef.id;
 
@@ -238,9 +260,11 @@ export function OpenSessionDialog
 }
 
 export function CloseSessionDialog({ session, isOpen, onOpenChange }: { session: CashSession | null; isOpen: boolean; onOpenChange: (open: boolean) => void }) {
+    const { user } = useAuth();
     const [closingBalance, setClosingBalance] = useState('0,00');
     const [notes, setNotes] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isAuthOpen, setIsAuthOpen] = useState(false);
     const [adjustments, setAdjustments] = useState<CashTransaction[]>([]);
     const { toast } = useToast();
 
@@ -262,11 +286,19 @@ export function CloseSessionDialog({ session, isOpen, onOpenChange }: { session:
 
     const expectedBalance = safeSession.openingBalance + safeSession.totalSales - safeSession.totalExpenses;
 
-    const handleClose = async () => {
+    const handleConfirmClick = () => {
+        if (user?.canAuthorizeCashClose || user?.role === 'admin' || user?.role === 'manager') {
+            handleClose();
+        } else {
+            setIsAuthOpen(true);
+        }
+    };
+
+    const handleClose = async (supervisorId?: string, supervisorName?: string) => {
         if (!session) return;
         setIsProcessing(true);
         try {
-            const amount = parseFloat(closingBalance.replace('.', '').replace(',', '.')) || 0;
+            const amount = parseFloat(closingBalance.replace(/\./g, '').replace(',', '.')) || 0;
             const sessionRef = doc(db, 'cashSessions', session.id);
 
             await setDoc(sessionRef, {
@@ -275,6 +307,7 @@ export function CloseSessionDialog({ session, isOpen, onOpenChange }: { session:
                 expectedBalance: expectedBalance,
                 status: 'closed',
                 notes: notes,
+                ...(supervisorId && { supervisorId, supervisorName })
             }, { merge: true });
 
             toast({ title: 'Caixa fechado com sucesso!' });
@@ -288,13 +321,14 @@ export function CloseSessionDialog({ session, isOpen, onOpenChange }: { session:
     };
 
     return (
+        <>
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>Fechar Caixa</DialogTitle>
                     <DialogDescription>Confira os valores e informe o saldo final.</DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
+                <div className="space-y-4 py-4 overflow-y-auto max-h-[60vh]">
                     <div className="grid grid-cols-2 gap-4 text-sm">
                         <div className="text-muted-foreground">Saldo Inicial:</div>
                         <div className="text-right font-medium">{formatCurrency(safeSession.openingBalance)}</div>
@@ -367,12 +401,25 @@ export function CloseSessionDialog({ session, isOpen, onOpenChange }: { session:
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                    <Button variant="destructive" onClick={handleClose} disabled={isProcessing}>
+                    <Button variant="destructive" onClick={handleConfirmClick} disabled={isProcessing}>
                         {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <StopCircle className="mr-2 h-4 w-4" />}
                         Fechar Caixa
                     </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+
+        <SupervisorAuthorizationDialog
+            isOpen={isAuthOpen}
+            onOpenChange={setIsAuthOpen}
+            onAuthorized={handleClose}
+            actionDescription="Fechamento de Caixa"
+            permissionRequired="canAuthorizeCashClose"
+            cashSummary={{
+                paymentTotals: safeSession.paymentTotals || {},
+                expectedCash: expectedBalance
+            }}
+        />
+        </>
     );
 }

@@ -18,6 +18,15 @@ interface SupervisorAuthorizationDialogProps {
     requesterName?: string;
     itemName?: string;
     totalAmount?: number;
+    cashSummary?: {
+        paymentTotals: Record<string, number>;
+        expectedCash: number;
+    };
+    adjustmentDetails?: {
+        type: 'sangria' | 'reforço';
+        amount: number;
+        reason: string;
+    };
 }
 
 export function SupervisorAuthorizationDialog({
@@ -28,7 +37,9 @@ export function SupervisorAuthorizationDialog({
     permissionRequired,
     requesterName,
     itemName,
-    totalAmount
+    totalAmount,
+    cashSummary,
+    adjustmentDetails
 }: SupervisorAuthorizationDialogProps) {
     const { user } = useAuth();
     const [pin, setPin] = useState(['', '', '', '', '', '']);
@@ -107,6 +118,8 @@ export function SupervisorAuthorizationDialog({
                 actionDescription,
                 itemName: itemName || 'N/A',
                 totalAmount: totalAmount || 0,
+                cashSummary: cashSummary || null,
+                adjustmentDetails: adjustmentDetails || null,
                 status: 'pending',
                 createdAt: serverTimestamp(),
                 permissionRequired

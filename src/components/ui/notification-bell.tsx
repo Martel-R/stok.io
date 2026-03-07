@@ -23,7 +23,23 @@ interface Request {
     actionDescription?: string;
     createdAt: any; // Firestore Timestamp
     status: string;
+    cashSummary?: {
+        paymentTotals: Record<string, number>;
+        expectedCash: number;
+    };
+    adjustmentDetails?: {
+        type: 'sangria' | 'reforço';
+        amount: number;
+        reason: string;
+    };
 }
+
+const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+    }).format(value);
+};
 
 export function NotificationBell() {
     const { user } = useAuth();
@@ -88,12 +104,49 @@ export function NotificationBell() {
                     <p className="text-sm font-medium">
                         Solicitação de <span className="font-bold">{req.requesterName}</span>
                     </p>
-                    <p className="text-xs text-muted-foreground line-clamp-2">
-                        {req.actionDescription} {req.itemName !== 'N/A' && `- ${req.itemName}`}
+                    <p className="text-[11px] text-muted-foreground font-semibold uppercase">
+                        {req.actionDescription}
                     </p>
-                    <p className="text-xs font-semibold text-primary">
-                        Total Carrinho: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(req.totalAmount || 0)}
-                    </p>
+                    
+                    {/* Detalhes de Ajuste de Caixa */}
+                    {req.adjustmentDetails && (
+                        <div className="bg-muted/50 p-2 rounded text-[10px] space-y-1 my-1">
+                            <p><span className="font-semibold">Operação:</span> {req.adjustmentDetails.type.toUpperCase()}</p>
+                            <p><span className="font-semibold">Valor:</span> {formatCurrency(req.adjustmentDetails.amount)}</p>
+                            <p><span className="font-semibold">Motivo:</span> {req.adjustmentDetails.reason}</p>
+                        </div>
+                    )}
+
+                    {/* Resumo de Fechamento de Caixa */}
+                    {req.cashSummary && (
+                        <div className="bg-muted/50 p-2 rounded text-[10px] space-y-1 my-1">
+                            <p className="font-bold border-b pb-1 mb-1">Resumo do Caixa:</p>
+                            {Object.entries(req.cashSummary.paymentTotals).map(([name, total]) => (
+                                <div key={name} className="flex justify-between">
+                                    <span>{name.replace(/_/g, '.')}:</span>
+                                    <span>{formatCurrency(total as number)}</span>
+                                </div>
+                            ))}
+                            <div className="flex justify-between font-bold border-t pt-1 mt-1 text-primary">
+                                <span>Saldo Esperado (DIN):</span>
+                                <span>{formatCurrency(req.cashSummary.expectedCash)}</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Detalhes de Item do Carrinho */}
+                    {req.itemName && req.itemName !== 'N/A' && (
+                        <p className="text-xs text-muted-foreground">
+                            Item: <span className="font-medium">{req.itemName}</span>
+                        </p>
+                    )}
+
+                    {req.totalAmount !== undefined && req.totalAmount > 0 && !req.cashSummary && !req.adjustmentDetails && (
+                         <p className="text-xs font-semibold text-primary">
+                            Total Carrinho: {formatCurrency(req.totalAmount)}
+                        </p>
+                    )}
+
                     <div className="flex gap-2 mt-2" onClick={(e) => e.preventDefault()}>
                         <Button 
                             size="sm" 

@@ -1525,32 +1525,18 @@ export default function POSPage() {
 
           setCart(cart => cart.filter(item => !(item.id === itemId && item.itemType === itemType)));
           toast({ title: 'Item removido', description: `Ação autorizada por ${supervisorName}` });
-      } else if (supervisorAuthAction.type === 'cash_close') {
-          setIsClosingSession(true);
       } else if (supervisorAuthAction.type === 'cart_clear') {
           setCart([]);
           setCurrentAttendanceId(undefined);
           setSelectedCustomer(null);
           toast({ title: 'Carrinho limpo', description: `Ação autorizada por ${supervisorName}` });
-      } else if (supervisorAuthAction.type === 'cash_adjustment') {
-          setIsAdjustmentOpen(true);
       }
       
       setSupervisorAuthAction(null);
   }, [supervisorAuthAction, cart, user, currentBranch, activeSession, toast]);
 
   const initiateCashClose = () => {
-      if (user?.canAuthorizeCashClose || user?.role === 'admin' || user?.role === 'manager') {
-          setIsClosingSession(true);
-          return;
-      }
-
-      setSupervisorAuthAction({
-          type: 'cash_close',
-          description: 'Fechar Caixa',
-          permission: 'canAuthorizeCashClose'
-      });
-      setIsSupervisorAuthOpen(true);
+      setIsClosingSession(true);
   };
 
   const initiateCartClear = () => {
@@ -1570,17 +1556,7 @@ export default function POSPage() {
   };
 
   const initiateCashAdjustment = () => {
-      if (user?.canAuthorizeCashAdjustment || user?.role === 'admin' || user?.role === 'manager') {
-          setIsAdjustmentOpen(true);
-          return;
-      }
-
-      setSupervisorAuthAction({
-          type: 'cash_adjustment',
-          description: 'Ajuste de Caixa (Sangria/Reforço)',
-          permission: 'canAuthorizeCashAdjustment'
-      });
-      setIsSupervisorAuthOpen(true);
+      setIsAdjustmentOpen(true);
   };
 
   const removeFromCart = (itemId: string, itemType: CartItem['itemType']) => {

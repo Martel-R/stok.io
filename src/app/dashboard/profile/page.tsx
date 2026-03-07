@@ -138,6 +138,7 @@ export default function ProfilePage() {
 
     const [name, setName] = useState(user?.name || '');
     const [avatar, setAvatar] = useState(user?.avatar || '');
+    const [supervisorPin, setSupervisorPin] = useState(user?.supervisorPin || '');
     const [isSavingProfile, setIsSavingProfile] = useState(false);
 
     const [currentPassword, setCurrentPassword] = useState('');
@@ -147,10 +148,53 @@ export default function ProfilePage() {
     const [showNewPassword, setShowNewPassword] = useState(false);
     const [isSavingPassword, setIsSavingPassword] = useState(false);
 
+    const [isGeneratingPin, setIsGeneratingPin] = useState(false);
+
+    const generateRandomPin = async () => {
+        setIsGeneratingPin(true);
+        try {
+            const { collection, query, where, getDocs } = await import('firebase/firestore');
+            const { db } = await import('@/lib/firebase');
+            
+            let newPin = '';
+            let isUnique = false;
+            let attempts = 0;
+
+            while (!isUnique && attempts < 10) {
+                newPin = Math.floor(100000 + Math.random() * 900000).toString();
+                const q = query(
+                    collection(db, 'users'), 
+                    where('organizationId', '==', user?.organizationId),
+                    where('supervisorPin', '==', newPin)
+                );
+                const snap = await getDocs(q);
+                if (snap.empty) isUnique = true;
+                attempts++;
+            }
+
+            if (isUnique) {
+                // Save immediately
+                const { success, error } = await updateUserProfile({ supervisorPin: newPin });
+                if (success) {
+                    setSupervisorPin(newPin);
+                    toast({ title: 'Novo PIN Ativado!', description: 'O novo código já está pronto para uso.' });
+                } else {
+                    toast({ title: 'Erro ao salvar PIN', description: error, variant: 'destructive' });
+                }
+            } else {
+                toast({ title: 'Erro ao gerar PIN', description: 'Tente novamente.', variant: 'destructive' });
+            }
+        } catch (err) {
+            console.error("Error generating PIN:", err);
+        } finally {
+            setIsGeneratingPin(false);
+        }
+    };
+
     const handleProfileSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSavingProfile(true);
-        const { success, error } = await updateUserProfile({ name, avatar });
+        const { success, error } = await updateUserProfile({ name, avatar, supervisorPin });
         if (success) {
             toast({ title: 'Perfil atualizado com sucesso!' });
         } else {
@@ -282,8 +326,48 @@ export default function ProfilePage() {
                                     <Input id="email" value={user.email} disabled />
                                     <p className="text-xs text-muted-foreground">O e-mail não pode ser alterado.</p>
                                 </div>
+
+                                { user?.enabledModules?.pos?.delete && (
+                                    <div className="space-y-4 pt-4 border-t">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="supervisorPin">PIN de Supervisor (6 dígitos)</Label>
+                                            <div className="flex gap-2">
+                                                <div className="relative flex-1">
+                                                    <Input 
+                                                        id="supervisorPin" 
+                                                        type={showNewPassword ? 'text' : 'password'}
+                                                        value={supervisorPin} 
+                                                        readOnly
+                                                        className="font-mono text-lg bg-muted"
+                                                        placeholder="Clique para gerar ->"
+                                                    />
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
+                                                        onClick={() => setShowNewPassword((prev) => !prev)}
+                                                    >
+                                                        {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                                    </Button>
+                                                </div>
+                                                <Button 
+                                                    type="button" 
+                                                    variant="outline" 
+                                                    onClick={generateRandomPin}
+                                                    disabled={isGeneratingPin}
+                                                >
+                                                    {isGeneratingPin ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Gerar Novo PIN'}
+                                                </Button>
+                                            </div>
+                                            <CardDescription>
+                                                Este PIN é gerado automaticamente e é único na sua organização. Salve para ativar.
+                                            </CardDescription>
+                                        </div>
+                                    </div>
+                                )}
                             
-                                <Button type="submit" disabled={isSavingProfile}>
+                                <Button type="submit" disabled={isSavingProfile} className="mt-4">
                                     {isSavingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                     Salvar Alterações
                                 </Button>

@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import Image from 'next/image';
-import type { Organization } from '@/lib/types';
+import { NotificationBell } from '@/components/ui/notification-bell';
 
 function DashboardNav() {
     const pathname = usePathname();
@@ -305,6 +305,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                         <BranchSwitcher />
                     </div>
                     <div className="flex w-full items-center justify-end gap-4">
+                        <NotificationBell />
                         <UserNav />
                     </div>
                 </header>

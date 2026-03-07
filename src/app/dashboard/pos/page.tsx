@@ -1,8 +1,8 @@
 
 
 'use client';
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp, serverTimestamp, updateDoc, increment, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType, StockEntry, Kit, Attendance, AttendanceItem, Customer, SaleStatus } from '@/lib/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History, Minus, Component, DollarSign, UserCheck, Search, UserPlus, MoreHorizontal, Ban, Barcode } from 'lucide-react';
+import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History, Minus, Component, DollarSign, UserCheck, Search, UserPlus, MoreHorizontal, Ban, Barcode, Play, StopCircle, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
 import Image from 'next/image';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -26,11 +26,14 @@ import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Check, ChevronsUpDown } from 'lucide-react';
+import { Check, ChevronsUpDown, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Html5Qrcode } from 'html5-qrcode';
+import { OpenSessionDialog, CloseSessionDialog, CashAdjustmentDialog } from '@/components/cash-session-manager';
+import { SupervisorAuthorizationDialog } from '@/components/supervisor-authorization-dialog';
+import type { CashSession } from '@/lib/types';
 
 
 const formatCurrency = (value: number | string) => {
@@ -297,7 +300,9 @@ function CheckoutModal({
   const { toast } = useToast();
 
   const paidAmount = useMemo(() => payments.reduce((acc, p) => acc + p.amount, 0), [payments]);
+  const totalHandedOver = useMemo(() => payments.reduce((acc, p) => acc + (p.paidAmount || p.amount), 0), [payments]);
   const remainingAmount = useMemo(() => grandTotal - paidAmount, [grandTotal, paidAmount]);
+  const totalChange = useMemo(() => payments.reduce((acc, p) => acc + (p.changeAmount || 0), 0), [payments]);
 
   // Keyboard Shortcuts for Modal
   useEffect(() => {
@@ -313,7 +318,7 @@ function CheckoutModal({
                 handlePaymentChange(lastIdx, 'conditionId', paymentConditions[index].id);
                 // Safer focus using requestAnimationFrame
                 requestAnimationFrame(() => {
-                    const el = document.getElementById(`amount-${lastIdx}`);
+                    const el = document.getElementById(payments[lastIdx].type === 'cash' ? `paid-amount-${lastIdx}` : `amount-${lastIdx}`);
                     if (el instanceof HTMLInputElement) {
                         el.focus();
                         el.select();
@@ -352,12 +357,14 @@ function CheckoutModal({
   useEffect(() => {
     if (isOpen) {
       if (grandTotal > 0 && paymentConditions.length > 0) {
+        const firstCondition = paymentConditions[0];
         setPayments([{
-          conditionId: paymentConditions[0]?.id || '',
-          conditionName: paymentConditions[0]?.name || '',
+          conditionId: firstCondition.id,
+          conditionName: firstCondition.name,
           amount: grandTotal,
           installments: 1,
-          type: paymentConditions[0]?.type || 'cash',
+          type: firstCondition.type,
+          ...(firstCondition.type === 'cash' && { paidAmount: grandTotal, changeAmount: 0 })
         }]);
       } else {
         setPayments([]);
@@ -370,12 +377,14 @@ function CheckoutModal({
 
   const handleAddPayment = () => {
     if (remainingAmount <= 0) return;
+    const firstCondition = paymentConditions[0];
     setPayments(prev => [...prev, {
-      conditionId: paymentConditions[0]?.id || '',
-      conditionName: paymentConditions[0]?.name || '',
+      conditionId: firstCondition.id,
+      conditionName: firstCondition.name,
       amount: remainingAmount,
       installments: 1,
-      type: paymentConditions[0]?.type || 'cash',
+      type: firstCondition.type,
+      ...(firstCondition.type === 'cash' && { paidAmount: remainingAmount, changeAmount: 0 })
     }]);
   };
 
@@ -396,6 +405,23 @@ function CheckoutModal({
         if (payment.type !== 'credit') {
             payment.installments = 1;
         }
+        
+        if (payment.type === 'cash') {
+            payment.paidAmount = payment.amount;
+            payment.changeAmount = 0;
+        } else {
+            delete payment.paidAmount;
+            delete payment.changeAmount;
+        }
+      }
+
+      if (field === 'amount' && payment.type === 'cash') {
+          payment.paidAmount = Math.max(payment.paidAmount || 0, payment.amount);
+          payment.changeAmount = (payment.paidAmount || 0) - payment.amount;
+      }
+
+      if (field === 'paidAmount' && payment.type === 'cash') {
+          payment.changeAmount = Math.max(0, value - payment.amount);
       }
       
       newPayments[index] = payment;
@@ -455,7 +481,7 @@ function CheckoutModal({
                     </Select>
                  </div>
                  <div>
-                    <Label htmlFor={`amount-${index}`}>Valor</Label>
+                    <Label htmlFor={`amount-${index}`}>Valor a Cobrar</Label>
                     <Input
                       id={`amount-${index}`}
                       type="text"
@@ -464,6 +490,28 @@ function CheckoutModal({
                     />
                  </div>
               </div>
+
+              {payment.type === 'cash' && (
+                <div className="grid grid-cols-2 gap-4 bg-muted/30 p-3 rounded-md">
+                    <div>
+                        <Label htmlFor={`paid-amount-${index}`}>Valor Recebido (R$)</Label>
+                        <Input
+                            id={`paid-amount-${index}`}
+                            type="text"
+                            value={formatCurrency(payment.paidAmount || 0)}
+                            onChange={(e) => handlePaymentChange(index, 'paidAmount', parseCurrencyToNumber(e.target.value))}
+                            className="font-bold"
+                        />
+                    </div>
+                    <div>
+                        <Label>Troco</Label>
+                        <div className="h-10 flex items-center px-3 border rounded-md bg-background font-mono text-green-600 font-bold">
+                            {formatCurrency(payment.changeAmount || 0)}
+                        </div>
+                    </div>
+                </div>
+              )}
+
               {payment.type === 'credit' && (
                 <div>
                   <Label htmlFor={`installments-${index}`}>Parcelas</Label>
@@ -505,19 +553,25 @@ function CheckoutModal({
           )}
         </div>
         <DialogFooter className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t pt-4">
-            <div className="flex flex-col text-sm">
-                <div className="flex justify-between gap-4">
+            <div className="flex flex-col text-sm w-full sm:w-auto">
+                <div className="flex justify-between gap-8">
                     <span className="text-muted-foreground">Total Pago:</span>
                     <span className="font-bold">{formatCurrency(paidAmount)}</span>
                 </div>
-                <div className="flex justify-between gap-4">
+                {totalChange > 0 && (
+                    <div className="flex justify-between gap-8 text-green-600">
+                        <span>Total Troco:</span>
+                        <span className="font-bold">{formatCurrency(totalChange)}</span>
+                    </div>
+                )}
+                <div className="flex justify-between gap-8 border-t mt-1 pt-1">
                     <span className="text-muted-foreground">Restante:</span>
-                    <span className={cn("font-bold", remainingAmount !== 0 ? 'text-destructive' : 'text-green-600')}>
+                    <span className={cn("font-bold", remainingAmount > 0.01 ? 'text-destructive' : 'text-green-600')}>
                         {formatCurrency(remainingAmount)}
                     </span>
                 </div>
             </div>
-            <Button onClick={handleSubmit} disabled={isProcessing} className="w-full sm:w-auto px-8">
+            <Button onClick={handleSubmit} disabled={isProcessing} className="w-full sm:w-auto px-8 h-12 text-lg">
                 {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4"/>}
                 Finalizar [Enter]
             </Button>
@@ -682,7 +736,8 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm, all
     }, [isOpen]);
 
     const eligibleProducts = useMemo(() => {
-        const baseEligible = products.filter(p => kit.eligibleProductIds.includes(p.id));
+        if (!kit) return [];
+        const baseEligible = products.filter(p => kit.eligibleProductIds?.includes(p.id));
         
         const searched = searchQuery
             ? baseEligible.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -998,7 +1053,55 @@ export default function POSPage() {
   const [isUnitModalOpen, setIsUnitModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('products');
   const [globalQuantity, setGlobalQuantity] = useState(1);
+  const [activeSession, setActiveSession] = useState<CashSession | null>(null);
+  const [isOpeningSession, setIsOpeningSession] = useState(false);
+  const [isClosingSession, setIsClosingSession] = useState(false);
+  const [isAdjustmentOpen, setIsAdjustmentOpen] = useState(false);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [isSupervisorAuthOpen, setIsSupervisorAuthOpen] = useState(false);
+  const [supervisorAuthAction, setSupervisorAuthAction] = useState<{
+      type: 'cart_removal' | 'cash_close' | 'cart_clear' | 'cash_adjustment';
+      description: string;
+      permission: 'canAuthorizeCartItemRemoval' | 'canAuthorizeCashClose' | 'canAuthorizeCartClear' | 'canAuthorizeCashAdjustment';
+      data?: any;
+  } | null>(null);
+  const barcodeBufferRef = useRef<string>('');
+  const lastKeyTimeRef = useRef<number>(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Barcode Scanner Listener (Physical Device)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+        // Ignorar se algum modal estiver aberto (exceto se for o PDV limpo)
+        if (isCheckoutModalOpen || isScannerOpen || !!selectedKit || isWeightModalOpen || isUnitModalOpen || isClosingSession || isSupervisorAuthOpen) return;
+        
+        // Ignorar se o foco estiver em um input (deixa o input tratar)
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+        const now = Date.now();
+        const diff = now - lastKeyTimeRef.current;
+        lastKeyTimeRef.current = now;
+
+        // Scanners físicos digitam muito rápido (geralmente < 50ms entre teclas)
+        if (diff > 100) {
+            barcodeBufferRef.current = '';
+        }
+
+        if (e.key === 'Enter') {
+            if (barcodeBufferRef.current.length >= 3) {
+                const code = barcodeBufferRef.current;
+                barcodeBufferRef.current = '';
+                handleScan(code);
+            }
+            barcodeBufferRef.current = '';
+        } else if (e.key.length === 1 && /[0-9]/.test(e.key)) {
+            barcodeBufferRef.current += e.key;
+        }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [isCheckoutModalOpen, isScannerOpen, selectedKit, isWeightModalOpen, isUnitModalOpen, isClosingSession, isSupervisorAuthOpen, products]);
   const quantityInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { user, currentBranch, loading: authLoading, paymentConditions } = useAuth();
@@ -1007,8 +1110,17 @@ export default function POSPage() {
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+        // Se o caixa estiver fechado, permite abrir com Enter
+        if (!activeSession) {
+            if (e.key === 'Enter' && !isOpeningSession) {
+                e.preventDefault();
+                setIsOpeningSession(true);
+            }
+            return;
+        }
+
         // Ignore if any modal is open
-        if (isCheckoutModalOpen || isScannerOpen || !!selectedKit || isWeightModalOpen || isUnitModalOpen) return;
+        if (isCheckoutModalOpen || isScannerOpen || !!selectedKit || isWeightModalOpen || isUnitModalOpen || isClosingSession) return;
 
         // F2 - Focus Search
         if (e.key === 'F2') {
@@ -1030,7 +1142,7 @@ export default function POSPage() {
         // F9 - Clear Cart
         if (e.key === 'F9' && cart.length > 0) {
             e.preventDefault();
-            handleClearCart();
+            initiateCartClear();
         }
         // Alt + 1-5 - Switch Tabs
         if (e.altKey && ['1', '2', '3', '4', '5'].includes(e.key)) {
@@ -1048,6 +1160,29 @@ export default function POSPage() {
   }, [isCheckoutModalOpen, isScannerOpen, selectedKit, isWeightModalOpen, isUnitModalOpen, cart.length]);
 
   useEffect(() => {
+    if (!user || !currentBranch) return;
+
+    const q = query(
+        collection(db, 'cashSessions'),
+        where('organizationId', '==', user.organizationId),
+        where('branchId', '==', currentBranch.id),
+        where('userId', '==', user.id),
+        where('status', '==', 'open')
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+        if (!snap.empty) {
+            setActiveSession({ id: snap.docs[0].id, ...snap.docs[0].data() } as CashSession);
+        } else {
+            setActiveSession(null);
+        }
+        setSessionLoading(false);
+    });
+
+    return () => unsub();
+  }, [user, currentBranch]);
+
+  useEffect(() => {
     if (authLoading || !currentBranch || !user?.organizationId) {
         setLoading(true);
         return;
@@ -1059,37 +1194,49 @@ export default function POSPage() {
     const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
     const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
 
-    const unsubscribeProducts = onSnapshot(productsQuery, (productsSnapshot) => {
-        const allProducts = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-        const filteredProducts = allProducts.filter(p => 
+    let allProductsData: Product[] = [];
+    let entriesData: StockEntry[] = [];
+
+    const updateCombinedProducts = () => {
+        const filteredProducts = allProductsData.filter(p => 
             !p.isDeleted && (
                 (p.branchIds && p.branchIds.includes(currentBranch.id)) || 
                 (p.branchId === currentBranch.id)
             )
         );
 
-        const entriesSub = onSnapshot(stockEntriesQuery, (entriesSnapshot) => {
-            const entriesData = entriesSnapshot.docs.map(doc => doc.data() as StockEntry);
-
-            const productsWithStock = filteredProducts.map(p => {
-                const stock = entriesData
-                    .filter(e => e.productId === p.id)
-                    .reduce((sum, e) => sum + e.quantity, 0);
-                return { ...p, stock: stock };
-            });
-            const sortedProducts = productsWithStock.sort((a,b) => {
-                if (a.order !== undefined && b.order !== undefined) {
-                    return a.order - b.order;
-                }
-                if (a.order !== undefined) return -1;
-                if (b.order !== undefined) return 1;
-                return a.name.localeCompare(b.name);
-            });
-            setProducts(sortedProducts);
-            setLoading(false);
+        // Optimization: Use a map to sum stock in O(S) time
+        const stockMap = new Map<string, number>();
+        entriesData.forEach(e => {
+            const current = stockMap.get(e.productId) || 0;
+            stockMap.set(e.productId, current + e.quantity);
         });
 
-        return () => entriesSub();
+        const productsWithStock = filteredProducts.map(p => {
+            return { ...p, stock: stockMap.get(p.id) || 0 };
+        });
+
+        const sortedProducts = productsWithStock.sort((a,b) => {
+            if (a.order !== undefined && b.order !== undefined) {
+                return a.order - b.order;
+            }
+            if (a.order !== undefined) return -1;
+            if (b.order !== undefined) return 1;
+            return a.name.localeCompare(b.name);
+        });
+
+        setProducts(sortedProducts);
+        setLoading(false);
+    };
+
+    const unsubscribeProducts = onSnapshot(productsQuery, (snapshot) => {
+        allProductsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+        updateCombinedProducts();
+    });
+
+    const unsubscribeStock = onSnapshot(stockEntriesQuery, (snapshot) => {
+        entriesData = snapshot.docs.map(doc => doc.data() as StockEntry);
+        updateCombinedProducts();
     });
 
     const unsubscribeSales = onSnapshot(salesQuery, (salesSnapshot) => {
@@ -1122,6 +1269,7 @@ export default function POSPage() {
 
     return () => {
         unsubscribeProducts();
+        unsubscribeStock();
         unsubscribeCombos();
         unsubscribeKits();
         unsubscribeSales();
@@ -1343,8 +1491,114 @@ export default function POSPage() {
     }
   };
   
+  const handleAuthorizedAction = useCallback(async (supervisorId: string, supervisorName: string) => {
+      if (!supervisorAuthAction) return;
+
+      if (supervisorAuthAction.type === 'cart_removal') {
+          const { itemId, itemType } = supervisorAuthAction.data;
+          const itemToRemove = cart.find(i => i.id === itemId && i.itemType === itemType);
+          
+          if (itemToRemove && user && currentBranch) {
+              // Record the audit log in Firestore
+              try {
+                  const logRef = doc(collection(db, 'auditLogs'));
+                  await setDoc(logRef, {
+                      id: logRef.id,
+                      organizationId: user.organizationId,
+                      branchId: currentBranch.id,
+                      timestamp: serverTimestamp(),
+                      itemId: itemToRemove.id,
+                      itemName: itemToRemove.name,
+                      itemType: itemToRemove.itemType,
+                      itemPrice: getCartItemPrice(itemToRemove),
+                      operatorId: user.id,
+                      operatorName: user.name,
+                      supervisorId: supervisorId,
+                      supervisorName: supervisorName,
+                      sessionId: activeSession?.id,
+                      actionType: 'item_removal'
+                  });
+              } catch (error) {
+                  console.error("Error recording audit log:", error);
+              }
+          }
+
+          setCart(cart => cart.filter(item => !(item.id === itemId && item.itemType === itemType)));
+          toast({ title: 'Item removido', description: `Ação autorizada por ${supervisorName}` });
+      } else if (supervisorAuthAction.type === 'cash_close') {
+          setIsClosingSession(true);
+      } else if (supervisorAuthAction.type === 'cart_clear') {
+          setCart([]);
+          setCurrentAttendanceId(undefined);
+          setSelectedCustomer(null);
+          toast({ title: 'Carrinho limpo', description: `Ação autorizada por ${supervisorName}` });
+      } else if (supervisorAuthAction.type === 'cash_adjustment') {
+          setIsAdjustmentOpen(true);
+      }
+      
+      setSupervisorAuthAction(null);
+  }, [supervisorAuthAction, cart, user, currentBranch, activeSession, toast]);
+
+  const initiateCashClose = () => {
+      if (user?.canAuthorizeCashClose || user?.role === 'admin' || user?.role === 'manager') {
+          setIsClosingSession(true);
+          return;
+      }
+
+      setSupervisorAuthAction({
+          type: 'cash_close',
+          description: 'Fechar Caixa',
+          permission: 'canAuthorizeCashClose'
+      });
+      setIsSupervisorAuthOpen(true);
+  };
+
+  const initiateCartClear = () => {
+    if (user?.canAuthorizeCartClear || user?.role === 'admin' || user?.role === 'manager') {
+        setCart([]);
+        setCurrentAttendanceId(undefined);
+        setSelectedCustomer(null);
+        return;
+    }
+
+    setSupervisorAuthAction({
+        type: 'cart_clear',
+        description: 'Limpar Carrinho Inteiro',
+        permission: 'canAuthorizeCartClear'
+    });
+    setIsSupervisorAuthOpen(true);
+  };
+
+  const initiateCashAdjustment = () => {
+      if (user?.canAuthorizeCashAdjustment || user?.role === 'admin' || user?.role === 'manager') {
+          setIsAdjustmentOpen(true);
+          return;
+      }
+
+      setSupervisorAuthAction({
+          type: 'cash_adjustment',
+          description: 'Ajuste de Caixa (Sangria/Reforço)',
+          permission: 'canAuthorizeCashAdjustment'
+      });
+      setIsSupervisorAuthOpen(true);
+  };
+
   const removeFromCart = (itemId: string, itemType: CartItem['itemType']) => {
-      setCart(cart => cart.filter(item => !(item.id === itemId && item.itemType === itemType)));
+      // Check if current user has permission
+      if (user?.canAuthorizeCartItemRemoval || user?.role === 'admin' || user?.role === 'manager') {
+          setCart(cart => cart.filter(item => !(item.id === itemId && item.itemType === itemType)));
+          return;
+      }
+
+      // Need supervisor authorization
+      const item = cart.find(i => i.id === itemId && i.itemType === itemType);
+      setSupervisorAuthAction({
+          type: 'cart_removal',
+          description: `Remover item: ${item?.name}`,
+          permission: 'canAuthorizeCartItemRemoval',
+          data: { itemId, itemType }
+      });
+      setIsSupervisorAuthOpen(true);
   }
 
   const { subtotal, totalDiscount } = useMemo(() => {
@@ -1469,6 +1723,7 @@ export default function POSPage() {
 
         // Create one consolidated sale document
         const saleRef = doc(collection(db, "sales"));
+        const saleId = saleRef.id;
         const saleData: Omit<Sale, 'id'> = {
             items: saleItems,
             total: grandTotal,
@@ -1478,10 +1733,45 @@ export default function POSPage() {
             organizationId: user.organizationId,
             payments: payments,
             status: 'completed',
+            sessionId: activeSession?.id,
             ...(attendanceId && { attendanceId: attendanceId }),
             ...(customerId && { customerId: customerId }),
         };
         batch.set(saleRef, { ...saleData, date: saleDate }); // Use server timestamp for sale as well
+        
+        // Handle Cash Transactions and Session Totals
+        if (activeSession) {
+            let cashInflow = 0;
+            const sessionUpdates: Record<string, any> = {};
+
+            payments.forEach(p => {
+                const key = `paymentTotals.${p.conditionName.replace(/\./g, '_')}`;
+                sessionUpdates[key] = increment(p.amount);
+
+                if (p.type === 'cash') {
+                    cashInflow += p.amount;
+                    
+                    const transactionRef = doc(collection(db, 'cashTransactions'));
+                    batch.set(transactionRef, {
+                        id: transactionRef.id,
+                        sessionId: activeSession.id,
+                        organizationId: user.organizationId,
+                        branchId: currentBranch.id,
+                        type: 'sale',
+                        amount: p.amount,
+                        date: saleDate,
+                        description: `Venda ${saleId.substring(0, 5)}...`,
+                        saleId: saleId,
+                    });
+                }
+            });
+
+            const sessionRef = doc(db, 'cashSessions', activeSession.id);
+            batch.update(sessionRef, {
+                ...sessionUpdates,
+                totalSales: increment(cashInflow),
+            });
+        }
         
         // If it's a payment for an attendance, update its status
         if (attendanceId) {
@@ -1593,6 +1883,41 @@ export default function POSPage() {
         const saleRef = doc(db, 'sales', sale.id);
         batch.update(saleRef, { status: 'cancelled' as SaleStatus });
 
+        // Revert Cash Session Totals if applicable
+        if (sale.sessionId) {
+            let cashToRevert = 0;
+            const sessionUpdates: Record<string, any> = {};
+
+            sale.payments.forEach(p => {
+                const key = `paymentTotals.${p.conditionName.replace(/\./g, '_')}`;
+                sessionUpdates[key] = increment(-p.amount);
+                if (p.type === 'cash') cashToRevert += p.amount;
+            });
+
+            if (cashToRevert > 0 || Object.keys(sessionUpdates).length > 0) {
+                const sessionRef = doc(db, 'cashSessions', sale.sessionId);
+                batch.update(sessionRef, {
+                    ...sessionUpdates,
+                    totalSales: increment(-cashToRevert)
+                });
+            }
+
+            if (cashToRevert > 0) {
+                const transactionRef = doc(collection(db, 'cashTransactions'));
+                batch.set(transactionRef, {
+                    id: transactionRef.id,
+                    sessionId: sale.sessionId,
+                    organizationId: user.organizationId,
+                    branchId: currentBranch.id,
+                    type: 'adjustment',
+                    amount: -cashToRevert,
+                    date: saleDate,
+                    description: `Estorno Venda ${sale.id.substring(0, 5)}...`,
+                    saleId: sale.id,
+                });
+            }
+        }
+
         try {
             await batch.commit();
             toast({ title: 'Venda cancelada e estoque revertido!' });
@@ -1626,273 +1951,312 @@ export default function POSPage() {
       }
   }
 
+  if (sessionLoading || authLoading) {
+    return (
+        <div className="flex h-[calc(100vh-8rem)] items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
+  }
+
   return (
     <>
-    <div className="grid h-[calc(100vh-8rem)] md:grid-cols-3 gap-8">
-      <div className="md:col-span-2">
-        <Card className="h-full flex flex-col">
-          <CardHeader>
-              <CardTitle>Frente de Caixa</CardTitle>
-              <CardDescription>Selecione os produtos, combos ou kits para adicionar ao carrinho.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex-grow flex flex-col">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-grow flex flex-col">
-                 <TabsList className="grid w-full grid-flow-col auto-cols-fr">
-                    {user?.enabledModules?.appointments?.view && <TabsTrigger value="pending"><UserCheck className="mr-2 h-4 w-4"/><span className="hidden sm:inline">Atendimentos</span> <span className="text-[10px] ml-1 opacity-70">[Alt+1]</span></TabsTrigger>}
-                    <TabsTrigger value="products"><Package className="mr-2 h-4 w-4"/><span className="hidden sm:inline">Produtos</span> <span className="text-[10px] ml-1 opacity-70">[Alt+2]</span></TabsTrigger>
-                    {user?.enabledModules?.combos?.view && <TabsTrigger value="combos"><Gift className="mr-2 h-4 w-4"/><span className="hidden sm:inline">Combos</span> <span className="text-[10px] ml-1 opacity-70">[Alt+3]</span></TabsTrigger>}
-                    {user?.enabledModules?.kits?.view && <TabsTrigger value="kits"><Component className="mr-2 h-4 w-4"/><span className="hidden sm:inline">Kits</span> <span className="text-[10px] ml-1 opacity-70">[Alt+4]</span></TabsTrigger>}
-                    <TabsTrigger value="history"><History className="mr-2 h-4 w-4"/><span className="hidden sm:inline">Histórico</span> <span className="text-[10px] ml-1 opacity-70">[Alt+5]</span></TabsTrigger>
-                </TabsList>
-                <div className="relative pt-4 flex gap-2">
-                    <div className="w-20">
-                        <Input
-                            ref={quantityInputRef}
-                            type="number"
-                            min="1"
-                            value={globalQuantity}
-                            onChange={(e) => setGlobalQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                            className="text-center font-bold"
-                            title="Quantidade [Alt+Q]"
-                        />
+    {!activeSession ? (
+        <div className="flex h-[calc(100vh-8rem)] items-center justify-center">
+            <Card className="max-w-md w-full">
+                <CardHeader className="text-center">
+                    <CardTitle className="text-2xl">Caixa Fechado</CardTitle>
+                    <CardDescription>Você precisa abrir o caixa para começar a vender.</CardDescription>
+                </CardHeader>
+                <CardContent className="flex justify-center py-6">
+                    <div className="rounded-full bg-primary/10 p-6">
+                        <DollarSign className="h-12 w-12 text-primary" />
                     </div>
-                    <div className="relative flex-grow">
-                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            ref={searchInputRef}
-                            type="search"
-                            placeholder="Buscar item... [F2]"
-                            className="w-full rounded-lg bg-background pl-8"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'ArrowDown') {
-                                    e.preventDefault();
-                                    setHighlightedIndex(prev => Math.min(prev + 1, filteredItemsInTab.length - 1));
-                                } else if (e.key === 'ArrowUp') {
-                                    e.preventDefault();
-                                    setHighlightedIndex(prev => Math.max(prev - 1, 0));
-                                } else if (e.key === 'Enter' && searchQuery.trim() !== '') {
-                                    e.preventDefault();
-                                    const items = filteredItemsInTab;
-                                    if (items.length > 0 && highlightedIndex < items.length) {
-                                        const item = items[highlightedIndex];
-                                        if (activeTab === 'products') {
-                                            addToCart(item as ProductWithStock, 'product');
-                                        } else if (activeTab === 'combos') {
-                                            addToCart(item as Combo, 'combo');
-                                        } else if (activeTab === 'kits') {
-                                            setSelectedKit(item as Kit);
-                                        }
-                                        toast({ title: "Item adicionado!", description: `${item.name} adicionado ao carrinho.` });
-                                        setSearchQuery('');
-                                        setHighlightedIndex(0);
-                                    }
-                                }
-                            }}
-                        />
-                    </div>
-                    <Button variant="outline" size="icon" onClick={() => setIsScannerOpen(true)}>
-                        <Barcode />
+                </CardContent>
+                <CardFooter>
+                    <Button className="w-full h-12 text-lg" onClick={() => setIsOpeningSession(true)}>
+                        <Play className="mr-2 h-5 w-5" /> Abrir Caixa Agora [Enter]
+                    </Button>
+                </CardFooter>
+            </Card>
+            <OpenSessionDialog isOpen={isOpeningSession} onOpenChange={setIsOpeningSession} />
+        </div>
+    ) : (
+        <div className="flex flex-col h-[calc(100vh-120px)] overflow-hidden -mt-4">
+            <div className="flex justify-between items-center mb-2 shrink-0">
+                <div className="flex items-center gap-3">
+                    <Badge variant="outline" className="text-xs py-0.5 px-2 bg-green-50 text-green-700 border-green-200">
+                        <div className="h-1.5 w-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse" />
+                        Caixa: {activeSession.userName}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                        Início: {activeSession.openedAt?.toDate ? format(activeSession.openedAt.toDate(), 'HH:mm') : '...'}
+                    </span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" size="xs" onClick={initiateCashAdjustment} className="h-7 text-xs py-0 px-2">
+                        <ArrowDownCircle className="mr-1 h-3 w-3 text-orange-500" /> Ajuste de Caixa
+                    </Button>
+                    <Button variant="outline" size="xs" onClick={initiateCashClose} className="h-7 text-xs text-destructive hover:text-destructive py-0 px-2">
+                        <StopCircle className="mr-1 h-3 w-3" /> Fechar Caixa
                     </Button>
                 </div>
-
-                 <TabsContent value="pending" className="mt-4 flex-grow">
-                    <PendingAttendancesTab onSelect={handleSelectAttendance} />
-                </TabsContent>
-                <TabsContent value="products" className="mt-4 flex-grow">
-                    <ScrollArea className="h-[calc(100vh-25rem)]">
-                        {loading ? (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {Array.from({ length: 10 }).map((_, i) => (
-                                <Card key={i}>
-                                <CardContent className="p-2 flex flex-col items-center justify-center">
-                                    <Skeleton className="h-[100px] w-[100px] rounded-md" />
-                                    <Skeleton className="h-4 w-24 mt-2"/>
-                                    <Skeleton className="h-3 w-16 mt-1"/>
-                                </CardContent>
-                                </Card>
-                            ))}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1 min-h-0 overflow-hidden">
+              <div className="md:col-span-2 flex flex-col min-h-0">
+                <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                  <CardHeader className="py-2 px-4 shrink-0">
+                      <div className="flex justify-between items-center">
+                        <div>
+                            <CardTitle className="text-base">Frente de Caixa</CardTitle>
+                            <CardDescription className="text-xs">Selecione itens para vender.</CardDescription>
+                        </div>
+                      </div>
+                  </CardHeader>
+                  <CardContent className="flex-1 flex flex-col min-h-0 p-2 pt-0">
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+                         <TabsList className="grid w-full grid-flow-col auto-cols-fr h-8 shrink-0">
+                            {user?.enabledModules?.appointments?.view && <TabsTrigger value="pending" className="text-xs px-1"><UserCheck className="mr-1 h-3 w-3"/><span className="hidden sm:inline">Atend.</span></TabsTrigger>}
+                            <TabsTrigger value="products" className="text-xs px-1"><Package className="mr-1 h-3 w-3"/><span className="hidden sm:inline">Prod.</span></TabsTrigger>
+                            {user?.enabledModules?.combos?.view && <TabsTrigger value="combos" className="text-xs px-1"><Gift className="mr-1 h-3 w-3"/><span className="hidden sm:inline">Combos</span></TabsTrigger>}
+                            {user?.enabledModules?.kits?.view && <TabsTrigger value="kits" className="text-xs px-1"><Component className="mr-1 h-3 w-3"/><span className="hidden sm:inline">Kits</span></TabsTrigger>}
+                            <TabsTrigger value="history" className="text-xs px-1"><History className="mr-1 h-3 w-3"/><span className="hidden sm:inline">Hist.</span></TabsTrigger>
+                        </TabsList>
+                        <div className="relative py-2 flex gap-2 shrink-0">
+                            <div className="w-16">
+                                <Input
+                                    ref={quantityInputRef}
+                                    type="number"
+                                    min="1"
+                                    value={globalQuantity}
+                                    onChange={(e) => setGlobalQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                                    className="text-center font-bold h-8 text-sm px-1"
+                                    title="Qtd [Alt+Q]"
+                                />
                             </div>
-                        ) : (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {filteredProducts.map((product, index) => (
-                                <Card 
-                                key={product.id} 
-                                onClick={() => addToCart(product, 'product')} 
-                                className={cn(
-                                    "cursor-pointer hover:shadow-lg transition-all relative",
-                                    index === highlightedIndex && activeTab === 'products' && "ring-2 ring-primary shadow-lg scale-105 bg-accent/10 z-10"
-                                )}
-                                >
-                                <Badge className="absolute top-1 right-1" variant={product.stock > 0 ? "secondary" : "destructive"}>
-                                    {product.stock > 0 ? product.stock : 'Esgotado'}
-                                </Badge>
-                                <CardContent className="p-2 flex flex-col items-center justify-center">
-                                    <Image src={product.imageUrl} alt={product.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="product image"/>
-                                    <p className="font-semibold text-sm mt-2 text-center">{product.name}</p>
-                                    <p className="text-xs text-muted-foreground">R${product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                                </CardContent>
-                                </Card>
-                            ))}
-                            </div>
-                        )}
-                    </ScrollArea>
-                </TabsContent>
-                <TabsContent value="combos" className="mt-4 flex-grow">
-                    <ScrollArea className="h-[calc(100vh-25rem)]">
-                        {loading ? (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {Array.from({ length: 5 }).map((_, i) => ( <Skeleton key={i} className="h-[150px] w-full" /> ))}
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {filteredCombos.map((combo, index) => (
-                                <Card 
-                                key={combo.id} 
-                                onClick={() => addToCart(combo, 'combo')} 
-                                className={cn(
-                                    "cursor-pointer hover:shadow-lg transition-all relative",
-                                    index === highlightedIndex && activeTab === 'combos' && "ring-2 ring-primary shadow-lg scale-105 bg-accent/10 z-10"
-                                )}
-                                >
-                                <CardContent className="p-2 flex flex-col items-center justify-center">
-                                    <Image src={combo.imageUrl} alt={combo.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="combo offer"/>
-                                    <p className="font-semibold text-sm mt-2 text-center">{combo.name}</p>
-                                    <p className="text-xs text-muted-foreground">R${combo.finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                                </CardContent>
-                                </Card>
-                            ))}
-                            </div>
-                        )}
-                    </ScrollArea>
-                </TabsContent>
-                <TabsContent value="kits" className="mt-4 flex-grow">
-                    <ScrollArea className="h-[calc(100vh-25rem)]">
-                        {loading ? (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {Array.from({ length: 5 }).map((_, i) => ( <Skeleton key={i} className="h-[150px] w-full" /> ))}
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {filteredKits.map((kit, index) => (
-                                <Card 
-                                key={kit.id} 
-                                onClick={() => setSelectedKit(kit)} 
-                                className={cn(
-                                    "cursor-pointer hover:shadow-lg transition-all relative",
-                                    index === highlightedIndex && activeTab === 'kits' && "ring-2 ring-primary shadow-lg scale-105 bg-accent/10 z-10"
-                                )}
-                                >
-                                <CardContent className="p-2 flex flex-col items-center justify-center">
-                                    <Image src={kit.imageUrl} alt={kit.name} width={100} height={100} className="rounded-md object-cover aspect-square" data-ai-hint="kit offer"/>
-                                    <p className="font-semibold text-sm mt-2 text-center">{kit.name}</p>
-                                    <p className="text-xs text-muted-foreground">Monte seu kit!</p>
-                                </CardContent>
-                                </Card>
-                            ))}
-                            </div>
-                        )}
-                    </ScrollArea>
-                </TabsContent>
-                <TabsContent value="history" className="mt-4 flex-grow">
-                        <SalesHistoryTab salesHistory={salesHistory} onCancelSale={handleCancelSale} />
-                </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
-      </div>
-      
-      <div className="md:col-span-1">
-        <Card className="h-full flex flex-col">
-          <CardHeader>
-             <div className="flex justify-between items-center">
-                 <CardTitle>Carrinho</CardTitle>
-                 {cart.length > 0 && <Button variant="ghost" size="sm" onClick={handleClearCart}>Limpar [F9]</Button>}
-             </div>
-             {currentAttendanceId && <CardDescription>Pagamento para atendimento</CardDescription>}
-             {selectedCustomer && !currentAttendanceId && (
-                <CardDescription className="flex items-center gap-1">
-                    Venda para: <span className="font-medium">{selectedCustomer.name}</span>
-                </CardDescription>
-             )}
-          </CardHeader>
-          <CardContent className="flex-grow">
-            <ScrollArea className="h-[calc(100vh-25rem)]">
-                {cart.length === 0 ? (
-                    <div className="text-muted-foreground text-center space-y-4">
-                        <p>O carrinho está vazio</p>
-                        {!currentAttendanceId && user?.enabledModules?.customers?.view && <CustomerSelector onSelect={setSelectedCustomer} />}
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        {cart.map((item, index) => (
-                            <div key={`${item.id}-${index}`} className="flex justify-between items-center">
-                                <div>
-                                    <p className="font-medium flex items-center gap-2">
-                                        {item.name}
-                                        {(item.itemType === 'combo' || item.itemType === 'kit' || item.itemType === 'service') && <Badge variant="secondary">{item.itemType}</Badge>}
-                                    </p>
-                                    <p className="text-sm text-muted-foreground">
-                                        {item.itemType === 'kit'
-                                            ? `Total do Kit: R$${item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                                            : item.itemType === 'service'
-                                            ? `Serviço: R$${item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                                            : `R$${getCartItemPrice(item).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} x ${item.quantity}`
+                            <div className="relative flex-grow">
+                                <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    ref={searchInputRef}
+                                    type="search"
+                                    placeholder="Buscar... [F2]"
+                                    className="w-full h-8 rounded-lg bg-background pl-8 text-sm"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'ArrowDown') {
+                                            e.preventDefault();
+                                            setHighlightedIndex(prev => Math.min(prev + 1, filteredItemsInTab.length - 1));
+                                        } else if (e.key === 'ArrowUp') {
+                                            e.preventDefault();
+                                            setHighlightedIndex(prev => Math.max(prev - 1, 0));
+                                        } else if (e.key === 'Enter' && searchQuery.trim() !== '') {
+                                            e.preventDefault();
+                                            const items = filteredItemsInTab;
+                                            if (items.length > 0 && highlightedIndex < items.length) {
+                                                const item = items[highlightedIndex];
+                                                if (activeTab === 'products') {
+                                                    addToCart(item as ProductWithStock, 'product');
+                                                } else if (activeTab === 'combos') {
+                                                    addToCart(item as Combo, 'combo');
+                                                } else if (activeTab === 'kits') {
+                                                    setSelectedKit(item as Kit);
+                                                }
+                                                toast({ title: "Item adicionado!", description: `${item.name} adicionado ao carrinho.` });
+                                                setSearchQuery('');
+                                                setHighlightedIndex(0);
+                                            }
                                         }
-                                    </p>
-                                    {item.itemType === 'kit' && (
-                                        <div className="text-xs text-muted-foreground pl-2">
-                                            {item.chosenProducts.map(p => p.name).join(', ')}
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <p className="font-semibold">
-                                        R$${(getCartItemPrice(item) * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </p>
-                                    {!currentAttendanceId && (
-                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFromCart(item.id, item.itemType)}>
-                                        <X className="h-4 w-4 text-destructive"/>
-                                    </Button>
-                                    )}
-                                </div>
+                                    }}
+                                />
                             </div>
-                        ))}
-                    </div>
-                )}
-            </ScrollArea>
-          </CardContent>
-          <CardFooter className="flex-col !p-6 border-t">
-             <div className="w-full space-y-2">
-                 {totalDiscount > 0 && (
-                     <div className="flex justify-between text-destructive">
-                         <p>Descontos</p>
-                         <p>-R${totalDiscount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            <Button variant="outline" size="icon" onClick={() => setIsScannerOpen(true)} className="h-8 w-8">
+                                <Barcode className="h-4 w-4" />
+                            </Button>
+                        </div>
+
+                         <TabsContent value="pending" className="mt-0 flex-1 min-h-0 overflow-hidden">
+                            <PendingAttendancesTab onSelect={handleSelectAttendance} />
+                        </TabsContent>
+                        <TabsContent value="products" className="mt-0 flex-1 min-h-0 overflow-hidden">
+                            <ScrollArea className="h-full">
+                                {loading ? (
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 p-1">
+                                    {Array.from({ length: 10 }).map((_, i) => (
+                                        <Card key={i} className="h-28">
+                                        <CardContent className="p-1 flex flex-col items-center justify-center h-full">
+                                            <Skeleton className="h-16 w-16 rounded-md" />
+                                            <Skeleton className="h-3 w-14 mt-1"/>
+                                        </CardContent>
+                                        </Card>
+                                    ))}
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 p-1">
+                                    {filteredProducts.map((product, index) => (
+                                        <Card 
+                                        key={product.id} 
+                                        onClick={() => addToCart(product, 'product')} 
+                                        className={cn(
+                                            "cursor-pointer hover:shadow-md transition-all relative h-32 flex flex-col",
+                                            index === highlightedIndex && activeTab === 'products' && "ring-2 ring-primary shadow-md bg-accent/10 z-10"
+                                        )}
+                                        >
+                                        <Badge className="absolute top-0.5 right-0.5 text-[10px] px-1 h-4" variant={product.stock > 0 ? "secondary" : "destructive"}>
+                                            {product.stock > 0 ? product.stock : '0'}
+                                        </Badge>
+                                        <CardContent className="p-1 flex-1 flex flex-col items-center justify-center overflow-hidden">
+                                            <div className="relative w-12 h-12 flex-shrink-0">
+                                                <Image src={product.imageUrl} alt={product.name} fill className="rounded-md object-cover" data-ai-hint="product image"/>
+                                            </div>
+                                            <p className="font-semibold text-[11px] mt-1 text-center line-clamp-2 leading-tight">{product.name}</p>
+                                            <p className="text-[10px] text-muted-foreground mt-0.5">R${product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                        </CardContent>
+                                        </Card>
+                                    ))}
+                                    </div>
+                                )}
+                            </ScrollArea>
+                        </TabsContent>
+                        <TabsContent value="combos" className="mt-0 flex-1 min-h-0 overflow-hidden">
+                            <ScrollArea className="h-full">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 p-1">
+                                {filteredCombos.map((combo, index) => (
+                                    <Card 
+                                    key={combo.id} 
+                                    onClick={() => addToCart(combo, 'combo')} 
+                                    className={cn(
+                                        "cursor-pointer hover:shadow-md transition-all relative h-32 flex flex-col",
+                                        index === highlightedIndex && activeTab === 'combos' && "ring-2 ring-primary shadow-md bg-accent/10 z-10"
+                                    )}
+                                    >
+                                    <CardContent className="p-1 flex-1 flex flex-col items-center justify-center overflow-hidden">
+                                        <div className="relative w-12 h-12 flex-shrink-0">
+                                            <Image src={combo.imageUrl} alt={combo.name} fill className="rounded-md object-cover" data-ai-hint="combo offer"/>
+                                        </div>
+                                        <p className="font-semibold text-[11px] mt-1 text-center line-clamp-2 leading-tight">{combo.name}</p>
+                                        <p className="text-[10px] text-muted-foreground mt-0.5">R${combo.finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                    </CardContent>
+                                    </Card>
+                                ))}
+                                </div>
+                            </ScrollArea>
+                        </TabsContent>
+                        <TabsContent value="kits" className="mt-0 flex-1 min-h-0 overflow-hidden">
+                            <ScrollArea className="h-full">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 p-1">
+                                {filteredKits.map((kit, index) => (
+                                    <Card 
+                                    key={kit.id} 
+                                    onClick={() => setSelectedKit(kit)} 
+                                    className={cn(
+                                        "cursor-pointer hover:shadow-md transition-all relative h-32 flex flex-col",
+                                        index === highlightedIndex && activeTab === 'kits' && "ring-2 ring-primary shadow-md bg-accent/10 z-10"
+                                    )}
+                                    >
+                                    <CardContent className="p-1 flex-1 flex flex-col items-center justify-center overflow-hidden">
+                                        <div className="relative w-12 h-12 flex-shrink-0">
+                                            <Image src={kit.imageUrl} alt={kit.name} fill className="rounded-md object-cover" data-ai-hint="kit offer"/>
+                                        </div>
+                                        <p className="font-semibold text-[11px] mt-1 text-center line-clamp-2 leading-tight">{kit.name}</p>
+                                        <p className="text-[10px] text-muted-foreground mt-0.5">Monte seu kit!</p>
+                                    </CardContent>
+                                    </Card>
+                                ))}
+                                </div>
+                            </ScrollArea>
+                        </TabsContent>
+                        <TabsContent value="history" className="mt-0 flex-1 min-h-0 overflow-hidden">
+                                <SalesHistoryTab salesHistory={salesHistory} onCancelSale={handleCancelSale} />
+                        </TabsContent>
+                    </Tabs>
+                  </CardContent>
+                </Card>
+              </div>
+              
+              <div className="md:col-span-1 flex flex-col min-h-0">
+                <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                  <CardHeader className="py-2 px-4 shrink-0">
+                     <div className="flex justify-between items-center">
+                         <CardTitle className="text-base">Carrinho</CardTitle>
+                         {cart.length > 0 && <Button variant="ghost" size="xs" onClick={initiateCartClear} className="h-7 text-xs px-2">Limpar [F9]</Button>}
+
                      </div>
-                 )}
-                 <div className="flex justify-between"><p>Subtotal</p><p>R${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p></div>
-                 <div className="flex justify-between"><p>Imposto ({currentBranch?.taxRate || 0}%)</p><p>R${tax.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p></div>
-                 <div className="flex justify-between font-bold text-lg"><p>Total</p><p>R${grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p></div>
-             </div>
-             <Button className="w-full mt-4" size="lg" onClick={() => setIsCheckoutModalOpen(true)} disabled={cart.length === 0}>
-                 <CreditCard className="mr-2 h-4 w-4" />
-                 Finalizar Compra [F8]
-             </Button>
-          </CardFooter>
-        </Card>
-      </div>
-    </div>
-    {selectedKit && (
-        <KitSelectionModal
-            kit={selectedKit}
-            products={products}
-            isOpen={!!selectedKit}
-            onOpenChange={(isOpen) => !isOpen && setSelectedKit(null)}
-            onConfirm={(chosen) => handleKitSelection(selectedKit, chosen)}
-            allowNegative={currentBranch?.allowNegativeStock}
-        />
+                     {currentAttendanceId && <CardDescription className="text-[10px]">Atendimento pendente</CardDescription>}
+                     {selectedCustomer && !currentAttendanceId && (
+                        <CardDescription className="flex items-center gap-1 text-[10px] truncate">
+                            Para: <span className="font-medium truncate">{selectedCustomer.name}</span>
+                        </CardDescription>
+                     )}
+                  </CardHeader>
+                  <CardContent className="flex-1 p-2 pt-0 min-h-0 overflow-hidden">
+                    <ScrollArea className="h-full">
+                        {cart.length === 0 ? (
+                            <div className="text-muted-foreground text-center space-y-2 py-4">
+                                <p className="text-xs">Carrinho vazio</p>
+                                {!currentAttendanceId && user?.enabledModules?.customers?.view && <CustomerSelector onSelect={setSelectedCustomer} />}
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {cart.map((item, index) => (
+                                    <div key={`${item.id}-${index}`} className="flex justify-between items-start gap-2 border-b pb-1 last:border-0">
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-medium text-xs truncate leading-none">
+                                                {item.name}
+                                            </p>
+                                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                                                {item.itemType === 'kit'
+                                                    ? `R$${item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                                    : `R$${getCartItemPrice(item).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} x ${item.quantity}`
+                                                }
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <p className="font-semibold text-xs">
+                                                R$${(getCartItemPrice(item) * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </p>
+                                            {!currentAttendanceId && (
+                                            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => removeFromCart(item.id, item.itemType)}>
+                                                <X className="h-3 w-3 text-destructive"/>
+                                            </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </ScrollArea>
+                  </CardContent>
+                  <CardFooter className="flex-col !p-4 border-t shrink-0">
+                     <div className="w-full space-y-1">
+                         {totalDiscount > 0 && (
+                             <div className="flex justify-between text-destructive text-[10px]">
+                                 <p>Descontos</p>
+                                 <p>-R${totalDiscount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                             </div>
+                         )}
+                         <div className="flex justify-between text-[11px]"><p>Subtotal</p><p>R${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p></div>
+                         <div className="flex justify-between text-[11px] font-bold"><p>Total</p><p className="text-base text-primary">R${grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p></div>
+                     </div>
+                     <Button className="w-full mt-2 h-10 text-base" size="sm" onClick={() => setIsCheckoutModalOpen(true)} disabled={cart.length === 0}>
+                         <CreditCard className="mr-2 h-4 w-4" />
+                         Finalizar [F8]
+                     </Button>
+                  </CardFooter>
+                </Card>
+              </div>
+            </div>
+        </div>
     )}
+    
+    <KitSelectionModal
+        kit={selectedKit}
+        products={products}
+        isOpen={!!selectedKit}
+        onOpenChange={(isOpen) => !isOpen && setSelectedKit(null)}
+        onConfirm={(chosen) => handleKitSelection(selectedKit!, chosen)}
+        allowNegative={currentBranch?.allowNegativeStock}
+    />
     <WeightInputModal
         product={weightProduct}
         isOpen={isWeightModalOpen}
@@ -1915,11 +2279,31 @@ export default function POSPage() {
       attendanceId={currentAttendanceId}
       customerId={selectedCustomer?.id}
     />
-     <BarcodeScannerModal
+    <BarcodeScannerModal
         isOpen={isScannerOpen}
         onOpenChange={setIsScannerOpen}
         onScan={handleScan}
-      />
+    />
+    <CloseSessionDialog
+        isOpen={isClosingSession}
+        onOpenChange={setIsClosingSession}
+        session={activeSession}
+    />
+    <CashAdjustmentDialog
+        isOpen={isAdjustmentOpen}
+        onOpenChange={setIsAdjustmentOpen}
+        session={activeSession!}
+    />
+    <SupervisorAuthorizationDialog
+        isOpen={isSupervisorAuthOpen}
+        onOpenChange={setIsSupervisorAuthOpen}
+        onAuthorized={handleAuthorizedAction}
+        actionDescription={supervisorAuthAction?.description || ''}
+        permissionRequired={supervisorAuthAction?.permission || 'canAuthorizeCartItemRemoval'}
+        requesterName={user?.name || ''}
+        itemName={supervisorAuthAction?.type === 'cart_removal' ? cart.find(i => i.id === supervisorAuthAction.data?.itemId)?.name : undefined}
+        totalAmount={subtotal}
+    />
     </>
   );
 }

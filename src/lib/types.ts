@@ -71,6 +71,11 @@ export interface User {
   availability?: Availability;
   isImpersonating?: boolean;
   isDeleted?: boolean;
+  canAuthorizeCashClose?: boolean;
+  canAuthorizeCartItemRemoval?: boolean;
+  canAuthorizeCartClear?: boolean;
+  canAuthorizeCashAdjustment?: boolean;
+  supervisorPin?: string;
 }
 
 export type AnamnesisQuestionType = 'text' | 'boolean' | 'boolean_with_text' | 'integer' | 'decimal';
@@ -247,6 +252,8 @@ export interface PaymentDetail {
     amount: number;
     installments: number;
     receiptCode?: string;
+    paidAmount?: number; // The actual amount handed by the customer (for cash)
+    changeAmount?: number; // The change given back (for cash)
 }
 
 export type SaleStatus = 'completed' | 'cancelled';
@@ -293,6 +300,45 @@ export interface Sale {
   status: SaleStatus;
   attendanceId?: string; // Link to the attendance if sale came from one
   customerId?: string; // Link to customer for direct sales
+  sessionId?: string; // Link to the cash session
+}
+
+export type CashSessionStatus = 'open' | 'closed';
+
+export interface CashSession {
+    id: string;
+    organizationId: string;
+    branchId: string;
+    userId: string;
+    userName: string;
+    openedAt: any; // Timestamp
+    closedAt?: any; // Timestamp
+    openingBalance: number;
+    closingBalance?: number;
+    expectedBalance?: number; // openingBalance + cashSales - cashExpenses
+    totalSales: number;
+    totalExpenses: number;
+    status: CashSessionStatus;
+    notes?: string;
+    paymentTotals?: Record<string, number>; // Summary by payment condition ID or type
+}
+
+export type CashTransactionType = 'sale' | 'expense' | 'opening' | 'adjustment' | 'withdrawal' | 'deposit';
+
+export interface CartItemRemovalLog {
+    id: string;
+    organizationId: string;
+    branchId: string;
+    timestamp: any; // Timestamp
+    itemId: string;
+    itemName: string;
+    itemType: string;
+    itemPrice: number;
+    operatorId: string;
+    operatorName: string;
+    supervisorId: string;
+    supervisorName: string;
+    sessionId?: string;
 }
 
 export interface Branch {

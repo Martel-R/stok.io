@@ -44,6 +44,7 @@ interface AuthContextType {
   resetUserPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   updateOrganizationModules: (modules: EnabledModules) => Promise<void>;
   updateOrganizationBranding: (branding: BrandingSettings) => Promise<void>;
+  updatePOSSettings: (settings: POSSettings) => Promise<void>;
   logout: () => void;
   loading: boolean;
   cancelLogin: () => void;
@@ -692,6 +693,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await updateDoc(orgRef, { branding: branding });
   }, [user?.organizationId]);
 
+  const updatePOSSettings = React.useCallback(async (settings: POSSettings) => {
+    if (!user?.organizationId) {
+        throw new Error("Organização não encontrada.");
+    }
+    const orgRef = doc(db, 'organizations', user.organizationId);
+    await updateDoc(orgRef, { posSettings: settings });
+  }, [user?.organizationId]);
+
   const isAuthenticated = !!user;
   
   React.useEffect(() => {
@@ -751,6 +760,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     resetUserPassword,
     updateOrganizationModules,
     updateOrganizationBranding,
+    updatePOSSettings,
     startImpersonation,
     stopImpersonation,
   }), [
@@ -775,6 +785,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     resetUserPassword,
     updateOrganizationModules,
     updateOrganizationBranding,
+    updatePOSSettings,
     startImpersonation,
     stopImpersonation,
   ]);

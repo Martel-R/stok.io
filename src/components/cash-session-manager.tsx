@@ -39,7 +39,8 @@ export function CashAdjustmentDialog({ isOpen, onOpenChange, session }: { isOpen
         }
 
         // Se o usuário tem permissão direta, executa. Senão, pede autorização.
-        if (user?.canAuthorizeCashAdjustment || user?.role === 'admin' || user?.role === 'manager') {
+        if (user?.organization?.posSettings?.requireSupervisorAuthorization === false || 
+            user?.canAuthorizeCashAdjustment || user?.role === 'admin' || user?.role === 'manager') {
             executeAdjustment();
         } else {
             setIsAuthOpen(true);
@@ -287,7 +288,8 @@ export function CloseSessionDialog({ session, isOpen, onOpenChange }: { session:
     const expectedBalance = safeSession.openingBalance + safeSession.totalSales - safeSession.totalExpenses;
 
     const handleConfirmClick = () => {
-        if (user?.canAuthorizeCashClose || user?.role === 'admin' || user?.role === 'manager') {
+        if (user?.organization?.posSettings?.requireSupervisorAuthorization === false || 
+            user?.canAuthorizeCashClose || user?.role === 'admin' || user?.role === 'manager') {
             handleClose();
         } else {
             setIsAuthOpen(true);

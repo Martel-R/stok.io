@@ -55,7 +55,7 @@ export function SupervisorAuthorizationDialog({
             setRequestId(null);
             setTimeout(() => inputRefs.current[0]?.focus(), 100);
         }
-    }, [isOpen]);
+    }, [isOpen]); // Back to single dependency to fix "changed size" error
 
     // Listener for remote approval
     useEffect(() => {

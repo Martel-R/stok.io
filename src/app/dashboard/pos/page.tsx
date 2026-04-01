@@ -1540,7 +1540,8 @@ export default function POSPage() {
   };
 
   const initiateCartClear = () => {
-    if (user?.canAuthorizeCartClear || user?.role === 'admin' || user?.role === 'manager') {
+    if (user?.organization?.posSettings?.requireSupervisorAuthorization === false || 
+        user?.canAuthorizeCartClear || user?.role === 'admin' || user?.role === 'manager') {
         setCart([]);
         setCurrentAttendanceId(undefined);
         setSelectedCustomer(null);
@@ -1561,7 +1562,8 @@ export default function POSPage() {
 
   const removeFromCart = (itemId: string, itemType: CartItem['itemType']) => {
       // Check if current user has permission
-      if (user?.canAuthorizeCartItemRemoval || user?.role === 'admin' || user?.role === 'manager') {
+      if (user?.organization?.posSettings?.requireSupervisorAuthorization === false || 
+          user?.canAuthorizeCartItemRemoval || user?.role === 'admin' || user?.role === 'manager') {
           setCart(cart => cart.filter(item => !(item.id === itemId && item.itemType === itemType)));
           return;
       }

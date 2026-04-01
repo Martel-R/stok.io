@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, getDocs, query, where, writeBatch, orderBy, Timestamp } from 'firebase/firestore';
-import type { User, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType, BrandingSettings, PermissionProfile, ModulePermissions, Organization, Supplier, Subscription, PaymentRecord } from '@/lib/types';
+import type { User, Branch, PaymentCondition, PaymentConditionType, Product, EnabledModules, AnamnesisQuestion, AnamnesisQuestionType, BrandingSettings, PermissionProfile, ModulePermissions, Organization, Supplier, Subscription, PaymentRecord, POSSettings } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
@@ -1576,6 +1576,7 @@ function SettingsPageContent() {
                     <TabsTrigger value="subscription">Assinatura</TabsTrigger>
                     <TabsTrigger value="branding">Branding</TabsTrigger>
                     <TabsTrigger value="roles">Perfis &amp; Permissões</TabsTrigger>
+                    <TabsTrigger value="pos"><ShoppingCart className="mr-2 h-4 w-4"/>PDV</TabsTrigger>
                     {user?.enabledModules?.chat?.view && (
                         <TabsTrigger value="chat"><MessageCircle className="mr-2 h-4 w-4"/>Chat</TabsTrigger>
                     )}
@@ -1614,9 +1615,67 @@ function SettingsPageContent() {
                         <AnamnesisSettings />
                     </TabsContent>
                  )}
+                <TabsContent value="pos">
+                    <POSSettings />
+                </TabsContent>
             </Tabs>
         </div>
     )
+}
+
+function POSSettings() {
+    const { user, updatePOSSettings } = useAuth();
+    const [settings, setSettings] = useState<POSSettings>({
+        requireSupervisorAuthorization: user?.organization?.posSettings?.requireSupervisorAuthorization ?? true,
+    });
+    const [isSaving, setIsSaving] = useState(false);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (user?.organization?.posSettings) {
+            setSettings(user.organization.posSettings);
+        }
+    }, [user?.organization?.posSettings]);
+
+    const handleSave = async () => {
+        setIsSaving(true);
+        try {
+            await updatePOSSettings(settings);
+            toast({ title: 'Configurações do PDV atualizadas!' });
+        } catch (error) {
+            toast({ title: 'Erro ao atualizar configurações', variant: 'destructive' });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Configurações do PDV</CardTitle>
+                <CardDescription>Gerencie o comportamento do Frente de Caixa.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                        <Label className="text-base">Exigir Autorização do Supervisor</Label>
+                        <p className="text-sm text-muted-foreground">
+                            Solicita PIN de supervisor para ações sensíveis (sangria, reforço, fechamento, remoção de itens).
+                        </p>
+                    </div>
+                    <Switch
+                        checked={settings.requireSupervisorAuthorization}
+                        onCheckedChange={(checked) => setSettings({ ...settings, requireSupervisorAuthorization: checked })}
+                    />
+                </div>
+
+                <Button onClick={handleSave} disabled={isSaving}>
+                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Salvar Configurações
+                </Button>
+            </CardContent>
+        </Card>
+    );
 }
 
 function SuppliersSettings() {

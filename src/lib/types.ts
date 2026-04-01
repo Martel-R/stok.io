@@ -449,6 +449,10 @@ export interface Subscription {
 }
 
 
+export interface POSSettings {
+    requireSupervisorAuthorization?: boolean;
+}
+
 export interface Organization {
     id: string;
     name: string;
@@ -458,6 +462,7 @@ export interface Organization {
     branding?: BrandingSettings;
     subscription?: Subscription;
     evolutionApiConfig?: EvolutionApiConfig;
+    posSettings?: POSSettings;
 }
 
 export type ExpenseStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';

@@ -325,6 +325,20 @@ export interface CashSession {
 
 export type CashTransactionType = 'sale' | 'expense' | 'opening' | 'adjustment' | 'withdrawal' | 'deposit';
 
+export interface CashTransaction {
+    id: string;
+    sessionId: string;
+    organizationId: string;
+    branchId: string;
+    type: CashTransactionType | string;
+    amount: number;
+    date: any; // Timestamp
+    description: string;
+    saleId?: string;
+    supervisorId?: string;
+    supervisorName?: string;
+}
+
 export interface CartItemRemovalLog {
     id: string;
     organizationId: string;

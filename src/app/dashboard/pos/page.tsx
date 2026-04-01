@@ -723,7 +723,7 @@ function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[],
     );
 }
 
-function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm, allowNegative = false }: { kit: Kit; products: ProductWithStock[]; isOpen: boolean; onOpenChange: (isOpen: boolean) => void; onConfirm: (chosenProducts: Product[]) => void; allowNegative?: boolean; }) {
+function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm, allowNegative = false }: { kit: Kit | null; products: ProductWithStock[]; isOpen: boolean; onOpenChange: (isOpen: boolean) => void; onConfirm: (chosenProducts: Product[]) => void; allowNegative?: boolean; }) {
     const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const { toast } = useToast();
@@ -760,6 +760,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm, all
     }, [kit, products, selectedProducts, searchQuery]);
 
     const addProduct = (product: Product) => {
+        if (!kit) return;
         const productWithStock = eligibleProducts.find(p => p.id === product.id);
         if (!productWithStock || (productWithStock.availableStock <= 0 && !allowNegative)) {
             toast({ title: `Estoque insuficiente para ${product.name}`, variant: "destructive" });
@@ -784,6 +785,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm, all
     };
 
     const handleConfirm = () => {
+        if (!kit) return;
         if (selectedProducts.length !== kit.numberOfItems) {
             toast({ title: `Você deve selecionar ${kit.numberOfItems} produtos.`, variant: 'destructive' });
             return;
@@ -802,7 +804,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm, all
     }, [selectedProducts]);
 
 
-    if (!isOpen) return null;
+    if (!isOpen || !kit) return null;
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -1288,7 +1290,8 @@ export default function POSPage() {
     return kits.filter(k => k.name.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [kits, searchQuery]);
   
-  const handleKitSelection = (kit: Kit, chosenProducts: Product[]) => {
+  const handleKitSelection = (kit: Kit | null, chosenProducts: Product[]) => {
+      if (!kit) return;
       const originalPrice = chosenProducts.reduce((sum, p) => sum + p.price, 0);
       let finalPrice = originalPrice;
       if (kit.discountType === 'percentage') {

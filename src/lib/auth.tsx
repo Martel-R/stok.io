@@ -6,7 +6,7 @@ import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, updateProfile, User as FirebaseAuthUser, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, reauthenticateWithCredential, updatePassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe, updateDoc, writeBatch, deleteDoc, serverTimestamp, Timestamp } from "firebase/firestore";
-import type { User, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile, Subscription, PaymentCondition } from '@/lib/types';
+import type { User, Branch, Product, Organization, EnabledModules, BrandingSettings, PermissionProfile, Subscription, PaymentCondition, POSSettings } from '@/lib/types';
 import { auth, db } from '@/lib/firebase';
 import { addMonths } from 'date-fns';
 import { logUserActivity } from './logging';

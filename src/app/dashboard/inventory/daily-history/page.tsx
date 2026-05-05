@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils';
 import { ptBR } from 'date-fns/locale';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { ScrollBar } from '@/components/ui/scroll-area';
 
 const convertDate = (dateField: any): Date => {
     if (dateField instanceof Timestamp) return dateField.toDate();
@@ -61,7 +61,7 @@ export default function DailyHistoryPage() {
         return { from, to };
     });
     
-    // Estado para o painel de edição
+    // Estados para o Modal de Detalhes/Edição
     const [viewDetails, setViewDetails] = useState<{productName: string, details: StockEntry[]} | null>(null);
     const [rowEditingId, setRowEditingId] = useState<string | null>(null);
     const [editValue, setEditValue] = useState<number>(0);
@@ -145,6 +145,7 @@ export default function DailyHistoryPage() {
                 
                 const key = periodStart.toISOString();
 
+                // O Estoque Inicial é a soma de TUDO antes desse período
                 const initialStock = productEntries
                     .filter(e => e.date < periodStart)
                     .reduce((sum, e) => sum + e.quantity, 0);
@@ -175,25 +176,26 @@ export default function DailyHistoryPage() {
                 updatedAt: new Date(),
                 updatedBy: user?.id
             });
-            toast({ title: "Lançamento corrigido!" });
+            toast({ title: "Movimentação atualizada" });
             setRowEditingId(null);
+            // Atualizar os detalhes visualizados
             if (viewDetails) {
                 const updated = viewDetails.details.map(d => d.id === id ? {...d, quantity: editValue, notes: editNotes} : d);
                 setViewDetails({...viewDetails, details: updated});
             }
         } catch (error) {
             console.error(error);
-            toast({ title: "Erro ao salvar", variant: "destructive" });
+            toast({ title: "Erro ao atualizar", variant: "destructive" });
         } finally {
             setIsSaving(false);
         }
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Excluir definitivamente este lançamento?")) return;
+        if (!confirm("Excluir esta movimentação?")) return;
         try {
             await deleteDoc(doc(db, 'stockEntries', id));
-            toast({ title: "Lançamento removido" });
+            toast({ title: "Movimentação excluída" });
             if (viewDetails) {
                 const updated = viewDetails.details.filter(d => d.id !== id);
                 setViewDetails({...viewDetails, details: updated});
@@ -286,100 +288,92 @@ export default function DailyHistoryPage() {
                 </CardContent>
             </Card>
 
-            <div className="flex-1 min-h-0 relative">
-                <Card className="h-full flex flex-col overflow-hidden shadow-none border-muted/60">
-                    <CardContent className="p-0 h-full flex flex-col">
-                        <ScrollArea className="flex-1">
-                            <div className="min-w-full inline-block align-middle">
-                                <Table className="border-separate border-spacing-0 text-[11px]">
-                                    <TableHeader className="sticky top-0 bg-background z-40 shadow-sm">
-                                        <TableRow className="hover:bg-transparent">
-                                            <TableHead className="w-[180px] bg-background border-r border-b sticky left-0 top-0 z-50 font-bold text-foreground">Produto</TableHead>
-                                            {periods.map(period => (
-                                                <TableHead key={period.toISOString()} colSpan={4} className="text-center border-r border-b bg-muted/40 font-bold text-foreground py-1 sticky top-0 z-40">
-                                                    {granularity === 'day' ? format(period, "dd/MM (EEE)", {locale: ptBR}) : 
-                                                     granularity === 'week' ? `Semana ${format(period, "ww")}` : 
-                                                     format(period, "MMMM/yyyy", {locale: ptBR})}
-                                                </TableHead>
-                                            ))}
-                                        </TableRow>
-                                        <TableRow className="hover:bg-transparent">
-                                            <TableHead className="w-[180px] bg-background border-r border-b sticky left-0 top-[29px] z-50"></TableHead>
-                                            {periods.map(period => (
-                                                <React.Fragment key={`sub-${period.toISOString()}`}>
-                                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-muted/20 sticky top-[29px] z-40">Início</TableHead>
-                                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-green-50/50 text-green-700 sticky top-[29px] z-40">Ent</TableHead>
-                                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-red-50/50 text-red-700 sticky top-[29px] z-40">Saí</TableHead>
-                                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-blue-50/50 font-bold text-blue-800 sticky top-[29px] z-40">Final</TableHead>
-                                                </React.Fragment>
-                                            ))}
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {loading ? (
-                                            Array.from({ length: 15 }).map((_, i) => (
-                                                <TableRow key={i}>
-                                                    <TableCell className="sticky left-0 bg-background border-r border-b z-30"><Skeleton className="h-3 w-24" /></TableCell>
-                                                    {periods.map(p => (
-                                                        <React.Fragment key={p.toISOString()}>
-                                                            <TableCell className="border-r border-b"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
-                                                            <TableCell className="border-r border-b"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
-                                                            <TableCell className="border-r border-b"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
-                                                            <TableCell className="border-r border-b"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
-                                                        </React.Fragment>
-                                                    ))}
-                                                </TableRow>
-                                            ))
-                                        ) : pivotData.map(prod => (
-                                            <TableRow key={prod.id} className="hover:bg-muted/30 group">
-                                                <TableCell className="font-medium sticky left-0 bg-background border-r border-b z-10 truncate max-w-[180px] group-hover:bg-muted/30" title={prod.name}>
-                                                    {prod.name}
-                                                </TableCell>
-                                                {periods.map(period => {
-                                                    const key = (granularity === 'day' ? startOfDay(period) : 
-                                                                granularity === 'week' ? startOfWeek(period, { locale: ptBR }) : 
-                                                                startOfMonth(period)).toISOString();
-                                                    const pData = prod.periods[key];
-                                                    return (
-                                                        <React.Fragment key={`${prod.id}-${key}`}>
-                                                            <TableCell className="text-center border-r border-b px-1 text-muted-foreground bg-white/50">{pData?.initial ?? 0}</TableCell>
-                                                            <TableCell 
-                                                                className={cn("text-center border-r border-b px-1 font-medium cursor-pointer transition-colors", pData?.entries > 0 ? "text-green-600 hover:bg-green-100" : "text-muted-foreground/30")}
-                                                                onClick={() => {
-                                                                    if (pData?.details.some(e => e.quantity > 0)) {
-                                                                        const entries = pData.details.filter(e => e.quantity > 0);
-                                                                        setViewDetails({productName: prod.name, details: entries});
-                                                                        if (entries.length === 1) startEditing(entries[0]);
-                                                                    }
-                                                                }}
-                                                            >
-                                                                {pData?.entries > 0 ? `+${pData.entries}` : '0'}
-                                                            </TableCell>
-                                                            <TableCell 
-                                                                className={cn("text-center border-r border-b px-1 font-medium cursor-pointer transition-colors", pData?.exits > 0 ? "text-red-600 hover:bg-red-100" : "text-muted-foreground/30")}
-                                                                onClick={() => {
-                                                                    if (pData?.details.some(e => e.quantity < 0)) {
-                                                                        const exits = pData.details.filter(e => e.quantity < 0);
-                                                                        setViewDetails({productName: prod.name, details: exits});
-                                                                        if (exits.length === 1) startEditing(exits[0]);
-                                                                    }
-                                                                }}
-                                                            >
-                                                                {pData?.exits > 0 ? `-${pData.exits}` : '0'}
-                                                            </TableCell>
-                                                            <TableCell className="text-center border-r border-b px-1 font-bold text-blue-700 bg-blue-50/20">{pData?.final ?? 0}</TableCell>
-                                                        </React.Fragment>
-                                                    );
-                                                })}
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </div>
-                            <ScrollBar orientation="horizontal" />
-                        </ScrollArea>
-                    </CardContent>
-                </Card>
+            {/* Container de Tabela com Rolagem Nativa */}
+            <div className="flex-1 min-h-0 relative border rounded-md bg-card overflow-auto custom-scrollbar">
+                <Table className="border-separate border-spacing-0 text-[11px]">
+                    <TableHeader className="sticky top-0 bg-background z-20">
+                        <TableRow className="hover:bg-transparent">
+                            <TableHead className="w-[180px] bg-background border-r border-b sticky left-0 top-0 z-30 font-bold text-foreground">Produto</TableHead>
+                            {periods.map(period => (
+                                <TableHead key={period.toISOString()} colSpan={4} className="text-center border-r border-b bg-muted/40 font-bold text-foreground py-1 shadow-[inset_0_-1px_0_rgba(0,0,0,0.1)]">
+                                    {granularity === 'day' ? format(period, "dd/MM (EEE)", {locale: ptBR}) : 
+                                        granularity === 'week' ? `Semana ${format(period, "ww")}` : 
+                                        format(period, "MMMM/yyyy", {locale: ptBR})}
+                                </TableHead>
+                            ))}
+                        </TableRow>
+                        <TableRow className="hover:bg-transparent">
+                            <TableHead className="w-[180px] bg-background border-r border-b sticky left-0 top-[29px] z-30"></TableHead>
+                            {periods.map(period => (
+                                <React.Fragment key={`sub-${period.toISOString()}`}>
+                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-muted/20 sticky top-[29px] z-20">Início</TableHead>
+                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-green-50/50 text-green-700 sticky top-[29px] z-20">Ent</TableHead>
+                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-red-50/50 text-red-700 sticky top-[29px] z-20">Saí</TableHead>
+                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-blue-50/50 font-bold text-blue-800 sticky top-[29px] z-20">Final</TableHead>
+                                </React.Fragment>
+                            ))}
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {loading ? (
+                            Array.from({ length: 15 }).map((_, i) => (
+                                <TableRow key={i}>
+                                    <TableCell className="sticky left-0 bg-background border-r border-b z-10"><Skeleton className="h-3 w-24" /></TableCell>
+                                    {periods.map(p => (
+                                        <React.Fragment key={p.toISOString()}>
+                                            <TableCell className="border-r border-b"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
+                                            <TableCell className="border-r border-b"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
+                                            <TableCell className="border-r border-b"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
+                                            <TableCell className="border-r border-b"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
+                                        </React.Fragment>
+                                    ))}
+                                </TableRow>
+                            ))
+                        ) : pivotData.map(prod => (
+                            <TableRow key={prod.id} className="hover:bg-muted/30 group">
+                                <TableCell className="font-medium sticky left-0 bg-background border-r border-b z-10 truncate max-w-[180px] group-hover:bg-muted/40 transition-colors" title={prod.name}>
+                                    {prod.name}
+                                </TableCell>
+                                {periods.map(period => {
+                                    const key = (granularity === 'day' ? startOfDay(period) : 
+                                                granularity === 'week' ? startOfWeek(period, { locale: ptBR }) : 
+                                                startOfMonth(period)).toISOString();
+                                    const pData = prod.periods[key];
+                                    return (
+                                        <React.Fragment key={`${prod.id}-${key}`}>
+                                            <TableCell className="text-center border-r border-b px-1 text-muted-foreground bg-white/50">{pData?.initial ?? 0}</TableCell>
+                                            <TableCell 
+                                                className={cn("text-center border-r border-b px-1 font-medium cursor-pointer transition-colors", pData?.entries > 0 ? "text-green-600 hover:bg-green-100" : "text-muted-foreground/30")}
+                                                onClick={() => {
+                                                    if (pData?.details.some(e => e.quantity > 0)) {
+                                                        const entries = pData.details.filter(e => e.quantity > 0);
+                                                        setViewDetails({productName: prod.name, details: entries});
+                                                        if (entries.length === 1) startEditing(entries[0]);
+                                                    }
+                                                }}
+                                            >
+                                                {pData?.entries > 0 ? `+${pData.entries}` : '0'}
+                                            </TableCell>
+                                            <TableCell 
+                                                className={cn("text-center border-r border-b px-1 font-medium cursor-pointer transition-colors", pData?.exits > 0 ? "text-red-600 hover:bg-red-100" : "text-muted-foreground/30")}
+                                                onClick={() => {
+                                                    if (pData?.details.some(e => e.quantity < 0)) {
+                                                        const exits = pData.details.filter(e => e.quantity < 0);
+                                                        setViewDetails({productName: prod.name, details: exits});
+                                                        if (exits.length === 1) startEditing(exits[0]);
+                                                    }
+                                                }}
+                                            >
+                                                {pData?.exits > 0 ? `-${pData.exits}` : '0'}
+                                            </TableCell>
+                                            <TableCell className="text-center border-r border-b px-1 font-bold text-blue-700 bg-blue-50/20">{pData?.final ?? 0}</TableCell>
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
             </div>
 
             {/* Painel de Edição Direta (Popover) */}
@@ -389,7 +383,7 @@ export default function DailyHistoryPage() {
                     setRowEditingId(null);
                 }
             }}>
-                <PopoverContent className="w-[500px] p-0 shadow-2xl border-muted overflow-hidden" align="center">
+                <PopoverContent className="w-[500px] p-0 shadow-2xl border-muted overflow-hidden z-[100]" align="center">
                     <div className="bg-muted/50 p-3 border-b flex justify-between items-center">
                         <div className="flex flex-col">
                             <span className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Ajuste de Lançamentos</span>
@@ -468,15 +462,25 @@ export default function DailyHistoryPage() {
                             </TableBody>
                         </Table>
                     </div>
-                    {viewDetails?.details.length === 0 && (
-                        <div className="p-8 text-center text-muted-foreground text-sm">
-                            Nenhum lançamento encontrado.
-                        </div>
-                    )}
                 </PopoverContent>
             </Popover>
 
             <style jsx global>{`
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 6px;
+                    height: 6px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: rgba(0,0,0,0.1);
+                    border-radius: 10px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                    background: rgba(0,0,0,0.2);
+                }
+                
                 @media print {
                     @page { size: landscape; margin: 5mm; }
                     body * { visibility: hidden; }

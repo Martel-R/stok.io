@@ -174,8 +174,7 @@ export default function DailyHistoryPage() {
         const periodTotals: Record<string, {initial: number, entries: number, exits: number, final: number}> = {};
         
         periods.forEach(period => {
-            const key = (granularity === 'day' ? startOfDay(period) : startOfWeek(period, { locale: ptBR }) : startOfMonth(period)).toISOString();
-            periodTotals[key] = { initial: 0, entries: 0, exits: 0, final: 0 };
+            const key = (granularity === 'day' ? startOfDay(period) : granularity === 'week' ? startOfWeek(period, { locale: ptBR }) : startOfMonth(period)).toISOString();            periodTotals[key] = { initial: 0, entries: 0, exits: 0, final: 0 };
         });
 
         pivotData.forEach(prod => {
@@ -428,8 +427,7 @@ export default function DailyHistoryPage() {
                         <TableRow>
                             <TableCell className="sticky left-0 bg-muted border-r border-b z-30 font-black uppercase text-[10px] py-2">Totais Consolidados</TableCell>
                             {periods.map(period => {
-                                const key = (granularity === 'day' ? startOfDay(period) : startOfWeek(period, { locale: ptBR }) : startOfMonth(period)).toISOString();
-                                const t = totals[key];
+                                const key = (granularity === 'day' ? startOfDay(period) : granularity === 'week' ? startOfWeek(period, { locale: ptBR }) : startOfMonth(period)).toISOString();                                const t = totals[key];
                                 return (
                                     <React.Fragment key={`total-${key}`}>
                                         <TableCell className="text-center border-r border-b px-1 bg-muted/50">{t?.initial || 0}</TableCell>

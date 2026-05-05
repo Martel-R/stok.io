@@ -1,7 +1,7 @@
 
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, query, where, Timestamp, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, Timestamp, orderBy, deleteDoc, doc, updateDoc, addDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Product, StockEntry, StockEntryType } from '@/lib/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -11,7 +11,7 @@ import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { format, startOfDay, endOfDay, parseISO, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Search, Printer, Trash2, Edit2, Check, X, Loader2, Calendar as CalendarIcon, List, Save } from 'lucide-react';
+import { ArrowLeft, Search, Printer, Trash2, Edit2, Check, X, Loader2, Calendar as CalendarIcon, List, Save, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { DateRange } from 'react-day-picker';
@@ -21,13 +21,12 @@ import { cn } from '@/lib/utils';
 import { ptBR } from 'date-fns/locale';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollBar } from '@/components/ui/scroll-area';
 
 const convertDate = (dateField: any): Date => {
     if (dateField instanceof Timestamp) return dateField.toDate();
     if (dateField && typeof (dateField as any).seconds === 'number') return new Date((dateField as any).seconds * 1000);
     if (typeof dateField === 'string') return parseISO(dateField);
-    return new Date(); // Fallback
+    return new Date();
 };
 
 type Granularity = 'day' | 'week' | 'month';
@@ -38,11 +37,14 @@ interface PeriodData {
     exits: number;
     final: number;
     details: StockEntry[];
+    periodStart: Date;
+    periodEnd: Date;
 }
 
 interface ProductPivot {
     id: string;
     name: string;
+    category?: string;
     periods: Record<string, PeriodData>;
 }
 
@@ -57,12 +59,11 @@ export default function DailyHistoryPage() {
     const [granularity, setGranularity] = useState<Granularity>('day');
     const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
         const to = new Date();
-        const from = subDays(to, 6); // Últimos 7 dias por padrão
+        const from = subDays(to, 6);
         return { from, to };
     });
     
-    // Estados para o Modal de Detalhes/Edição
-    const [viewDetails, setViewDetails] = useState<{productName: string, details: StockEntry[]} | null>(null);
+    const [viewDetails, setViewDetails] = useState<{product: ProductPivot, details: StockEntry[], periodStart: Date} | null>(null);
     const [rowEditingId, setRowEditingId] = useState<string | null>(null);
     const [editValue, setEditValue] = useState<number>(0);
     const [editNotes, setEditNotes] = useState("");
@@ -145,7 +146,6 @@ export default function DailyHistoryPage() {
                 
                 const key = periodStart.toISOString();
 
-                // O Estoque Inicial é a soma de TUDO antes desse período
                 const initialStock = productEntries
                     .filter(e => e.date < periodStart)
                     .reduce((sum, e) => sum + e.quantity, 0);
@@ -159,11 +159,13 @@ export default function DailyHistoryPage() {
                     entries: inQty,
                     exits: outQty,
                     final: initialStock + inQty - outQty,
-                    details: periodEntries
+                    details: periodEntries,
+                    periodStart,
+                    periodEnd
                 };
             });
 
-            return { id: product.id, name: product.name, periods: periodMap };
+            return { id: product.id, name: product.name, category: product.category, periods: periodMap };
         }).sort((a,b) => a.name.localeCompare(b.name));
     }, [products, allStockEntries, periods, granularity, searchQuery, selectedCategory, loading]);
 
@@ -174,28 +176,57 @@ export default function DailyHistoryPage() {
                 quantity: editValue,
                 notes: editNotes,
                 updatedAt: new Date(),
-                updatedBy: user?.id
+                updatedBy: user?.id || user?.uid
             });
-            toast({ title: "Movimentação atualizada" });
+            toast({ title: "Lançamento corrigido!" });
             setRowEditingId(null);
-            // Atualizar os detalhes visualizados
             if (viewDetails) {
                 const updated = viewDetails.details.map(d => d.id === id ? {...d, quantity: editValue, notes: editNotes} : d);
                 setViewDetails({...viewDetails, details: updated});
             }
         } catch (error) {
             console.error(error);
-            toast({ title: "Erro ao atualizar", variant: "destructive" });
+            toast({ title: "Erro ao salvar", variant: "destructive" });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleAddNewEntry = async () => {
+        if (!viewDetails || !currentBranch || !user) return;
+        setIsSaving(true);
+        try {
+            const newEntry = {
+                productId: viewDetails.product.id,
+                productName: viewDetails.product.name,
+                branchId: currentBranch.id,
+                organizationId: user.organizationId,
+                date: viewDetails.periodStart,
+                quantity: editValue || 1,
+                type: (editValue || 1) > 0 ? 'entry' : 'adjustment',
+                notes: editNotes || "Ajuste manual",
+                userId: user.id || user.uid,
+                userName: user.name,
+                createdAt: new Date()
+            };
+            await addDoc(collection(db, 'stockEntries'), newEntry);
+            toast({ title: "Novo lançamento adicionado!" });
+            setRowEditingId(null);
+            setEditValue(0);
+            setEditNotes("");
+        } catch (error) {
+            console.error(error);
+            toast({ title: "Erro ao adicionar", variant: "destructive" });
         } finally {
             setIsSaving(false);
         }
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Excluir esta movimentação?")) return;
+        if (!confirm("Excluir definitivamente este lançamento?")) return;
         try {
             await deleteDoc(doc(db, 'stockEntries', id));
-            toast({ title: "Movimentação excluída" });
+            toast({ title: "Lançamento removido" });
             if (viewDetails) {
                 const updated = viewDetails.details.filter(d => d.id !== id);
                 setViewDetails({...viewDetails, details: updated});
@@ -214,6 +245,7 @@ export default function DailyHistoryPage() {
 
     return (
         <div className="space-y-4 flex flex-col h-[calc(100vh-120px)]">
+            {/* Cabeçalho de Ações */}
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 no-print shrink-0">
                 <div className="flex items-center gap-2">
                     <Button variant="ghost" size="icon" onClick={() => router.back()}>
@@ -235,6 +267,7 @@ export default function DailyHistoryPage() {
                 </div>
             </div>
 
+            {/* Filtros */}
             <Card className="no-print shrink-0 shadow-sm border-muted/60">
                 <CardContent className="p-3">
                     <div className="flex flex-col sm:flex-row gap-3">
@@ -242,25 +275,21 @@ export default function DailyHistoryPage() {
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
                                 type="search"
-                                placeholder="Filtrar por nome do produto..."
+                                placeholder="Buscar produto..."
                                 className="w-full pl-8 h-9 text-sm"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
                         </div>
 
-                        <div className="w-full sm:w-[200px]">
-                            <select 
-                                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                value={selectedCategory}
-                                onChange={(e) => setSelectedCategory(e.target.value)}
-                            >
-                                <option value="all">Todas as Categorias</option>
-                                {categories.map(cat => (
-                                    <option key={cat} value={cat}>{cat}</option>
-                                ))}
-                            </select>
-                        </div>
+                        <select 
+                            className="flex h-9 w-full sm:w-[200px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            value={selectedCategory}
+                            onChange={(e) => setSelectedCategory(e.target.value)}
+                        >
+                            <option value="all">Todas Categorias</option>
+                            {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                        </select>
 
                         <Popover>
                             <PopoverTrigger asChild>
@@ -274,31 +303,24 @@ export default function DailyHistoryPage() {
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="end">
-                                <Calendar
-                                    initialFocus
-                                    mode="range"
-                                    selected={dateRange}
-                                    onSelect={setDateRange}
-                                    numberOfMonths={2}
-                                    locale={ptBR}
-                                />
+                                <Calendar initialFocus mode="range" selected={dateRange} onSelect={setDateRange} numberOfMonths={2} locale={ptBR} />
                             </PopoverContent>
                         </Popover>
                     </div>
                 </CardContent>
             </Card>
 
-            {/* Container de Tabela com Rolagem Nativa */}
+            {/* Planilha */}
             <div className="flex-1 min-h-0 relative border rounded-md bg-card overflow-auto custom-scrollbar">
                 <Table className="border-separate border-spacing-0 text-[11px]">
                     <TableHeader className="sticky top-0 bg-background z-20">
                         <TableRow className="hover:bg-transparent">
                             <TableHead className="w-[180px] bg-background border-r border-b sticky left-0 top-0 z-30 font-bold text-foreground">Produto</TableHead>
                             {periods.map(period => (
-                                <TableHead key={period.toISOString()} colSpan={4} className="text-center border-r border-b bg-muted/40 font-bold text-foreground py-1 shadow-[inset_0_-1px_0_rgba(0,0,0,0.1)]">
+                                <TableHead key={period.toISOString()} colSpan={4} className="text-center border-r border-b bg-muted/40 font-bold text-foreground py-1">
                                     {granularity === 'day' ? format(period, "dd/MM (EEE)", {locale: ptBR}) : 
-                                        granularity === 'week' ? `Semana ${format(period, "ww")}` : 
-                                        format(period, "MMMM/yyyy", {locale: ptBR})}
+                                        granularity === 'week' ? `Sem. ${format(period, "ww")}` : 
+                                        format(period, "MMM/yy", {locale: ptBR})}
                                 </TableHead>
                             ))}
                         </TableRow>
@@ -306,10 +328,10 @@ export default function DailyHistoryPage() {
                             <TableHead className="w-[180px] bg-background border-r border-b sticky left-0 top-[29px] z-30"></TableHead>
                             {periods.map(period => (
                                 <React.Fragment key={`sub-${period.toISOString()}`}>
-                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-muted/20 sticky top-[29px] z-20">Início</TableHead>
-                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-green-50/50 text-green-700 sticky top-[29px] z-20">Ent</TableHead>
-                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-red-50/50 text-red-700 sticky top-[29px] z-20">Saí</TableHead>
-                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-blue-50/50 font-bold text-blue-800 sticky top-[29px] z-20">Final</TableHead>
+                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-muted/20 sticky top-[29px] z-10">Início</TableHead>
+                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-green-50/50 text-green-700 sticky top-[29px] z-10">Ent</TableHead>
+                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-red-50/50 text-red-700 sticky top-[29px] z-10">Saí</TableHead>
+                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-blue-50/50 font-bold text-blue-800 sticky top-[29px] z-10">Final</TableHead>
                                 </React.Fragment>
                             ))}
                         </TableRow>
@@ -321,10 +343,7 @@ export default function DailyHistoryPage() {
                                     <TableCell className="sticky left-0 bg-background border-r border-b z-10"><Skeleton className="h-3 w-24" /></TableCell>
                                     {periods.map(p => (
                                         <React.Fragment key={p.toISOString()}>
-                                            <TableCell className="border-r border-b"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
-                                            <TableCell className="border-r border-b"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
-                                            <TableCell className="border-r border-b"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
-                                            <TableCell className="border-r border-b"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
+                                            <TableCell className="border-r border-b" colSpan={4}><Skeleton className="h-3 w-24 mx-auto" /></TableCell>
                                         </React.Fragment>
                                     ))}
                                 </TableRow>
@@ -335,33 +354,29 @@ export default function DailyHistoryPage() {
                                     {prod.name}
                                 </TableCell>
                                 {periods.map(period => {
-                                    const key = (granularity === 'day' ? startOfDay(period) : 
-                                                granularity === 'week' ? startOfWeek(period, { locale: ptBR }) : 
-                                                startOfMonth(period)).toISOString();
+                                    const key = (granularity === 'day' ? startOfDay(period) : granularity === 'week' ? startOfWeek(period, { locale: ptBR }) : startOfMonth(period)).toISOString();
                                     const pData = prod.periods[key];
                                     return (
                                         <React.Fragment key={`${prod.id}-${key}`}>
                                             <TableCell className="text-center border-r border-b px-1 text-muted-foreground bg-white/50">{pData?.initial ?? 0}</TableCell>
                                             <TableCell 
-                                                className={cn("text-center border-r border-b px-1 font-medium cursor-pointer transition-colors", pData?.entries > 0 ? "text-green-600 hover:bg-green-100" : "text-muted-foreground/30")}
+                                                className={cn("text-center border-r border-b px-1 font-bold cursor-pointer transition-all hover:scale-110", pData?.entries > 0 ? "text-green-600 bg-green-50" : "text-muted-foreground/20 hover:bg-muted/10")}
                                                 onClick={() => {
-                                                    if (pData?.details.some(e => e.quantity > 0)) {
-                                                        const entries = pData.details.filter(e => e.quantity > 0);
-                                                        setViewDetails({productName: prod.name, details: entries});
-                                                        if (entries.length === 1) startEditing(entries[0]);
-                                                    }
+                                                    const entries = pData?.details.filter(e => e.quantity > 0) || [];
+                                                    setViewDetails({product: prod, details: entries, periodStart: pData.periodStart});
+                                                    if (entries.length === 1) startEditing(entries[0]);
+                                                    else if (entries.length === 0) { setRowEditingId('new'); setEditValue(0); setEditNotes(""); }
                                                 }}
                                             >
                                                 {pData?.entries > 0 ? `+${pData.entries}` : '0'}
                                             </TableCell>
                                             <TableCell 
-                                                className={cn("text-center border-r border-b px-1 font-medium cursor-pointer transition-colors", pData?.exits > 0 ? "text-red-600 hover:bg-red-100" : "text-muted-foreground/30")}
+                                                className={cn("text-center border-r border-b px-1 font-bold cursor-pointer transition-all hover:scale-110", pData?.exits > 0 ? "text-red-600 bg-red-50" : "text-muted-foreground/20 hover:bg-muted/10")}
                                                 onClick={() => {
-                                                    if (pData?.details.some(e => e.quantity < 0)) {
-                                                        const exits = pData.details.filter(e => e.quantity < 0);
-                                                        setViewDetails({productName: prod.name, details: exits});
-                                                        if (exits.length === 1) startEditing(exits[0]);
-                                                    }
+                                                    const exits = pData?.details.filter(e => e.quantity < 0) || [];
+                                                    setViewDetails({product: prod, details: exits, periodStart: pData.periodStart});
+                                                    if (exits.length === 1) startEditing(exits[0]);
+                                                    else if (exits.length === 0) { setRowEditingId('new'); setEditValue(0); setEditNotes(""); }
                                                 }}
                                             >
                                                 {pData?.exits > 0 ? `-${pData.exits}` : '0'}
@@ -376,20 +391,20 @@ export default function DailyHistoryPage() {
                 </Table>
             </div>
 
-            {/* Painel de Edição Direta (Popover) */}
-            <Popover open={!!viewDetails} onOpenChange={(open) => {
-                if (!open) {
-                    setViewDetails(null);
-                    setRowEditingId(null);
-                }
-            }}>
+            {/* Painel de Edição Direta */}
+            <Popover open={!!viewDetails} onOpenChange={(open) => { if (!open) { setViewDetails(null); setRowEditingId(null); } }}>
                 <PopoverContent className="w-[500px] p-0 shadow-2xl border-muted overflow-hidden z-[100]" align="center">
                     <div className="bg-muted/50 p-3 border-b flex justify-between items-center">
                         <div className="flex flex-col">
                             <span className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Ajuste de Lançamentos</span>
-                            <span className="text-sm font-bold truncate max-w-[350px]">{viewDetails?.productName}</span>
+                            <span className="text-sm font-bold truncate max-w-[300px]">{viewDetails?.product.name}</span>
                         </div>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setViewDetails(null)}><X className="h-4 w-4"/></Button>
+                        <div className="flex gap-2">
+                            <Button variant="outline" size="sm" className="h-8 text-[10px]" onClick={() => { setRowEditingId('new'); setEditValue(0); setEditNotes(""); }}>
+                                <Plus className="h-3 w-3 mr-1"/> NOVO
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setViewDetails(null)}><X className="h-4 w-4"/></Button>
+                        </div>
                     </div>
                     <div className="max-h-[350px] overflow-y-auto">
                         <Table className="text-xs">
@@ -397,64 +412,54 @@ export default function DailyHistoryPage() {
                                 <TableRow>
                                     <TableHead className="w-24">Data/Hora</TableHead>
                                     <TableHead className="w-20 text-right">Qtd</TableHead>
-                                    <TableHead>Observação / Motivo</TableHead>
-                                    <TableHead className="w-20 text-right">Ações</TableHead>
+                                    <TableHead>Observação</TableHead>
+                                    <TableHead className="w-20 text-right">Ação</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {viewDetails?.details.map(entry => (
-                                    <TableRow key={entry.id} className={cn("transition-colors", rowEditingId === entry.id ? "bg-primary/5" : "hover:bg-muted/10")}>
-                                        <TableCell className="whitespace-nowrap font-mono text-[10px] text-muted-foreground">
-                                            {format(entry.date, "dd/MM HH:mm")}
+                                {rowEditingId === 'new' && (
+                                    <TableRow className="bg-primary/5">
+                                        <TableCell className="text-[10px] font-bold text-primary">NOVO LANÇAMENTO</TableCell>
+                                        <TableCell className="p-1">
+                                            <Input type="number" className="h-7 text-right px-1 font-bold" value={editValue} onChange={e => setEditValue(Number(e.target.value))} autoFocus />
+                                        </TableCell>
+                                        <TableCell className="p-1">
+                                            <Input className="h-7 text-[11px]" value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Motivo..." />
                                         </TableCell>
                                         <TableCell className="text-right p-1">
+                                            <Button size="sm" className="h-7 px-2" onClick={handleAddNewEntry} disabled={isSaving}>
+                                                {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3 mr-1" />} Gravar
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                                {viewDetails?.details.map(entry => (
+                                    <TableRow key={entry.id} className={cn("transition-colors", rowEditingId === entry.id ? "bg-primary/5" : "hover:bg-muted/10")}>
+                                        <TableCell className="whitespace-nowrap font-mono text-[10px] text-muted-foreground">{format(entry.date, "dd/MM HH:mm")}</TableCell>
+                                        <TableCell className="text-right p-1">
                                             {rowEditingId === entry.id ? (
-                                                <Input 
-                                                    type="number" 
-                                                    className="h-7 text-right px-1 font-bold" 
-                                                    value={editValue} 
-                                                    onChange={e => setEditValue(Number(e.target.value))}
-                                                    autoFocus
-                                                />
+                                                <Input type="number" className="h-7 text-right px-1 font-bold" value={editValue} onChange={e => setEditValue(Number(e.target.value))} autoFocus />
                                             ) : (
-                                                <span className={cn("font-bold px-2", entry.quantity > 0 ? "text-green-600" : "text-red-600")}>
-                                                    {entry.quantity > 0 ? `+${entry.quantity}` : entry.quantity}
-                                                </span>
+                                                <span className={cn("font-bold px-2", entry.quantity > 0 ? "text-green-600" : "text-red-600")}>{entry.quantity > 0 ? `+${entry.quantity}` : entry.quantity}</span>
                                             )}
                                         </TableCell>
                                         <TableCell className="p-1">
                                             {rowEditingId === entry.id ? (
-                                                <Input 
-                                                    className="h-7 text-[11px]" 
-                                                    value={editNotes} 
-                                                    onChange={e => setEditNotes(e.target.value)}
-                                                    placeholder="Descreva o ajuste..."
-                                                />
+                                                <Input className="h-7 text-[11px]" value={editNotes} onChange={e => setEditNotes(e.target.value)} />
                                             ) : (
-                                                <span className="text-muted-foreground line-clamp-1 italic px-2">{entry.notes || '-'}</span>
+                                                <span className="text-muted-foreground italic px-2">{entry.notes || '-'}</span>
                                             )}
                                         </TableCell>
                                         <TableCell className="text-right p-1">
                                             <div className="flex justify-end gap-1">
                                                 {rowEditingId === entry.id ? (
-                                                    <>
-                                                        <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600" onClick={() => handleSaveRowEdit(entry.id)} disabled={isSaving}>
-                                                            {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                                                        </Button>
-                                                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-600" onClick={() => setRowEditingId(null)}>
-                                                            <X className="h-3 w-3" />
-                                                        </Button>
-                                                    </>
+                                                    <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600" onClick={() => handleSaveRowEdit(entry.id)} disabled={isSaving}>
+                                                        {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                                                    </Button>
                                                 ) : (
-                                                    <>
-                                                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startEditing(entry)}>
-                                                            <Edit2 className="h-3 w-3" />
-                                                        </Button>
-                                                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDelete(entry.id)}>
-                                                            <Trash2 className="h-3 w-3" />
-                                                        </Button>
-                                                    </>
+                                                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startEditing(entry)}><Edit2 className="h-3 w-3" /></Button>
                                                 )}
+                                                <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDelete(entry.id)}><Trash2 className="h-3 w-3" /></Button>
                                             </div>
                                         </TableCell>
                                     </TableRow>
@@ -466,21 +471,9 @@ export default function DailyHistoryPage() {
             </Popover>
 
             <style jsx global>{`
-                .custom-scrollbar::-webkit-scrollbar {
-                    width: 6px;
-                    height: 6px;
-                }
-                .custom-scrollbar::-webkit-scrollbar-track {
-                    background: transparent;
-                }
-                .custom-scrollbar::-webkit-scrollbar-thumb {
-                    background: rgba(0,0,0,0.1);
-                    border-radius: 10px;
-                }
-                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-                    background: rgba(0,0,0,0.2);
-                }
-                
+                .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
                 @media print {
                     @page { size: landscape; margin: 5mm; }
                     body * { visibility: hidden; }
@@ -489,7 +482,6 @@ export default function DailyHistoryPage() {
                     .no-print { display: none !important; }
                     .table { font-size: 8px !important; }
                     th, td { padding: 2px !important; border: 0.1pt solid #ccc !important; }
-                    .card { border: none !important; box-shadow: none !important; }
                 }
             `}</style>
         </div>

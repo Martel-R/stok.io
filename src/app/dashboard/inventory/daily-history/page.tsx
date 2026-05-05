@@ -11,7 +11,7 @@ import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { format, startOfDay, endOfDay, parseISO, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Search, Printer, Trash2, Edit2, Check, X, Loader2, Calendar as CalendarIcon, List } from 'lucide-react';
+import { ArrowLeft, Search, Printer, Trash2, Edit2, Check, X, Loader2, Calendar as CalendarIcon, List, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { DateRange } from 'react-day-picker';
@@ -53,6 +53,7 @@ export default function DailyHistoryPage() {
     const { user, currentBranch, authLoading } = useAuth();
     const { toast } = useToast();
     const [searchQuery, setSearchQuery] = useState("");
+    const [selectedCategory, setSelectedCategory] = useState<string>("all");
     const [granularity, setGranularity] = useState<Granularity>('day');
     const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
         const to = new Date();
@@ -60,9 +61,9 @@ export default function DailyHistoryPage() {
         return { from, to };
     });
     
-    // Estados para o Modal de Detalhes/Edição
+    // Estado para o painel de edição
     const [viewDetails, setViewDetails] = useState<{productName: string, details: StockEntry[]} | null>(null);
-    const [editingEntry, setEditingEntry] = useState<StockEntry | null>(null);
+    const [rowEditingId, setRowEditingId] = useState<string | null>(null);
     const [editValue, setEditValue] = useState<number>(0);
     const [editNotes, setEditNotes] = useState("");
     const [isSaving, setIsSaving] = useState(false);
@@ -103,6 +104,11 @@ export default function DailyHistoryPage() {
         };
     }, [currentBranch, authLoading, user?.organizationId]);
 
+    const categories = useMemo(() => {
+        const cats = new Set(products.map(p => p.category).filter(Boolean));
+        return Array.from(cats).sort();
+    }, [products]);
+
     const periods = useMemo(() => {
         if (!dateRange?.from || !dateRange?.to) return [];
         const start = startOfDay(dateRange.from);
@@ -119,9 +125,11 @@ export default function DailyHistoryPage() {
     const pivotData = useMemo(() => {
         if (loading || !products.length) return [];
 
-        const filteredProducts = products.filter(p => 
-            p.name.toLowerCase().includes(searchQuery.toLowerCase())
-        );
+        const filteredProducts = products.filter(p => {
+            const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+            const matchesCategory = selectedCategory === "all" || p.category === selectedCategory;
+            return matchesSearch && matchesCategory;
+        });
 
         return filteredProducts.map(product => {
             const productEntries = allStockEntries.filter(e => e.productId === product.id);
@@ -137,7 +145,6 @@ export default function DailyHistoryPage() {
                 
                 const key = periodStart.toISOString();
 
-                // O Estoque Inicial é a soma de TUDO antes desse período
                 const initialStock = productEntries
                     .filter(e => e.date < periodStart)
                     .reduce((sum, e) => sum + e.quantity, 0);
@@ -157,39 +164,36 @@ export default function DailyHistoryPage() {
 
             return { id: product.id, name: product.name, periods: periodMap };
         }).sort((a,b) => a.name.localeCompare(b.name));
-    }, [products, allStockEntries, periods, granularity, searchQuery, loading]);
+    }, [products, allStockEntries, periods, granularity, searchQuery, selectedCategory, loading]);
 
-    const handleSaveEdit = async () => {
-        if (!editingEntry) return;
+    const handleSaveRowEdit = async (id: string) => {
         setIsSaving(true);
         try {
-            await updateDoc(doc(db, 'stockEntries', editingEntry.id), {
+            await updateDoc(doc(db, 'stockEntries', id), {
                 quantity: editValue,
                 notes: editNotes,
                 updatedAt: new Date(),
                 updatedBy: user?.id
             });
-            toast({ title: "Movimentação atualizada" });
-            setEditingEntry(null);
-            // Atualizar os detalhes visualizados
+            toast({ title: "Lançamento corrigido!" });
+            setRowEditingId(null);
             if (viewDetails) {
-                const updated = viewDetails.details.map(d => d.id === editingEntry.id ? {...d, quantity: editValue, notes: editNotes} : d);
+                const updated = viewDetails.details.map(d => d.id === id ? {...d, quantity: editValue, notes: editNotes} : d);
                 setViewDetails({...viewDetails, details: updated});
             }
         } catch (error) {
             console.error(error);
-            toast({ title: "Erro ao atualizar", variant: "destructive" });
+            toast({ title: "Erro ao salvar", variant: "destructive" });
         } finally {
             setIsSaving(false);
         }
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Excluir esta movimentação?")) return;
+        if (!confirm("Excluir definitivamente este lançamento?")) return;
         try {
             await deleteDoc(doc(db, 'stockEntries', id));
-            toast({ title: "Movimentação excluída" });
-            setEditingEntry(null);
+            toast({ title: "Lançamento removido" });
             if (viewDetails) {
                 const updated = viewDetails.details.filter(d => d.id !== id);
                 setViewDetails({...viewDetails, details: updated});
@@ -198,6 +202,12 @@ export default function DailyHistoryPage() {
             console.error(error);
             toast({ title: "Erro ao excluir", variant: "destructive" });
         }
+    };
+
+    const startEditing = (entry: StockEntry) => {
+        setRowEditingId(entry.id);
+        setEditValue(entry.quantity);
+        setEditNotes(entry.notes || "");
     };
 
     return (
@@ -236,6 +246,20 @@ export default function DailyHistoryPage() {
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
                         </div>
+
+                        <div className="w-full sm:w-[200px]">
+                            <select 
+                                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                value={selectedCategory}
+                                onChange={(e) => setSelectedCategory(e.target.value)}
+                            >
+                                <option value="all">Todas as Categorias</option>
+                                {categories.map(cat => (
+                                    <option key={cat} value={cat}>{cat}</option>
+                                ))}
+                            </select>
+                        </div>
+
                         <Popover>
                             <PopoverTrigger asChild>
                                 <Button variant="outline" size="sm" className="w-full sm:w-[260px] justify-start text-left font-normal h-9">
@@ -265,14 +289,14 @@ export default function DailyHistoryPage() {
             <div className="flex-1 min-h-0 relative">
                 <Card className="h-full flex flex-col overflow-hidden shadow-none border-muted/60">
                     <CardContent className="p-0 h-full flex flex-col">
-                        <ScrollArea className="flex-1 border rounded-md">
+                        <ScrollArea className="flex-1">
                             <div className="min-w-full inline-block align-middle">
-                                <Table className="border-collapse text-[11px]">
-                                    <TableHeader className="sticky top-0 bg-background z-20 shadow-sm">
+                                <Table className="border-separate border-spacing-0 text-[11px]">
+                                    <TableHeader className="sticky top-0 bg-background z-40 shadow-sm">
                                         <TableRow className="hover:bg-transparent">
-                                            <TableHead className="w-[180px] bg-background border-r sticky left-0 z-30 font-bold text-foreground">Produto</TableHead>
+                                            <TableHead className="w-[180px] bg-background border-r border-b sticky left-0 top-0 z-50 font-bold text-foreground">Produto</TableHead>
                                             {periods.map(period => (
-                                                <TableHead key={period.toISOString()} colSpan={4} className="text-center border-r bg-muted/40 font-bold text-foreground py-1">
+                                                <TableHead key={period.toISOString()} colSpan={4} className="text-center border-r border-b bg-muted/40 font-bold text-foreground py-1 sticky top-0 z-40">
                                                     {granularity === 'day' ? format(period, "dd/MM (EEE)", {locale: ptBR}) : 
                                                      granularity === 'week' ? `Semana ${format(period, "ww")}` : 
                                                      format(period, "MMMM/yyyy", {locale: ptBR})}
@@ -280,13 +304,13 @@ export default function DailyHistoryPage() {
                                             ))}
                                         </TableRow>
                                         <TableRow className="hover:bg-transparent">
-                                            <TableHead className="w-[180px] bg-background border-r sticky left-0 z-30"></TableHead>
+                                            <TableHead className="w-[180px] bg-background border-r border-b sticky left-0 top-[29px] z-50"></TableHead>
                                             {periods.map(period => (
                                                 <React.Fragment key={`sub-${period.toISOString()}`}>
-                                                    <TableHead className="text-[9px] w-12 border-r px-1 text-center bg-muted/20">Início</TableHead>
-                                                    <TableHead className="text-[9px] w-12 border-r px-1 text-center bg-green-50/50 text-green-700">Ent</TableHead>
-                                                    <TableHead className="text-[9px] w-12 border-r px-1 text-center bg-red-50/50 text-red-700">Saí</TableHead>
-                                                    <TableHead className="text-[9px] w-12 border-r px-1 text-center bg-blue-50/50 font-bold text-blue-800">Final</TableHead>
+                                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-muted/20 sticky top-[29px] z-40">Início</TableHead>
+                                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-green-50/50 text-green-700 sticky top-[29px] z-40">Ent</TableHead>
+                                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-red-50/50 text-red-700 sticky top-[29px] z-40">Saí</TableHead>
+                                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-blue-50/50 font-bold text-blue-800 sticky top-[29px] z-40">Final</TableHead>
                                                 </React.Fragment>
                                             ))}
                                         </TableRow>
@@ -295,20 +319,20 @@ export default function DailyHistoryPage() {
                                         {loading ? (
                                             Array.from({ length: 15 }).map((_, i) => (
                                                 <TableRow key={i}>
-                                                    <TableCell className="sticky left-0 bg-background border-r"><Skeleton className="h-3 w-24" /></TableCell>
+                                                    <TableCell className="sticky left-0 bg-background border-r border-b z-30"><Skeleton className="h-3 w-24" /></TableCell>
                                                     {periods.map(p => (
                                                         <React.Fragment key={p.toISOString()}>
-                                                            <TableCell className="border-r"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
-                                                            <TableCell className="border-r"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
-                                                            <TableCell className="border-r"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
-                                                            <TableCell className="border-r"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
+                                                            <TableCell className="border-r border-b"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
+                                                            <TableCell className="border-r border-b"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
+                                                            <TableCell className="border-r border-b"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
+                                                            <TableCell className="border-r border-b"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
                                                         </React.Fragment>
                                                     ))}
                                                 </TableRow>
                                             ))
                                         ) : pivotData.map(prod => (
                                             <TableRow key={prod.id} className="hover:bg-muted/30 group">
-                                                <TableCell className="font-medium sticky left-0 bg-background border-r z-10 truncate max-w-[180px] group-hover:bg-muted/30" title={prod.name}>
+                                                <TableCell className="font-medium sticky left-0 bg-background border-r border-b z-10 truncate max-w-[180px] group-hover:bg-muted/30" title={prod.name}>
                                                     {prod.name}
                                                 </TableCell>
                                                 {periods.map(period => {
@@ -318,20 +342,32 @@ export default function DailyHistoryPage() {
                                                     const pData = prod.periods[key];
                                                     return (
                                                         <React.Fragment key={`${prod.id}-${key}`}>
-                                                            <TableCell className="text-center border-r px-1 text-muted-foreground bg-white/50">{pData?.initial ?? 0}</TableCell>
+                                                            <TableCell className="text-center border-r border-b px-1 text-muted-foreground bg-white/50">{pData?.initial ?? 0}</TableCell>
                                                             <TableCell 
-                                                                className={cn("text-center border-r px-1 font-medium cursor-pointer transition-colors", pData?.entries > 0 ? "text-green-600 hover:bg-green-100" : "text-muted-foreground/30")}
-                                                                onClick={() => pData?.details.some(e => e.quantity > 0) && setViewDetails({productName: prod.name, details: pData.details.filter(e => e.quantity > 0)})}
+                                                                className={cn("text-center border-r border-b px-1 font-medium cursor-pointer transition-colors", pData?.entries > 0 ? "text-green-600 hover:bg-green-100" : "text-muted-foreground/30")}
+                                                                onClick={() => {
+                                                                    if (pData?.details.some(e => e.quantity > 0)) {
+                                                                        const entries = pData.details.filter(e => e.quantity > 0);
+                                                                        setViewDetails({productName: prod.name, details: entries});
+                                                                        if (entries.length === 1) startEditing(entries[0]);
+                                                                    }
+                                                                }}
                                                             >
                                                                 {pData?.entries > 0 ? `+${pData.entries}` : '0'}
                                                             </TableCell>
                                                             <TableCell 
-                                                                className={cn("text-center border-r px-1 font-medium cursor-pointer transition-colors", pData?.exits > 0 ? "text-red-600 hover:bg-red-100" : "text-muted-foreground/30")}
-                                                                onClick={() => pData?.details.some(e => e.quantity < 0) && setViewDetails({productName: prod.name, details: pData.details.filter(e => e.quantity < 0)})}
+                                                                className={cn("text-center border-r border-b px-1 font-medium cursor-pointer transition-colors", pData?.exits > 0 ? "text-red-600 hover:bg-red-100" : "text-muted-foreground/30")}
+                                                                onClick={() => {
+                                                                    if (pData?.details.some(e => e.quantity < 0)) {
+                                                                        const exits = pData.details.filter(e => e.quantity < 0);
+                                                                        setViewDetails({productName: prod.name, details: exits});
+                                                                        if (exits.length === 1) startEditing(exits[0]);
+                                                                    }
+                                                                }}
                                                             >
                                                                 {pData?.exits > 0 ? `-${pData.exits}` : '0'}
                                                             </TableCell>
-                                                            <TableCell className="text-center border-r px-1 font-bold text-blue-700 bg-blue-50/20">{pData?.final ?? 0}</TableCell>
+                                                            <TableCell className="text-center border-r border-b px-1 font-bold text-blue-700 bg-blue-50/20">{pData?.final ?? 0}</TableCell>
                                                         </React.Fragment>
                                                     );
                                                 })}
@@ -346,46 +382,85 @@ export default function DailyHistoryPage() {
                 </Card>
             </div>
 
-            {/* Modal de Lista de Movimentações */}
-            <Popover open={!!viewDetails} onOpenChange={(open) => !open && setViewDetails(null)}>
-                <PopoverContent className="w-[450px] p-0 shadow-xl border-muted" align="center">
-                    <div className="bg-muted/40 p-3 border-b flex justify-between items-center">
+            {/* Painel de Edição Direta (Popover) */}
+            <Popover open={!!viewDetails} onOpenChange={(open) => {
+                if (!open) {
+                    setViewDetails(null);
+                    setRowEditingId(null);
+                }
+            }}>
+                <PopoverContent className="w-[500px] p-0 shadow-2xl border-muted overflow-hidden" align="center">
+                    <div className="bg-muted/50 p-3 border-b flex justify-between items-center">
                         <div className="flex flex-col">
-                            <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Movimentações do Período</span>
-                            <span className="text-sm font-semibold truncate max-w-[300px]">{viewDetails?.productName}</span>
+                            <span className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Ajuste de Lançamentos</span>
+                            <span className="text-sm font-bold truncate max-w-[350px]">{viewDetails?.productName}</span>
                         </div>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewDetails(null)}><X className="h-4 w-4"/></Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setViewDetails(null)}><X className="h-4 w-4"/></Button>
                     </div>
-                    <div className="max-h-[300px] overflow-y-auto">
+                    <div className="max-h-[350px] overflow-y-auto">
                         <Table className="text-xs">
-                            <TableHeader className="bg-muted/20">
+                            <TableHeader className="bg-muted/20 sticky top-0 z-10">
                                 <TableRow>
-                                    <TableHead>Data/Hora</TableHead>
-                                    <TableHead className="text-right">Qtd</TableHead>
-                                    <TableHead>Obs.</TableHead>
-                                    <TableHead className="w-16"></TableHead>
+                                    <TableHead className="w-24">Data/Hora</TableHead>
+                                    <TableHead className="w-20 text-right">Qtd</TableHead>
+                                    <TableHead>Observação / Motivo</TableHead>
+                                    <TableHead className="w-20 text-right">Ações</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {viewDetails?.details.map(entry => (
-                                    <TableRow key={entry.id} className="hover:bg-muted/10">
-                                        <TableCell className="whitespace-nowrap">{format(entry.date, "dd/MM HH:mm")}</TableCell>
-                                        <TableCell className={cn("text-right font-bold", entry.quantity > 0 ? "text-green-600" : "text-red-600")}>
-                                            {entry.quantity > 0 ? `+${entry.quantity}` : entry.quantity}
+                                    <TableRow key={entry.id} className={cn("transition-colors", rowEditingId === entry.id ? "bg-primary/5" : "hover:bg-muted/10")}>
+                                        <TableCell className="whitespace-nowrap font-mono text-[10px] text-muted-foreground">
+                                            {format(entry.date, "dd/MM HH:mm")}
                                         </TableCell>
-                                        <TableCell className="max-w-[150px] truncate" title={entry.notes}>{entry.notes || '-'}</TableCell>
-                                        <TableCell>
-                                            <div className="flex gap-1">
-                                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
-                                                    setEditingEntry(entry);
-                                                    setEditValue(entry.quantity);
-                                                    setEditNotes(entry.notes || "");
-                                                }}>
-                                                    <Edit2 className="h-3 w-3" />
-                                                </Button>
-                                                <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDelete(entry.id)}>
-                                                    <Trash2 className="h-3 w-3" />
-                                                </Button>
+                                        <TableCell className="text-right p-1">
+                                            {rowEditingId === entry.id ? (
+                                                <Input 
+                                                    type="number" 
+                                                    className="h-7 text-right px-1 font-bold" 
+                                                    value={editValue} 
+                                                    onChange={e => setEditValue(Number(e.target.value))}
+                                                    autoFocus
+                                                />
+                                            ) : (
+                                                <span className={cn("font-bold px-2", entry.quantity > 0 ? "text-green-600" : "text-red-600")}>
+                                                    {entry.quantity > 0 ? `+${entry.quantity}` : entry.quantity}
+                                                </span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="p-1">
+                                            {rowEditingId === entry.id ? (
+                                                <Input 
+                                                    className="h-7 text-[11px]" 
+                                                    value={editNotes} 
+                                                    onChange={e => setEditNotes(e.target.value)}
+                                                    placeholder="Descreva o ajuste..."
+                                                />
+                                            ) : (
+                                                <span className="text-muted-foreground line-clamp-1 italic px-2">{entry.notes || '-'}</span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-right p-1">
+                                            <div className="flex justify-end gap-1">
+                                                {rowEditingId === entry.id ? (
+                                                    <>
+                                                        <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600" onClick={() => handleSaveRowEdit(entry.id)} disabled={isSaving}>
+                                                            {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                                                        </Button>
+                                                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-600" onClick={() => setRowEditingId(null)}>
+                                                            <X className="h-3 w-3" />
+                                                        </Button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startEditing(entry)}>
+                                                            <Edit2 className="h-3 w-3" />
+                                                        </Button>
+                                                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDelete(entry.id)}>
+                                                            <Trash2 className="h-3 w-3" />
+                                                        </Button>
+                                                    </>
+                                                )}
                                             </div>
                                         </TableCell>
                                     </TableRow>
@@ -393,45 +468,11 @@ export default function DailyHistoryPage() {
                             </TableBody>
                         </Table>
                     </div>
-                </PopoverContent>
-            </Popover>
-
-            {/* Modal de Edição */}
-            <Popover open={!!editingEntry} onOpenChange={(open) => !open && setEditingEntry(null)}>
-                <PopoverContent className="w-80 p-4 shadow-2xl border-primary/20" align="center" side="top">
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-center border-b pb-2">
-                            <h4 className="font-bold text-sm">Editar Registro</h4>
-                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingEntry(null)}><X className="h-4 w-4"/></Button>
+                    {viewDetails?.details.length === 0 && (
+                        <div className="p-8 text-center text-muted-foreground text-sm">
+                            Nenhum lançamento encontrado.
                         </div>
-                        <div className="space-y-3">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-muted-foreground uppercase">Nova Quantidade</label>
-                                <Input 
-                                    type="number" 
-                                    value={editValue} 
-                                    className="h-8 text-sm"
-                                    onChange={e => setEditValue(Number(e.target.value))}
-                                />
-                                <p className="text-[9px] text-muted-foreground">Positivo para entrada, negativo para saída.</p>
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-muted-foreground uppercase">Observações</label>
-                                <Input 
-                                    value={editNotes} 
-                                    className="h-8 text-sm"
-                                    onChange={e => setEditNotes(e.target.value)}
-                                    placeholder="Motivo da alteração..."
-                                />
-                            </div>
-                        </div>
-                        <div className="flex justify-end gap-2 pt-2 border-t">
-                            <Button variant="outline" size="sm" className="h-8" onClick={() => setEditingEntry(null)}>Cancelar</Button>
-                            <Button size="sm" className="h-8 px-4" onClick={handleSaveEdit} disabled={isSaving}>
-                                {isSaving ? <Loader2 className="h-3 w-3 animate-spin"/> : <Check className="h-3 w-3 mr-1"/>} Salvar
-                            </Button>
-                        </div>
-                    </div>
+                    )}
                 </PopoverContent>
             </Popover>
 

@@ -1,6 +1,6 @@
 
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, Timestamp, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Product, StockEntry, StockEntryType } from '@/lib/types';
@@ -9,9 +9,9 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { format, startOfDay, endOfDay, parseISO, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, isSameDay, isSameWeek, isSameMonth, addDays, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import { format, startOfDay, endOfDay, parseISO, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Search, Printer, Trash2, Edit2, Check, X, Loader2, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Settings2 } from 'lucide-react';
+import { ArrowLeft, Search, Printer, Trash2, Edit2, Check, X, Loader2, Calendar as CalendarIcon, List } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { DateRange } from 'react-day-picker';
@@ -56,10 +56,12 @@ export default function DailyHistoryPage() {
     const [granularity, setGranularity] = useState<Granularity>('day');
     const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
         const to = new Date();
-        const from = subDays(to, 7);
+        const from = subDays(to, 6); // Últimos 7 dias por padrão
         return { from, to };
     });
     
+    // Estados para o Modal de Detalhes/Edição
+    const [viewDetails, setViewDetails] = useState<{productName: string, details: StockEntry[]} | null>(null);
     const [editingEntry, setEditingEntry] = useState<StockEntry | null>(null);
     const [editValue, setEditValue] = useState<number>(0);
     const [editNotes, setEditNotes] = useState("");
@@ -72,7 +74,6 @@ export default function DailyHistoryPage() {
             return;
         }
 
-        // Buscar produtos primeiro para ter a lista completa
         const productsQuery = query(collection(db, 'products'), where('organizationId', '==', user.organizationId));
         const unsubscribeProducts = onSnapshot(productsQuery, (snapshot) => {
             const allProducts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product))
@@ -80,7 +81,6 @@ export default function DailyHistoryPage() {
             setProducts(allProducts);
         });
 
-        // Buscar TODAS as movimentações para calcular o estoque inicial corretamente
         const stockEntriesQuery = query(
             collection(db, 'stockEntries'), 
             where('branchId', '==', currentBranch.id),
@@ -105,19 +105,14 @@ export default function DailyHistoryPage() {
 
     const periods = useMemo(() => {
         if (!dateRange?.from || !dateRange?.to) return [];
-        
         const start = startOfDay(dateRange.from);
         const end = endOfDay(dateRange.to);
 
         switch (granularity) {
-            case 'day':
-                return eachDayOfInterval({ start, end });
-            case 'week':
-                return eachWeekOfInterval({ start, end }, { locale: ptBR });
-            case 'month':
-                return eachMonthOfInterval({ start, end });
-            default:
-                return [];
+            case 'day': return eachDayOfInterval({ start, end });
+            case 'week': return eachWeekOfInterval({ start, end }, { locale: ptBR });
+            case 'month': return eachMonthOfInterval({ start, end });
+            default: return [];
         }
     }, [dateRange, granularity]);
 
@@ -128,15 +123,10 @@ export default function DailyHistoryPage() {
             p.name.toLowerCase().includes(searchQuery.toLowerCase())
         );
 
-        const data: ProductPivot[] = filteredProducts.map(product => {
+        return filteredProducts.map(product => {
             const productEntries = allStockEntries.filter(e => e.productId === product.id);
             const periodMap: Record<string, PeriodData> = {};
 
-            // Calculando estoque corrente para cada período
-            let runningStock = 0;
-            const sortedEntries = [...productEntries].sort((a,b) => a.date.getTime() - b.date.getTime());
-            
-            // Para cada período, precisamos saber o estoque antes dele começar
             periods.forEach(periodDate => {
                 const periodStart = granularity === 'day' ? startOfDay(periodDate) : 
                                   granularity === 'week' ? startOfWeek(periodDate, { locale: ptBR }) : 
@@ -147,13 +137,12 @@ export default function DailyHistoryPage() {
                 
                 const key = periodStart.toISOString();
 
-                // Calcular estoque inicial (soma de tudo antes do periodStart)
-                const initialStock = sortedEntries
+                // O Estoque Inicial é a soma de TUDO antes desse período
+                const initialStock = productEntries
                     .filter(e => e.date < periodStart)
                     .reduce((sum, e) => sum + e.quantity, 0);
 
-                const periodEntries = sortedEntries.filter(e => e.date >= periodStart && e.date <= periodEnd);
-                
+                const periodEntries = productEntries.filter(e => e.date >= periodStart && e.date <= periodEnd);
                 const inQty = periodEntries.filter(e => e.quantity > 0).reduce((sum, e) => sum + e.quantity, 0);
                 const outQty = Math.abs(periodEntries.filter(e => e.quantity < 0).reduce((sum, e) => sum + e.quantity, 0));
                 
@@ -166,32 +155,9 @@ export default function DailyHistoryPage() {
                 };
             });
 
-            return {
-                id: product.id,
-                name: product.name,
-                periods: periodMap
-            };
-        });
-
-        return data.sort((a,b) => a.name.localeCompare(b.name));
+            return { id: product.id, name: product.name, periods: periodMap };
+        }).sort((a,b) => a.name.localeCompare(b.name));
     }, [products, allStockEntries, periods, granularity, searchQuery, loading]);
-
-    const getPeriodLabel = (date: Date) => {
-        switch (granularity) {
-            case 'day':
-                return format(date, "dd/MM");
-            case 'week':
-                return `Sem ${format(date, "ww")}`;
-            case 'month':
-                return format(date, "MMM/yy", { locale: ptBR });
-        }
-    };
-
-    const handleEdit = (entry: StockEntry) => {
-        setEditingEntry(entry);
-        setEditValue(entry.quantity);
-        setEditNotes(entry.notes || "");
-    };
 
     const handleSaveEdit = async () => {
         if (!editingEntry) return;
@@ -205,6 +171,11 @@ export default function DailyHistoryPage() {
             });
             toast({ title: "Movimentação atualizada" });
             setEditingEntry(null);
+            // Atualizar os detalhes visualizados
+            if (viewDetails) {
+                const updated = viewDetails.details.map(d => d.id === editingEntry.id ? {...d, quantity: editValue, notes: editNotes} : d);
+                setViewDetails({...viewDetails, details: updated});
+            }
         } catch (error) {
             console.error(error);
             toast({ title: "Erro ao atualizar", variant: "destructive" });
@@ -219,29 +190,31 @@ export default function DailyHistoryPage() {
             await deleteDoc(doc(db, 'stockEntries', id));
             toast({ title: "Movimentação excluída" });
             setEditingEntry(null);
+            if (viewDetails) {
+                const updated = viewDetails.details.filter(d => d.id !== id);
+                setViewDetails({...viewDetails, details: updated});
+            }
         } catch (error) {
             console.error(error);
             toast({ title: "Erro ao excluir", variant: "destructive" });
         }
     };
 
-    if (!currentBranch && !authLoading) return <div className="p-8 text-center">Selecione uma filial.</div>;
-
     return (
-        <div className="space-y-6 flex flex-col h-[calc(100vh-120px)]">
+        <div className="space-y-4 flex flex-col h-[calc(100vh-120px)]">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 no-print shrink-0">
                 <div className="flex items-center gap-2">
                     <Button variant="ghost" size="icon" onClick={() => router.back()}>
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
-                    <h1 className="text-2xl font-bold">Planilha de Movimentação</h1>
+                    <h1 className="text-xl font-bold">Fluxo de Estoque</h1>
                 </div>
                 <div className="flex items-center gap-2">
                     <Tabs value={granularity} onValueChange={(v) => setGranularity(v as Granularity)}>
                         <TabsList size="sm">
-                            <TabsTrigger value="day">Dia</TabsTrigger>
-                            <TabsTrigger value="week">Semana</TabsTrigger>
-                            <TabsTrigger value="month">Mês</TabsTrigger>
+                            <TabsTrigger value="day">Diário</TabsTrigger>
+                            <TabsTrigger value="week">Semanal</TabsTrigger>
+                            <TabsTrigger value="month">Mensal</TabsTrigger>
                         </TabsList>
                     </Tabs>
                     <Button variant="outline" size="sm" onClick={() => window.print()}>
@@ -250,15 +223,15 @@ export default function DailyHistoryPage() {
                 </div>
             </div>
 
-            <Card className="no-print shrink-0">
-                <CardContent className="p-4">
-                    <div className="flex flex-col sm:flex-row gap-4">
+            <Card className="no-print shrink-0 shadow-sm border-muted/60">
+                <CardContent className="p-3">
+                    <div className="flex flex-col sm:flex-row gap-3">
                         <div className="relative flex-grow">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
                                 type="search"
-                                placeholder="Filtrar produto..."
-                                className="w-full pl-8 h-9"
+                                placeholder="Filtrar por nome do produto..."
+                                className="w-full pl-8 h-9 text-sm"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
@@ -290,50 +263,52 @@ export default function DailyHistoryPage() {
             </Card>
 
             <div className="flex-1 min-h-0 relative">
-                <Card className="h-full flex flex-col overflow-hidden">
+                <Card className="h-full flex flex-col overflow-hidden shadow-none border-muted/60">
                     <CardContent className="p-0 h-full flex flex-col">
-                        <ScrollArea className="flex-1">
+                        <ScrollArea className="flex-1 border rounded-md">
                             <div className="min-w-full inline-block align-middle">
-                                <Table className="border-collapse">
+                                <Table className="border-collapse text-[11px]">
                                     <TableHeader className="sticky top-0 bg-background z-20 shadow-sm">
-                                        <TableRow>
-                                            <TableHead className="w-[200px] bg-background border sticky left-0 z-30">Produto</TableHead>
+                                        <TableRow className="hover:bg-transparent">
+                                            <TableHead className="w-[180px] bg-background border-r sticky left-0 z-30 font-bold text-foreground">Produto</TableHead>
                                             {periods.map(period => (
-                                                <TableHead key={period.toISOString()} colSpan={4} className="text-center border bg-muted/30">
-                                                    {getPeriodLabel(period)}
+                                                <TableHead key={period.toISOString()} colSpan={4} className="text-center border-r bg-muted/40 font-bold text-foreground py-1">
+                                                    {granularity === 'day' ? format(period, "dd/MM (EEE)", {locale: ptBR}) : 
+                                                     granularity === 'week' ? `Semana ${format(period, "ww")}` : 
+                                                     format(period, "MMMM/yyyy", {locale: ptBR})}
                                                 </TableHead>
                                             ))}
                                         </TableRow>
-                                        <TableRow>
-                                            <TableHead className="w-[200px] bg-background border sticky left-0 z-30"></TableHead>
+                                        <TableRow className="hover:bg-transparent">
+                                            <TableHead className="w-[180px] bg-background border-r sticky left-0 z-30"></TableHead>
                                             {periods.map(period => (
                                                 <React.Fragment key={`sub-${period.toISOString()}`}>
-                                                    <TableHead className="text-[10px] w-12 border px-1 text-center">Inicial</TableHead>
-                                                    <TableHead className="text-[10px] w-12 border px-1 text-center text-green-600">Ent</TableHead>
-                                                    <TableHead className="text-[10px] w-12 border px-1 text-center text-red-600">Saí</TableHead>
-                                                    <TableHead className="text-[10px] w-12 border px-1 text-center font-bold">Final</TableHead>
+                                                    <TableHead className="text-[9px] w-12 border-r px-1 text-center bg-muted/20">Início</TableHead>
+                                                    <TableHead className="text-[9px] w-12 border-r px-1 text-center bg-green-50/50 text-green-700">Ent</TableHead>
+                                                    <TableHead className="text-[9px] w-12 border-r px-1 text-center bg-red-50/50 text-red-700">Saí</TableHead>
+                                                    <TableHead className="text-[9px] w-12 border-r px-1 text-center bg-blue-50/50 font-bold text-blue-800">Final</TableHead>
                                                 </React.Fragment>
                                             ))}
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {loading ? (
-                                            Array.from({ length: 10 }).map((_, i) => (
+                                            Array.from({ length: 15 }).map((_, i) => (
                                                 <TableRow key={i}>
-                                                    <TableCell className="sticky left-0 bg-background border"><Skeleton className="h-4 w-32" /></TableCell>
+                                                    <TableCell className="sticky left-0 bg-background border-r"><Skeleton className="h-3 w-24" /></TableCell>
                                                     {periods.map(p => (
                                                         <React.Fragment key={p.toISOString()}>
-                                                            <TableCell className="border"><Skeleton className="h-4 w-8" /></TableCell>
-                                                            <TableCell className="border"><Skeleton className="h-4 w-8" /></TableCell>
-                                                            <TableCell className="border"><Skeleton className="h-4 w-8" /></TableCell>
-                                                            <TableCell className="border"><Skeleton className="h-4 w-8" /></TableCell>
+                                                            <TableCell className="border-r"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
+                                                            <TableCell className="border-r"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
+                                                            <TableCell className="border-r"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
+                                                            <TableCell className="border-r"><Skeleton className="h-3 w-6 mx-auto" /></TableCell>
                                                         </React.Fragment>
                                                     ))}
                                                 </TableRow>
                                             ))
                                         ) : pivotData.map(prod => (
-                                            <TableRow key={prod.id} className="hover:bg-muted/50 transition-colors">
-                                                <TableCell className="font-medium sticky left-0 bg-background border z-10 truncate max-w-[200px]" title={prod.name}>
+                                            <TableRow key={prod.id} className="hover:bg-muted/30 group">
+                                                <TableCell className="font-medium sticky left-0 bg-background border-r z-10 truncate max-w-[180px] group-hover:bg-muted/30" title={prod.name}>
                                                     {prod.name}
                                                 </TableCell>
                                                 {periods.map(period => {
@@ -343,20 +318,20 @@ export default function DailyHistoryPage() {
                                                     const pData = prod.periods[key];
                                                     return (
                                                         <React.Fragment key={`${prod.id}-${key}`}>
-                                                            <TableCell className="text-center border px-1 text-xs text-muted-foreground">{pData?.initial ?? 0}</TableCell>
+                                                            <TableCell className="text-center border-r px-1 text-muted-foreground bg-white/50">{pData?.initial ?? 0}</TableCell>
                                                             <TableCell 
-                                                                className="text-center border px-1 text-xs text-green-600 cursor-pointer hover:bg-green-50"
-                                                                onClick={() => pData?.details.filter(e => e.quantity > 0).length > 0 && setEditingEntry(pData.details.find(e => e.quantity > 0) || null)}
+                                                                className={cn("text-center border-r px-1 font-medium cursor-pointer transition-colors", pData?.entries > 0 ? "text-green-600 hover:bg-green-100" : "text-muted-foreground/30")}
+                                                                onClick={() => pData?.details.some(e => e.quantity > 0) && setViewDetails({productName: prod.name, details: pData.details.filter(e => e.quantity > 0)})}
                                                             >
-                                                                {pData?.entries > 0 ? `+${pData.entries}` : '-'}
+                                                                {pData?.entries > 0 ? `+${pData.entries}` : '0'}
                                                             </TableCell>
                                                             <TableCell 
-                                                                className="text-center border px-1 text-xs text-red-600 cursor-pointer hover:bg-red-50"
-                                                                onClick={() => pData?.details.filter(e => e.quantity < 0).length > 0 && setEditingEntry(pData.details.find(e => e.quantity < 0) || null)}
+                                                                className={cn("text-center border-r px-1 font-medium cursor-pointer transition-colors", pData?.exits > 0 ? "text-red-600 hover:bg-red-100" : "text-muted-foreground/30")}
+                                                                onClick={() => pData?.details.some(e => e.quantity < 0) && setViewDetails({productName: prod.name, details: pData.details.filter(e => e.quantity < 0)})}
                                                             >
-                                                                {pData?.exits > 0 ? `-${pData.exits}` : '-'}
+                                                                {pData?.exits > 0 ? `-${pData.exits}` : '0'}
                                                             </TableCell>
-                                                            <TableCell className="text-center border px-1 text-xs font-bold">{pData?.final ?? 0}</TableCell>
+                                                            <TableCell className="text-center border-r px-1 font-bold text-blue-700 bg-blue-50/20">{pData?.final ?? 0}</TableCell>
                                                         </React.Fragment>
                                                     );
                                                 })}
@@ -371,42 +346,90 @@ export default function DailyHistoryPage() {
                 </Card>
             </div>
 
-            {/* Modal de Edição Detalhada */}
+            {/* Modal de Lista de Movimentações */}
+            <Popover open={!!viewDetails} onOpenChange={(open) => !open && setViewDetails(null)}>
+                <PopoverContent className="w-[450px] p-0 shadow-xl border-muted" align="center">
+                    <div className="bg-muted/40 p-3 border-b flex justify-between items-center">
+                        <div className="flex flex-col">
+                            <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Movimentações do Período</span>
+                            <span className="text-sm font-semibold truncate max-w-[300px]">{viewDetails?.productName}</span>
+                        </div>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewDetails(null)}><X className="h-4 w-4"/></Button>
+                    </div>
+                    <div className="max-h-[300px] overflow-y-auto">
+                        <Table className="text-xs">
+                            <TableHeader className="bg-muted/20">
+                                <TableRow>
+                                    <TableHead>Data/Hora</TableHead>
+                                    <TableHead className="text-right">Qtd</TableHead>
+                                    <TableHead>Obs.</TableHead>
+                                    <TableHead className="w-16"></TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {viewDetails?.details.map(entry => (
+                                    <TableRow key={entry.id} className="hover:bg-muted/10">
+                                        <TableCell className="whitespace-nowrap">{format(entry.date, "dd/MM HH:mm")}</TableCell>
+                                        <TableCell className={cn("text-right font-bold", entry.quantity > 0 ? "text-green-600" : "text-red-600")}>
+                                            {entry.quantity > 0 ? `+${entry.quantity}` : entry.quantity}
+                                        </TableCell>
+                                        <TableCell className="max-w-[150px] truncate" title={entry.notes}>{entry.notes || '-'}</TableCell>
+                                        <TableCell>
+                                            <div className="flex gap-1">
+                                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
+                                                    setEditingEntry(entry);
+                                                    setEditValue(entry.quantity);
+                                                    setEditNotes(entry.notes || "");
+                                                }}>
+                                                    <Edit2 className="h-3 w-3" />
+                                                </Button>
+                                                <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDelete(entry.id)}>
+                                                    <Trash2 className="h-3 w-3" />
+                                                </Button>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </PopoverContent>
+            </Popover>
+
+            {/* Modal de Edição */}
             <Popover open={!!editingEntry} onOpenChange={(open) => !open && setEditingEntry(null)}>
-                <PopoverContent className="w-80 p-4" align="center">
+                <PopoverContent className="w-80 p-4 shadow-2xl border-primary/20" align="center" side="top">
                     <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                            <h4 className="font-medium">Editar Movimentação</h4>
-                            <Button variant="ghost" size="icon" onClick={() => setEditingEntry(null)}><X className="h-4 w-4"/></Button>
+                        <div className="flex justify-between items-center border-b pb-2">
+                            <h4 className="font-bold text-sm">Editar Registro</h4>
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingEntry(null)}><X className="h-4 w-4"/></Button>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                            {editingEntry?.productName} - {editingEntry && format(editingEntry.date, "dd/MM/yy HH:mm")}
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-sm">Quantidade</label>
-                            <Input 
-                                type="number" 
-                                value={editValue} 
-                                onChange={e => setEditValue(Number(e.target.value))}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-sm">Observações</label>
-                            <Input 
-                                value={editNotes} 
-                                onChange={e => setEditNotes(e.target.value)}
-                            />
-                        </div>
-                        <div className="flex justify-between gap-2">
-                            <Button variant="destructive" size="sm" onClick={() => editingEntry && handleDelete(editingEntry.id)}>
-                                <Trash2 className="h-4 w-4 mr-1"/> Excluir
-                            </Button>
-                            <div className="flex gap-2">
-                                <Button variant="outline" size="sm" onClick={() => setEditingEntry(null)}>Cancelar</Button>
-                                <Button size="sm" onClick={handleSaveEdit} disabled={isSaving}>
-                                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin"/> : <Check className="h-4 w-4 mr-1"/>} Salvar
-                                </Button>
+                        <div className="space-y-3">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase">Nova Quantidade</label>
+                                <Input 
+                                    type="number" 
+                                    value={editValue} 
+                                    className="h-8 text-sm"
+                                    onChange={e => setEditValue(Number(e.target.value))}
+                                />
+                                <p className="text-[9px] text-muted-foreground">Positivo para entrada, negativo para saída.</p>
                             </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase">Observações</label>
+                                <Input 
+                                    value={editNotes} 
+                                    className="h-8 text-sm"
+                                    onChange={e => setEditNotes(e.target.value)}
+                                    placeholder="Motivo da alteração..."
+                                />
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-2 border-t">
+                            <Button variant="outline" size="sm" className="h-8" onClick={() => setEditingEntry(null)}>Cancelar</Button>
+                            <Button size="sm" className="h-8 px-4" onClick={handleSaveEdit} disabled={isSaving}>
+                                {isSaving ? <Loader2 className="h-3 w-3 animate-spin"/> : <Check className="h-3 w-3 mr-1"/>} Salvar
+                            </Button>
                         </div>
                     </div>
                 </PopoverContent>
@@ -414,36 +437,16 @@ export default function DailyHistoryPage() {
 
             <style jsx global>{`
                 @media print {
-                    @page {
-                        size: landscape;
-                        margin: 5mm;
-                    }
-                    body * {
-                        visibility: hidden;
-                    }
-                    .printable-area, .printable-area * {
-                        visibility: visible;
-                    }
-                    .printable-area {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                    }
-                    .no-print {
-                        display: none !important;
-                    }
-                    .table {
-                        font-size: 8px !important;
-                    }
-                    .card {
-                        border: none !important;
-                        box-shadow: none !important;
-                    }
+                    @page { size: landscape; margin: 5mm; }
+                    body * { visibility: hidden; }
+                    .printable-area, .printable-area * { visibility: visible; }
+                    .printable-area { position: absolute; left: 0; top: 0; width: 100%; }
+                    .no-print { display: none !important; }
+                    .table { font-size: 8px !important; }
+                    th, td { padding: 2px !important; border: 0.1pt solid #ccc !important; }
+                    .card { border: none !important; box-shadow: none !important; }
                 }
             `}</style>
         </div>
     );
 }
-
-import React from 'react';

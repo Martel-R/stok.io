@@ -70,6 +70,7 @@ const defaultPermissions: EnabledModules = {
     expenses: { view: true, edit: true, delete: true },
     backup: { view: true, edit: true, delete: true },
     subscription: { view: true, edit: true, delete: true },
+    stockAudit: { view: true, edit: true, delete: true },
 };
 
 const professionalPermissions: EnabledModules = {
@@ -88,6 +89,7 @@ const professionalPermissions: EnabledModules = {
     expenses: { view: true, edit: false, delete: false },
     backup: { view: true, edit: false, delete: false },
     subscription: { view: false, edit: false, delete: false },
+    stockAudit: { view: false, edit: false, delete: false },
 };
 
 const runDataIntegrityCheck = async (organizationId: string) => {

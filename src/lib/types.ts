@@ -26,6 +26,7 @@ export interface EnabledModules {
     backup: ModulePermissions;
     subscription: ModulePermissions;
     chat?: ModulePermissions;
+    stockAudit?: ModulePermissions;
 }
 
 export interface PermissionProfile {

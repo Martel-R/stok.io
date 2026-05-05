@@ -230,6 +230,7 @@ export default function InventoryPage() {
                         <NfeImportDialog/>
                         <Button variant="outline" onClick={() => router.push('/dashboard/inventory/movement?type=entry')}><PlusCircle className="mr-2" />Entrada</Button>
                         <Button variant="outline" onClick={() => router.push('/dashboard/inventory/movement?type=adjustment')}><MinusCircle className="mr-2" />Saída</Button>
+                        <Button variant="outline" onClick={() => router.push('/dashboard/inventory/daily-history')}><History className="mr-2" />Histórico Detalhado</Button>
                         <Dialog open={isTransferFormOpen} onOpenChange={setIsTransferFormOpen}>
                             <DialogTrigger asChild>
                                 <Button variant="outline" disabled={branches.length <= 1}><ArrowRightLeft className="mr-2" />Transferir</Button>

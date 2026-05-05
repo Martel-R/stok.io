@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, Timestamp, orderBy, deleteDoc, doc, updateDoc, addDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Product, StockEntry, StockEntryType } from '@/lib/types';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -169,6 +169,28 @@ export default function DailyHistoryPage() {
         }).sort((a,b) => a.name.localeCompare(b.name));
     }, [products, allStockEntries, periods, granularity, searchQuery, selectedCategory, loading]);
 
+    // Cálculo dos Totais
+    const totals = useMemo(() => {
+        const periodTotals: Record<string, {initial: number, entries: number, exits: number, final: number}> = {};
+        
+        periods.forEach(period => {
+            const key = (granularity === 'day' ? startOfDay(period) : startOfWeek(period, { locale: ptBR }) : startOfMonth(period)).toISOString();
+            periodTotals[key] = { initial: 0, entries: 0, exits: 0, final: 0 };
+        });
+
+        pivotData.forEach(prod => {
+            Object.entries(prod.periods).forEach(([key, data]) => {
+                if (periodTotals[key]) {
+                    periodTotals[key].initial += data.initial;
+                    periodTotals[key].entries += data.entries;
+                    periodTotals[key].exits += data.exits;
+                    periodTotals[key].final += data.final;
+                }
+            });
+        });
+        return periodTotals;
+    }, [pivotData, periods, granularity]);
+
     const handleSaveRowEdit = async (id: string) => {
         setIsSaving(true);
         try {
@@ -245,7 +267,21 @@ export default function DailyHistoryPage() {
 
     return (
         <div className="space-y-4 flex flex-col h-[calc(100vh-120px)] printable-area">
-            {/* Cabeçalho de Ações */}
+            {/* Header de Impressão */}
+            <div className="hidden print:block mb-6 border-b pb-4">
+                <div className="flex justify-between items-end">
+                    <div>
+                        <h1 className="text-2xl font-bold uppercase tracking-tighter">Relatório de Fluxo de Estoque</h1>
+                        <p className="text-sm text-muted-foreground">{currentBranch?.name} - {user?.organization?.name}</p>
+                    </div>
+                    <div className="text-right text-[10px] text-muted-foreground">
+                        Impresso em: {format(new Date(), "dd/MM/yyyy HH:mm")}<br/>
+                        Período: {dateRange?.from && format(dateRange.from, "dd/MM/yy")} a {dateRange?.to && format(dateRange.to, "dd/MM/yy")}
+                    </div>
+                </div>
+            </div>
+
+            {/* Cabeçalho de Ações (Tela) */}
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 no-print shrink-0">
                 <div className="flex items-center gap-2">
                     <Button variant="ghost" size="icon" onClick={() => router.back()}>
@@ -267,7 +303,7 @@ export default function DailyHistoryPage() {
                 </div>
             </div>
 
-            {/* Filtros */}
+            {/* Filtros (Tela) */}
             <Card className="no-print shrink-0 shadow-sm border-muted/60">
                 <CardContent className="p-3">
                     <div className="flex flex-col sm:flex-row gap-3">
@@ -310,7 +346,7 @@ export default function DailyHistoryPage() {
                 </CardContent>
             </Card>
 
-            {/* Planilha */}
+            {/* Planilha com Totais */}
             <div className="flex-1 min-h-0 relative border rounded-md bg-card overflow-auto custom-scrollbar table-container">
                 <Table className="border-separate border-spacing-0 text-[11px] table">
                     <TableHeader className="sticky top-0 bg-background z-20">
@@ -360,7 +396,7 @@ export default function DailyHistoryPage() {
                                         <React.Fragment key={`${prod.id}-${key}`}>
                                             <TableCell className="text-center border-r border-b px-1 text-muted-foreground bg-white/50">{pData?.initial ?? 0}</TableCell>
                                             <TableCell 
-                                                className={cn("text-center border-r border-b px-1 font-bold cursor-pointer transition-all hover:scale-110", pData?.entries > 0 ? "text-green-600 bg-green-50" : "text-muted-foreground/20 hover:bg-muted/10")}
+                                                className={cn("text-center border-r border-b px-1 font-bold cursor-pointer transition-all hover:scale-110", pData?.entries > 0 ? "text-green-600 hover:bg-green-100" : "text-muted-foreground/20 hover:bg-muted/10")}
                                                 onClick={() => {
                                                     const entries = pData?.details.filter(e => e.quantity > 0) || [];
                                                     setViewDetails({product: prod, details: entries, periodStart: pData.periodStart});
@@ -371,7 +407,7 @@ export default function DailyHistoryPage() {
                                                 {pData?.entries > 0 ? `+${pData.entries}` : '0'}
                                             </TableCell>
                                             <TableCell 
-                                                className={cn("text-center border-r border-b px-1 font-bold cursor-pointer transition-all hover:scale-110", pData?.exits > 0 ? "text-red-600 bg-red-50" : "text-muted-foreground/20 hover:bg-muted/10")}
+                                                className={cn("text-center border-r border-b px-1 font-bold cursor-pointer transition-all hover:scale-110", pData?.exits > 0 ? "text-red-600 hover:bg-red-100" : "text-muted-foreground/30")}
                                                 onClick={() => {
                                                     const exits = pData?.details.filter(e => e.quantity < 0) || [];
                                                     setViewDetails({product: prod, details: exits, periodStart: pData.periodStart});
@@ -388,6 +424,23 @@ export default function DailyHistoryPage() {
                             </TableRow>
                         ))}
                     </TableBody>
+                    <TableFooter className="sticky bottom-0 bg-muted/80 z-20 font-bold border-t-2 border-primary">
+                        <TableRow>
+                            <TableCell className="sticky left-0 bg-muted border-r border-b z-30 font-black uppercase text-[10px] py-2">Totais Consolidados</TableCell>
+                            {periods.map(period => {
+                                const key = (granularity === 'day' ? startOfDay(period) : startOfWeek(period, { locale: ptBR }) : startOfMonth(period)).toISOString();
+                                const t = totals[key];
+                                return (
+                                    <React.Fragment key={`total-${key}`}>
+                                        <TableCell className="text-center border-r border-b px-1 bg-muted/50">{t?.initial || 0}</TableCell>
+                                        <TableCell className="text-center border-r border-b px-1 text-green-700 bg-green-50/50">+{t?.entries || 0}</TableCell>
+                                        <TableCell className="text-center border-r border-b px-1 text-red-700 bg-red-50/50">-{t?.exits || 0}</TableCell>
+                                        <TableCell className="text-center border-r border-b px-1 text-blue-900 bg-blue-100/50">{t?.final || 0}</TableCell>
+                                    </React.Fragment>
+                                );
+                            })}
+                        </TableRow>
+                    </TableFooter>
                 </Table>
             </div>
 
@@ -397,7 +450,7 @@ export default function DailyHistoryPage() {
                     <div className="bg-muted/50 p-3 border-b flex justify-between items-center">
                         <div className="flex flex-col">
                             <span className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Ajuste de Lançamentos</span>
-                            <span className="text-sm font-bold truncate max-w-[350px]">{viewDetails?.product.name}</span>
+                            <span className="text-sm font-bold truncate max-w-[300px]">{viewDetails?.product.name}</span>
                         </div>
                         <div className="flex gap-2">
                             <Button variant="outline" size="sm" className="h-8 text-[10px]" onClick={() => { setRowEditingId('new'); setEditValue(0); setEditNotes(""); }}>
@@ -489,10 +542,16 @@ export default function DailyHistoryPage() {
                     }
                     .table-container { overflow: visible !important; height: auto !important; border: none !important; }
                     .no-print { display: none !important; }
-                    .table { font-size: 7pt !important; width: 100% !important; border-collapse: collapse !important; }
+                    .table { font-size: 6pt !important; width: 100% !important; border-collapse: collapse !important; }
                     th, td { padding: 1px 2px !important; border: 0.1pt solid #000 !important; }
                     .sticky { position: static !important; } 
-                    .bg-background { background-color: white !important; }
+                    .bg-background, .bg-muted, .bg-muted/40, .bg-green-50/50, .bg-red-50/50, .bg-blue-50/20 { 
+                        background-color: transparent !important; 
+                        -webkit-print-color-adjust: exact;
+                    }
+                    .font-bold { font-weight: 700 !important; }
+                    tr { page-break-inside: avoid !important; }
+                    tfoot { display: table-footer-group !important; font-weight: bold !important; border-top: 1pt solid black !important; }
                 }
             `}</style>
         </div>

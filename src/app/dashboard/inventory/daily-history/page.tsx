@@ -244,7 +244,7 @@ export default function DailyHistoryPage() {
     };
 
     return (
-        <div className="space-y-4 flex flex-col h-[calc(100vh-120px)]">
+        <div className="space-y-4 flex flex-col h-[calc(100vh-120px)] printable-area">
             {/* Cabeçalho de Ações */}
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 no-print shrink-0">
                 <div className="flex items-center gap-2">
@@ -311,8 +311,8 @@ export default function DailyHistoryPage() {
             </Card>
 
             {/* Planilha */}
-            <div className="flex-1 min-h-0 relative border rounded-md bg-card overflow-auto custom-scrollbar">
-                <Table className="border-separate border-spacing-0 text-[11px]">
+            <div className="flex-1 min-h-0 relative border rounded-md bg-card overflow-auto custom-scrollbar table-container">
+                <Table className="border-separate border-spacing-0 text-[11px] table">
                     <TableHeader className="sticky top-0 bg-background z-20">
                         <TableRow className="hover:bg-transparent">
                             <TableHead className="w-[180px] bg-background border-r border-b sticky left-0 top-0 z-30 font-bold text-foreground">Produto</TableHead>
@@ -328,10 +328,10 @@ export default function DailyHistoryPage() {
                             <TableHead className="w-[180px] bg-background border-r border-b sticky left-0 top-[29px] z-30"></TableHead>
                             {periods.map(period => (
                                 <React.Fragment key={`sub-${period.toISOString()}`}>
-                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-muted/20 sticky top-[29px] z-10">Início</TableHead>
-                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-green-50/50 text-green-700 sticky top-[29px] z-10">Ent</TableHead>
-                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-red-50/50 text-red-700 sticky top-[29px] z-10">Saí</TableHead>
-                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-blue-50/50 font-bold text-blue-800 sticky top-[29px] z-10">Final</TableHead>
+                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-muted/20 sticky top-[29px] z-20">Início</TableHead>
+                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-green-50/50 text-green-700 sticky top-[29px] z-20">Ent</TableHead>
+                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-red-50/50 text-red-700 sticky top-[29px] z-20">Saí</TableHead>
+                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-blue-50/50 font-bold text-blue-800 sticky top-[29px] z-20">Final</TableHead>
                                 </React.Fragment>
                             ))}
                         </TableRow>
@@ -397,7 +397,7 @@ export default function DailyHistoryPage() {
                     <div className="bg-muted/50 p-3 border-b flex justify-between items-center">
                         <div className="flex flex-col">
                             <span className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Ajuste de Lançamentos</span>
-                            <span className="text-sm font-bold truncate max-w-[300px]">{viewDetails?.product.name}</span>
+                            <span className="text-sm font-bold truncate max-w-[350px]">{viewDetails?.product.name}</span>
                         </div>
                         <div className="flex gap-2">
                             <Button variant="outline" size="sm" className="h-8 text-[10px]" onClick={() => { setRowEditingId('new'); setEditValue(0); setEditNotes(""); }}>
@@ -476,12 +476,23 @@ export default function DailyHistoryPage() {
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
                 @media print {
                     @page { size: landscape; margin: 5mm; }
+                    html, body { height: auto !important; overflow: visible !important; }
                     body * { visibility: hidden; }
                     .printable-area, .printable-area * { visibility: visible; }
-                    .printable-area { position: absolute; left: 0; top: 0; width: 100%; }
+                    .printable-area { 
+                        position: absolute; 
+                        left: 0; 
+                        top: 0; 
+                        width: 100%; 
+                        height: auto !important;
+                        display: block !important;
+                    }
+                    .table-container { overflow: visible !important; height: auto !important; border: none !important; }
                     .no-print { display: none !important; }
-                    .table { font-size: 8px !important; }
-                    th, td { padding: 2px !important; border: 0.1pt solid #ccc !important; }
+                    .table { font-size: 7pt !important; width: 100% !important; border-collapse: collapse !important; }
+                    th, td { padding: 1px 2px !important; border: 0.1pt solid #000 !important; }
+                    .sticky { position: static !important; } 
+                    .bg-background { background-color: white !important; }
                 }
             `}</style>
         </div>

@@ -40,7 +40,7 @@ export default function DailyHistoryPage() {
     const [allStockEntries, setAllStockEntries] = useState<StockEntry[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
-    const { user, currentBranch, authLoading } = useAuth();
+    const { user, currentBranch, loading: authLoading } = useAuth();
     const { toast } = useToast();
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState<string>("all");
@@ -119,8 +119,8 @@ export default function DailyHistoryPage() {
                 quantity: editValue,
                 notes: editNotes,
                 updatedAt: new Date(),
-                updatedBy: user?.id || user?.uid
-            });
+                updatedBy: user?.id
+            } as any);
             toast({ title: "Movimentação atualizada" });
             setRowEditingId(null);
             if (viewDetails) {
@@ -148,7 +148,7 @@ export default function DailyHistoryPage() {
                 quantity: editValue || 1,
                 type: (editValue || 1) > 0 ? 'entry' : 'adjustment',
                 notes: editNotes || "Ajuste manual",
-                userId: user.id || user.uid,
+                userId: user.id,
                 userName: user.name,
                 createdAt: new Date()
             };
@@ -193,7 +193,7 @@ export default function DailyHistoryPage() {
                 <div className="flex justify-between items-end">
                     <div>
                         <h1 className="text-2xl font-bold uppercase tracking-tighter">Relatório de Fluxo de Estoque</h1>
-                        <p className="text-sm text-muted-foreground">{currentBranch?.name} - {user?.organization?.name}</p>
+                        <p className="text-sm text-muted-foreground">{currentBranch?.name}</p>
                     </div>
                     <div className="text-right text-[10px] text-muted-foreground">
                         Impresso em: {format(new Date(), "dd/MM/yyyy HH:mm")}<br/>
@@ -212,7 +212,7 @@ export default function DailyHistoryPage() {
                 </div>
                 <div className="flex items-center gap-2">
                     <Tabs value={granularity} onValueChange={(v) => setGranularity(v as Granularity)}>
-                        <TabsList size="sm">
+                        <TabsList>
                             <TabsTrigger value="day">Diário</TabsTrigger>
                             <TabsTrigger value="week">Semanal</TabsTrigger>
                             <TabsTrigger value="month">Mensal</TabsTrigger>

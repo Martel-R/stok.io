@@ -5,13 +5,12 @@ import { collection, onSnapshot, query, where, Timestamp, orderBy, deleteDoc, do
 import { db } from '@/lib/firebase';
 import type { Product, StockEntry, StockEntryType } from '@/lib/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { format, startOfDay, endOfDay, parseISO, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from 'date-fns';
+import { Card, CardContent } from '@/components/ui/card';
+import { format, startOfDay, parseISO, subDays } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Search, Printer, Trash2, Edit2, Check, X, Loader2, Calendar as CalendarIcon, List, Save, Plus } from 'lucide-react';
+import { ArrowLeft, Search, Printer, Trash2, Edit2, Check, X, Loader2, Calendar as CalendarIcon, Save, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { DateRange } from 'react-day-picker';
@@ -21,6 +20,14 @@ import { cn } from '@/lib/utils';
 import { ptBR } from 'date-fns/locale';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { 
+    Granularity, 
+    ProductPivot, 
+    generatePeriods, 
+    calculatePivotData, 
+    calculateTotals,
+    getPeriodBoundaries
+} from './daily-history.utils';
 
 const convertDate = (dateField: any): Date => {
     if (dateField instanceof Timestamp) return dateField.toDate();
@@ -28,25 +35,6 @@ const convertDate = (dateField: any): Date => {
     if (typeof dateField === 'string') return parseISO(dateField);
     return new Date();
 };
-
-type Granularity = 'day' | 'week' | 'month';
-
-interface PeriodData {
-    initial: number;
-    entries: number;
-    exits: number;
-    final: number;
-    details: StockEntry[];
-    periodStart: Date;
-    periodEnd: Date;
-}
-
-interface ProductPivot {
-    id: string;
-    name: string;
-    category?: string;
-    periods: Record<string, PeriodData>;
-}
 
 export default function DailyHistoryPage() {
     const [allStockEntries, setAllStockEntries] = useState<StockEntry[]>([]);
@@ -112,82 +100,16 @@ export default function DailyHistoryPage() {
 
     const periods = useMemo(() => {
         if (!dateRange?.from || !dateRange?.to) return [];
-        const start = startOfDay(dateRange.from);
-        const end = endOfDay(dateRange.to);
-
-        switch (granularity) {
-            case 'day': return eachDayOfInterval({ start, end });
-            case 'week': return eachWeekOfInterval({ start, end }, { locale: ptBR });
-            case 'month': return eachMonthOfInterval({ start, end });
-            default: return [];
-        }
+        return generatePeriods({ from: dateRange.from, to: dateRange.to }, granularity);
     }, [dateRange, granularity]);
 
     const pivotData = useMemo(() => {
         if (loading || !products.length) return [];
-
-        const filteredProducts = products.filter(p => {
-            const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesCategory = selectedCategory === "all" || p.category === selectedCategory;
-            return matchesSearch && matchesCategory;
-        });
-
-        return filteredProducts.map(product => {
-            const productEntries = allStockEntries.filter(e => e.productId === product.id);
-            const periodMap: Record<string, PeriodData> = {};
-
-            periods.forEach(periodDate => {
-                const periodStart = granularity === 'day' ? startOfDay(periodDate) : 
-                                  granularity === 'week' ? startOfWeek(periodDate, { locale: ptBR }) : 
-                                  startOfMonth(periodDate);
-                const periodEnd = granularity === 'day' ? endOfDay(periodDate) : 
-                                granularity === 'week' ? endOfWeek(periodDate, { locale: ptBR }) : 
-                                endOfMonth(periodDate);
-                
-                const key = periodStart.toISOString();
-
-                const initialStock = productEntries
-                    .filter(e => e.date < periodStart)
-                    .reduce((sum, e) => sum + e.quantity, 0);
-
-                const periodEntries = productEntries.filter(e => e.date >= periodStart && e.date <= periodEnd);
-                const inQty = periodEntries.filter(e => e.quantity > 0).reduce((sum, e) => sum + e.quantity, 0);
-                const outQty = Math.abs(periodEntries.filter(e => e.quantity < 0).reduce((sum, e) => sum + e.quantity, 0));
-                
-                periodMap[key] = {
-                    initial: initialStock,
-                    entries: inQty,
-                    exits: outQty,
-                    final: initialStock + inQty - outQty,
-                    details: periodEntries,
-                    periodStart,
-                    periodEnd
-                };
-            });
-
-            return { id: product.id, name: product.name, category: product.category, periods: periodMap };
-        }).sort((a,b) => a.name.localeCompare(b.name));
+        return calculatePivotData(products, allStockEntries, periods, granularity, searchQuery, selectedCategory);
     }, [products, allStockEntries, periods, granularity, searchQuery, selectedCategory, loading]);
 
-    // Cálculo dos Totais
     const totals = useMemo(() => {
-        const periodTotals: Record<string, {initial: number, entries: number, exits: number, final: number}> = {};
-        
-        periods.forEach(period => {
-            const key = (granularity === 'day' ? startOfDay(period) : granularity === 'week' ? startOfWeek(period, { locale: ptBR }) : startOfMonth(period)).toISOString();            periodTotals[key] = { initial: 0, entries: 0, exits: 0, final: 0 };
-        });
-
-        pivotData.forEach(prod => {
-            Object.entries(prod.periods).forEach(([key, data]) => {
-                if (periodTotals[key]) {
-                    periodTotals[key].initial += data.initial;
-                    periodTotals[key].entries += data.entries;
-                    periodTotals[key].exits += data.exits;
-                    periodTotals[key].final += data.final;
-                }
-            });
-        });
-        return periodTotals;
+        return calculateTotals(pivotData, periods, granularity);
     }, [pivotData, periods, granularity]);
 
     const handleSaveRowEdit = async (id: string) => {
@@ -199,7 +121,7 @@ export default function DailyHistoryPage() {
                 updatedAt: new Date(),
                 updatedBy: user?.id || user?.uid
             });
-            toast({ title: "Lançamento corrigido!" });
+            toast({ title: "Movimentação atualizada" });
             setRowEditingId(null);
             if (viewDetails) {
                 const updated = viewDetails.details.map(d => d.id === id ? {...d, quantity: editValue, notes: editNotes} : d);
@@ -207,7 +129,7 @@ export default function DailyHistoryPage() {
             }
         } catch (error) {
             console.error(error);
-            toast({ title: "Erro ao salvar", variant: "destructive" });
+            toast({ title: "Erro ao atualizar", variant: "destructive" });
         } finally {
             setIsSaving(false);
         }
@@ -363,10 +285,10 @@ export default function DailyHistoryPage() {
                             <TableHead className="w-[180px] bg-background border-r border-b sticky left-0 top-[29px] z-30"></TableHead>
                             {periods.map(period => (
                                 <React.Fragment key={`sub-${period.toISOString()}`}>
-                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-muted/20 sticky top-[29px] z-20">Início</TableHead>
-                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-green-50/50 text-green-700 sticky top-[29px] z-20">Ent</TableHead>
-                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-red-50/50 text-red-700 sticky top-[29px] z-20">Saí</TableHead>
-                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-blue-50/50 font-bold text-blue-800 sticky top-[29px] z-20">Final</TableHead>
+                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-muted/20 sticky top-[29px] z-10">Início</TableHead>
+                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-green-50/50 text-green-700 sticky top-[29px] z-10">Ent</TableHead>
+                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-red-50/50 text-red-700 sticky top-[29px] z-10">Saí</TableHead>
+                                    <TableHead className="text-[9px] w-12 border-r border-b px-1 text-center bg-blue-50/50 font-bold text-blue-800 sticky top-[29px] z-10">Final</TableHead>
                                 </React.Fragment>
                             ))}
                         </TableRow>
@@ -389,16 +311,17 @@ export default function DailyHistoryPage() {
                                     {prod.name}
                                 </TableCell>
                                 {periods.map(period => {
-                                    const key = (granularity === 'day' ? startOfDay(period) : granularity === 'week' ? startOfWeek(period, { locale: ptBR }) : startOfMonth(period)).toISOString();
+                                    const { start: periodStart } = getPeriodBoundaries(period, granularity);
+                                    const key = periodStart.toISOString();
                                     const pData = prod.periods[key];
                                     return (
                                         <React.Fragment key={`${prod.id}-${key}`}>
                                             <TableCell className="text-center border-r border-b px-1 text-muted-foreground bg-white/50">{pData?.initial ?? 0}</TableCell>
                                             <TableCell 
-                                                className={cn("text-center border-r border-b px-1 font-bold cursor-pointer transition-all hover:scale-110", pData?.entries > 0 ? "text-green-600 hover:bg-green-100" : "text-muted-foreground/20 hover:bg-muted/10")}
+                                                className={cn("text-center border-r border-b px-1 font-bold cursor-pointer transition-all hover:scale-110", pData?.entries > 0 ? "text-green-600 bg-green-50" : "text-muted-foreground/20 hover:bg-muted/10")}
                                                 onClick={() => {
                                                     const entries = pData?.details.filter(e => e.quantity > 0) || [];
-                                                    setViewDetails({product: prod, details: entries, periodStart: pData.periodStart});
+                                                    setViewDetails({product: prod, details: entries, periodStart: pData?.periodStart || periodStart});
                                                     if (entries.length === 1) startEditing(entries[0]);
                                                     else if (entries.length === 0) { setRowEditingId('new'); setEditValue(0); setEditNotes(""); }
                                                 }}
@@ -406,10 +329,10 @@ export default function DailyHistoryPage() {
                                                 {pData?.entries > 0 ? `+${pData.entries}` : '0'}
                                             </TableCell>
                                             <TableCell 
-                                                className={cn("text-center border-r border-b px-1 font-bold cursor-pointer transition-all hover:scale-110", pData?.exits > 0 ? "text-red-600 hover:bg-red-100" : "text-muted-foreground/30")}
+                                                className={cn("text-center border-r border-b px-1 font-bold cursor-pointer transition-all hover:scale-110", pData?.exits > 0 ? "text-red-600 bg-red-50" : "text-muted-foreground/20 hover:bg-muted/10")}
                                                 onClick={() => {
                                                     const exits = pData?.details.filter(e => e.quantity < 0) || [];
-                                                    setViewDetails({product: prod, details: exits, periodStart: pData.periodStart});
+                                                    setViewDetails({product: prod, details: exits, periodStart: pData?.periodStart || periodStart});
                                                     if (exits.length === 1) startEditing(exits[0]);
                                                     else if (exits.length === 0) { setRowEditingId('new'); setEditValue(0); setEditNotes(""); }
                                                 }}
@@ -427,7 +350,9 @@ export default function DailyHistoryPage() {
                         <TableRow>
                             <TableCell className="sticky left-0 bg-muted border-r border-b z-30 font-black uppercase text-[10px] py-2">Totais Consolidados</TableCell>
                             {periods.map(period => {
-                                const key = (granularity === 'day' ? startOfDay(period) : granularity === 'week' ? startOfWeek(period, { locale: ptBR }) : startOfMonth(period)).toISOString();                                const t = totals[key];
+                                const { start: periodStart } = getPeriodBoundaries(period, granularity);
+                                const key = periodStart.toISOString();
+                                const t = totals[key];
                                 return (
                                     <React.Fragment key={`total-${key}`}>
                                         <TableCell className="text-center border-r border-b px-1 bg-muted/50">{t?.initial || 0}</TableCell>

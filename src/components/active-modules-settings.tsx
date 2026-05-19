@@ -22,6 +22,7 @@ const moduleLabels: { [key in keyof EnabledModules]?: string } = {
     kits: 'Kits',
     inventory: 'Estoque',
     pos: 'Frente de Caixa',
+    cashMonitoring: 'Monitoramento de Caixas',
     expenses: 'Despesas',
     assistant: 'Oráculo AI',
     reports: 'Relatórios',

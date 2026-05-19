@@ -27,6 +27,7 @@ export interface EnabledModules {
     subscription: ModulePermissions;
     chat?: ModulePermissions;
     stockAudit?: ModulePermissions;
+    cashMonitoring?: ModulePermissions;
 }
 
 export interface PermissionProfile {

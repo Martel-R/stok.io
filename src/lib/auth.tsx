@@ -71,6 +71,7 @@ const defaultPermissions: EnabledModules = {
     backup: { view: true, edit: true, delete: true },
     subscription: { view: true, edit: true, delete: true },
     stockAudit: { view: true, edit: true, delete: true },
+    cashMonitoring: { view: true, edit: true, delete: true },
 };
 
 const professionalPermissions: EnabledModules = {

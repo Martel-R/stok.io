@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # Stokio - Servidor de Backup (Slave)
+  stokio_slave:
+    image: ${DOCKERHUB_USERNAME:-martelr}/stok.io:latest
+    container_name: stokio_slave
+    restart: always
+    expose:
+      - "3000"
+    networks:
+      - internal_network
+    labels:
+      - "traefik.enable=true"
+      # O Host pode ser um subdomínio específico para este cliente/backup
+      - "traefik.http.routers.stokio_slave.rule=Host(`${SLAVE_DOMAIN:-backup.stok.io}`)"
+      - "traefik.http.routers.stokio_slave.entrypoints=web"
+      - "traefik.http.services.stokio_slave.loadbalancer.server.port=3000"
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # Proxy Reverso Local (Traefik)
+  traefik_slave:
+    image: traefik:v3.0
+    container_name: traefik_slave
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - internal_network
+    restart: always
+
+  # Túnel Cloudflare para Acesso Remoto
+  cloudflared_slave:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared_slave
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${SLAVE_TUNNEL_TOKEN}
+    restart: always
+    networks:
+      - internal_network
+    depends_on:
+      - traefik_slave
+
+  # Auto-atualizador
+  watchtower_slave:
+    image: containrrr/watchtower
+    container_name: watchtower_slave
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=60
+      - WATCHTOWER_LABEL_ENABLE=true
+    restart: always
+
+networks:
+  internal_network:
+    driver: bridge

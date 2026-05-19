@@ -1,37 +1,24 @@
 version: '3.8'
 
 services:
-  # Stokio - Sua Aplicação Next.js
+  # Stokio - Aplicação Principal
   stokio:
-    # Usamos a imagem pré-construída no GitHub Actions
     image: ${DOCKERHUB_USERNAME:-martelr}/stok.io:latest
     container_name: stokio_app
     restart: always
-    # Não precisamos mais do bloco build no servidor de produção, 
-    # mas mantemos comentado caso queira buildar localmente
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
-    #   args:
-    #     - NEXT_PUBLIC_FIREBASE_API_KEY=${NEXT_PUBLIC_FIREBASE_API_KEY}
-    #     ...
     expose:
       - "3000"
+    networks:
+      - traefik_network
     labels:
+      - "traefik.enable=true"
+      # Ajuste o Host para o domínio principal do seu servidor de produção
+      - "traefik.http.routers.stokio.rule=Host(`${DOMAIN:-stok.io}`)"
+      - "traefik.http.routers.stokio.entrypoints=websecure"
+      - "traefik.http.routers.stokio.tls.certresolver=myresolver"
+      - "traefik.http.services.stokio.loadbalancer.server.port=3000"
+      # Watchtower para auto-atualização
       - "com.centurylinklabs.watchtower.enable=true"
-
-  # O Túnel Cloudflare
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared_tunnel
-    command: tunnel run
-    environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
-    restart: always
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-    depends_on:
-      - stokio
 
   # O Atualizador Automático (Watchtower)
   watchtower:
@@ -41,7 +28,11 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - WATCHTOWER_CLEANUP=true
-      - WATCHTOWER_POLL_INTERVAL=60 # Verifica a cada 60 segundos
+      - WATCHTOWER_POLL_INTERVAL=60
       - WATCHTOWER_INCLUDE_RESTARTING=true
-      - WATCHTOWER_LABEL_ENABLE=true # Só atualiza containers com a label enable=true
+      - WATCHTOWER_LABEL_ENABLE=true
     restart: always
+
+networks:
+  traefik_network:
+    external: true

@@ -501,15 +501,18 @@ export default function CashMonitoringPage() {
                                                                             <div className="text-[9px] uppercase font-black text-muted-foreground/80 tracking-widest flex items-center gap-1.5 mb-2">
                                                                                 <Banknote className="h-3 w-3" /> Itens Vendidos
                                                                             </div>
-                                                                            {sale.items.map((item, idx) => (
-                                                                                <div key={idx} className="flex justify-between items-center text-[11px] leading-tight pl-1 border-l-2 border-primary/20">
-                                                                                    <div className="flex gap-2 items-center">
-                                                                                        <span className="font-mono bg-primary/10 text-primary px-1 rounded text-[10px] font-bold">{item.quantity}x</span>
-                                                                                        <span className="font-medium text-foreground/80">{item.name}</span>
+                                                                            {sale.items.map((item, idx) => {
+                                                                                const itemTotal = item.type === 'combo' ? item.finalPrice : item.total;
+                                                                                return (
+                                                                                    <div key={idx} className="flex justify-between items-center text-[11px] leading-tight pl-1 border-l-2 border-primary/20">
+                                                                                        <div className="flex gap-2 items-center">
+                                                                                            <span className="font-mono bg-primary/10 text-primary px-1 rounded text-[10px] font-bold">{item.quantity}x</span>
+                                                                                            <span className="font-medium text-foreground/80">{item.name}</span>
+                                                                                        </div>
+                                                                                        <span className="font-semibold text-foreground/60">{formatCurrency(itemTotal)}</span>
                                                                                     </div>
-                                                                                    <span className="font-semibold text-foreground/60">{formatCurrency(item.total)}</span>
-                                                                                </div>
-                                                                            ))}
+                                                                                );
+                                                                            })}
                                                                         </div>
 
                                                                         {/* Detalhes do Pagamento */}

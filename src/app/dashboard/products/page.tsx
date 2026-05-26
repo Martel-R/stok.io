@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, writeBatch, getDocs, query, where, runTransaction, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { Product, StockEntry, Branch, Supplier } from '@/lib/types';
-import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp, ListChecks, Search, Trash2, Camera, Barcode, Percent, Tag } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Upload, Link as LinkIcon, Loader2, ChevronsUpDown, Check, Copy, FileUp, ListChecks, Search, Trash2, Camera, Barcode, Percent, Tag, RefreshCcw, Sun } from 'lucide-react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
@@ -55,6 +55,8 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
     const [hasPermission, setHasPermission] = useState(true);
     const [isTorchOn, setIsTorchOn] = useState(false);
     const [hasTorch, setHasTorch] = useState(false);
+    const [isSecure, setIsSecure] = useState(true);
+    const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
     const scannerRef = useRef<Html5Qrcode | null>(null);
     const audioCtxRef = useRef<AudioContext | null>(null);
     const { toast } = useToast();
@@ -86,6 +88,20 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
         }
     };
 
+    const stopScanner = async () => {
+        if (scannerRef.current) {
+            try {
+                if (scannerRef.current.isScanning) {
+                    await scannerRef.current.stop();
+                }
+                scannerRef.current.clear();
+                scannerRef.current = null;
+            } catch (err) {
+                console.error("Error stopping scanner:", err);
+            }
+        }
+    };
+
     const toggleTorch = async () => {
         if (!scannerRef.current || !hasTorch) return;
         try {
@@ -99,16 +115,29 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
         }
     };
 
+    const toggleCamera = async () => {
+        await stopScanner();
+        setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
+    };
+
     useEffect(() => {
         let isMounted = true;
 
         if (isOpen) {
+            if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+                setIsSecure(false);
+                setHasPermission(false);
+                return;
+            }
+
             setIsTorchOn(false);
             setHasTorch(false);
-            setTimeout(() => {
+            
+            const startCamera = async () => {
+                await stopScanner();
                 if (!isMounted || !document.getElementById(regionId)) return;
 
-                const html5QrCode = new Html5Qrcode(regionId, true);
+                const html5QrCode = new Html5Qrcode(regionId, false);
                 scannerRef.current = html5QrCode;
 
                 const config = { 
@@ -127,22 +156,25 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
                     formatsToSupport: [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 ],
                     videoConstraints: {
                         width: { ideal: 1280 },
-                        height: { ideal: 720 }
+                        height: { ideal: 720 },
+                        facingMode: facingMode
                     }
                 };
 
-                html5QrCode.start(
-                    { facingMode: "environment" },
-                    config,
-                    (decodedText) => {
-                        console.log("Barcode detected successfully (Products Page):", decodedText);
-                        playBeep();
-                        onScan(decodedText);
-                        stopScanner();
-                    },
-                    () => {} // Empty error callback for stability
-                ).then(() => {
-                    // Safe way to get the running track
+                try {
+                    await html5QrCode.start(
+                        { facingMode: facingMode },
+                        config,
+                        (decodedText) => {
+                            playBeep();
+                            onScan(decodedText);
+                            onOpenChange(false);
+                        },
+                        () => {} 
+                    );
+
+                    if (!isMounted) return;
+
                     let track: MediaStreamTrack | undefined;
                     try {
                         if (typeof (html5QrCode as any).getRunningTrack === 'function') {
@@ -156,34 +188,25 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
 
                         if (track) {
                             const capabilities = track.getCapabilities() as any;
-                            if (capabilities.torch) {
-                                setHasTorch(true);
-                            }
+                            setHasTorch(!!capabilities.torch);
                         }
                     } catch (e) {
-                        console.warn("Could not detect torch capabilities:", e);
+                        console.warn("Torch detection skipped:", e);
                     }
-                }).catch(err => {
-                    console.error("Critical error starting scanner (Products Page):", err);
+                } catch (err) {
+                    console.error("Camera start error:", err);
                     if (isMounted) setHasPermission(false);
-                });
-                console.log("Scanner started on element:", regionId);
-            }, 100);
+                }
+            };
+
+            startCamera();
         }
 
         return () => {
             isMounted = false;
             stopScanner();
         };
-    }, [isOpen]);
-
-    const stopScanner = () => {
-        if (scannerRef.current && scannerRef.current.isScanning) {
-            scannerRef.current.stop().then(() => {
-                scannerRef.current?.clear();
-            }).catch(err => console.error("Error stopping scanner:", err));
-        }
-    };
+    }, [isOpen, facingMode]);
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => {
@@ -192,27 +215,49 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
         }}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle className="flex justify-between items-center">
-                        Escanear Código de Barras
-                        {hasTorch && (
+                    <div className="flex justify-between items-center">
+                        <DialogTitle>Escanear Código</DialogTitle>
+                        <div className="flex gap-2 mr-6">
                             <Button 
-                                variant={isTorchOn ? "secondary" : "outline"} 
-                                size="sm" 
-                                onClick={toggleTorch}
-                                className="h-8 gap-2"
+                                variant="outline" 
+                                size="icon" 
+                                onClick={toggleCamera} 
+                                className="h-8 w-8 rounded-full"
+                                title="Trocar Câmera"
                             >
-                                {isTorchOn ? "Desligar Luz" : "Ligar Luz"}
+                                <RefreshCcw className="h-4 w-4" />
                             </Button>
-                        )}
-                    </DialogTitle>
-                    <DialogDescription>Aponte a câmera para o código de barras. Se estiver escuro, use a lanterna.</DialogDescription>
+                            {hasTorch && facingMode === 'environment' && (
+                                <Button 
+                                    variant={isTorchOn ? "default" : "outline"} 
+                                    size="icon" 
+                                    onClick={toggleTorch} 
+                                    className="h-8 w-8 rounded-full"
+                                    title="Lanterna"
+                                >
+                                    <Sun className="h-4 w-4" />
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                    <DialogDescription>
+                        Câmera: <span className="font-bold uppercase text-[10px]">{facingMode === 'environment' ? 'Traseira' : 'Frontal'}</span>
+                    </DialogDescription>
                 </DialogHeader>
                 <div className="p-4 bg-black rounded-md overflow-hidden min-h-[300px] flex items-center justify-center relative">
-                    {!hasPermission && (
+                    {!isSecure && (
+                        <Alert variant="destructive" className="z-10 absolute inset-4 w-auto">
+                            <AlertTitle>Conexão não segura</AlertTitle>
+                            <AlertDescription>
+                                O acesso à câmera requer HTTPS no celular.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+                    {isSecure && !hasPermission && (
                         <Alert variant="destructive" className="z-10 absolute inset-4 w-auto">
                             <AlertTitle>Erro na Câmera</AlertTitle>
                             <AlertDescription>
-                                Não foi possível acessar a câmera ou o scanner falhou ao iniciar.
+                                Verifique as permissões de câmera do seu navegador.
                             </AlertDescription>
                         </Alert>
                     )}
@@ -230,7 +275,7 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
                     Dica: Mantenha o código centralizado e evite reflexos.
                 </div>
                 <DialogFooter>
-                    <Button variant="outline" className="w-full" onClick={() => onOpenChange(false)}>Cancelar</Button>
+                    <Button variant="outline" className="w-full" onClick={() => onOpenChange(false)}>Fechar</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -862,7 +907,8 @@ export default function ProductsPage() {
     if (searchQuery) {
         result = result.filter(product => 
             product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            product.category.toLowerCase().includes(searchQuery.toLowerCase())
+            product.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (product.barcode && product.barcode.toLowerCase().includes(searchQuery.toLowerCase()))
         );
     }
 

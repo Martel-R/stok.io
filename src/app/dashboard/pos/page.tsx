@@ -1,7 +1,6 @@
 
-
 'use client';
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { collection, onSnapshot, query, where, writeBatch, doc, getDocs, orderBy, Timestamp, serverTimestamp, updateDoc, increment, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Product, Sale, PaymentCondition, PaymentDetail, Combo, PaymentConditionType, StockEntry, Kit, Attendance, AttendanceItem, Customer, SaleStatus } from '@/lib/types';
@@ -11,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History, Minus, Component, DollarSign, UserCheck, Search, UserPlus, MoreHorizontal, Ban, Barcode, Play, StopCircle, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
+import { CreditCard, X, Loader2, PlusCircle, Trash2, Gift, Package, History, Minus, Component, DollarSign, UserCheck, Search, UserPlus, MoreHorizontal, Ban, Barcode, Play, StopCircle, ArrowDownCircle, ArrowUpCircle, Eye, ShoppingCart, Receipt, RefreshCcw, Sun, Printer, Calendar } from 'lucide-react';
 import Image from 'next/image';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
@@ -33,6 +32,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Html5Qrcode } from 'html5-qrcode';
 import { OpenSessionDialog, CloseSessionDialog, CashAdjustmentDialog } from '@/components/cash-session-manager';
 import { SupervisorAuthorizationDialog } from '@/components/supervisor-authorization-dialog';
+import { SaleDetailsDialog } from '@/components/sale-details-dialog';
 import type { CashSession } from '@/lib/types';
 
 
@@ -61,6 +61,8 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
     const [hasPermission, setHasPermission] = useState(true);
     const [isTorchOn, setIsTorchOn] = useState(false);
     const [hasTorch, setHasTorch] = useState(false);
+    const [isSecure, setIsSecure] = useState(true);
+    const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
     const scannerRef = useRef<Html5Qrcode | null>(null);
     const audioCtxRef = useRef<AudioContext | null>(null);
     const { toast } = useToast();
@@ -92,6 +94,20 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
         }
     };
 
+    const stopScanner = async () => {
+        if (scannerRef.current) {
+            try {
+                if (scannerRef.current.isScanning) {
+                    await scannerRef.current.stop();
+                }
+                scannerRef.current.clear();
+                scannerRef.current = null;
+            } catch (err) {
+                console.error("Error stopping scanner:", err);
+            }
+        }
+    };
+
     const toggleTorch = async () => {
         if (!scannerRef.current || !hasTorch) return;
         try {
@@ -105,16 +121,32 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
         }
     };
 
+    const toggleCamera = async () => {
+        await stopScanner();
+        setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
+    };
+
     useEffect(() => {
         let isMounted = true;
 
         if (isOpen) {
+            // Check if context is secure (required for camera on mobile)
+            if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+                setIsSecure(false);
+                setHasPermission(false);
+                return;
+            }
+
             setIsTorchOn(false);
             setHasTorch(false);
-            setTimeout(() => {
+            
+            const startCamera = async () => {
+                // Ensure previous instance is dead
+                await stopScanner();
+                
                 if (!isMounted || !document.getElementById(regionId)) return;
 
-                const html5QrCode = new Html5Qrcode(regionId, true);
+                const html5QrCode = new Html5Qrcode(regionId, false); // verbose false for production
                 scannerRef.current = html5QrCode;
 
                 const config = { 
@@ -133,22 +165,26 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
                     formatsToSupport: [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 ],
                     videoConstraints: {
                         width: { ideal: 1280 },
-                        height: { ideal: 720 }
+                        height: { ideal: 720 },
+                        facingMode: facingMode
                     }
                 };
 
-                html5QrCode.start(
-                    { facingMode: "environment" },
-                    config,
-                    (decodedText) => {
-                        console.log("Barcode detected successfully:", decodedText);
-                        playBeep();
-                        onScan(decodedText);
-                        stopScanner();
-                    },
-                    () => {} // Empty error callback for stability
-                ).then(() => {
-                    // Safe way to get the running track
+                try {
+                    await html5QrCode.start(
+                        { facingMode: facingMode },
+                        config,
+                        (decodedText) => {
+                            playBeep();
+                            onScan(decodedText);
+                            onOpenChange(false);
+                        },
+                        () => {} // Empty error callback
+                    );
+
+                    if (!isMounted) return;
+
+                    // Detect torch
                     let track: MediaStreamTrack | undefined;
                     try {
                         if (typeof (html5QrCode as any).getRunningTrack === 'function') {
@@ -162,34 +198,26 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
 
                         if (track) {
                             const capabilities = track.getCapabilities() as any;
-                            if (capabilities.torch) {
-                                setHasTorch(true);
-                            }
+                            setHasTorch(!!capabilities.torch);
                         }
                     } catch (e) {
-                        console.warn("Could not detect torch capabilities:", e);
+                        console.warn("Torch detection skipped:", e);
                     }
-                }).catch(err => {
-                    console.error("Critical error starting scanner:", err);
+
+                } catch (err) {
+                    console.error("Camera start error:", err);
                     if (isMounted) setHasPermission(false);
-                });
-                console.log("Scanner started on element:", regionId);
-            }, 100);
+                }
+            };
+
+            startCamera();
         }
 
         return () => {
             isMounted = false;
             stopScanner();
         };
-    }, [isOpen]);
-
-    const stopScanner = () => {
-        if (scannerRef.current && scannerRef.current.isScanning) {
-            scannerRef.current.stop().then(() => {
-                scannerRef.current?.clear();
-            }).catch(err => console.error("Error stopping scanner:", err));
-        }
-    };
+    }, [isOpen, facingMode]);
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => {
@@ -198,21 +226,54 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
         }}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Escanear Código de Barras</DialogTitle>
-                    <DialogDescription>Aponte a câmera para o código de barras do produto.</DialogDescription>
+                    <div className="flex justify-between items-center">
+                        <DialogTitle>Escanear Código</DialogTitle>
+                        <div className="flex gap-2 mr-6">
+                            <Button 
+                                variant="outline" 
+                                size="icon" 
+                                onClick={toggleCamera} 
+                                className="h-8 w-8 rounded-full"
+                                title="Trocar Câmera"
+                            >
+                                <RefreshCcw className="h-4 w-4" />
+                            </Button>
+                            {hasTorch && facingMode === 'environment' && (
+                                <Button 
+                                    variant={isTorchOn ? "default" : "outline"} 
+                                    size="icon" 
+                                    onClick={toggleTorch} 
+                                    className="h-8 w-8 rounded-full"
+                                    title="Lanterna"
+                                >
+                                    <Sun className="h-4 w-4" />
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                    <DialogDescription>
+                        Câmera: <span className="font-bold uppercase text-[10px]">{facingMode === 'environment' ? 'Traseira' : 'Frontal'}</span>
+                    </DialogDescription>
                 </DialogHeader>
                 <div className="p-4 bg-black rounded-md overflow-hidden min-h-[300px] flex items-center justify-center relative">
-                    {!hasPermission && (
+                    {!isSecure && (
+                        <Alert variant="destructive" className="z-10 absolute inset-4 w-auto">
+                            <AlertTitle>Conexão não segura</AlertTitle>
+                            <AlertDescription>
+                                O acesso à câmera requer HTTPS no celular.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+                    {isSecure && !hasPermission && (
                         <Alert variant="destructive" className="z-10 absolute inset-4 w-auto">
                             <AlertTitle>Erro na Câmera</AlertTitle>
                             <AlertDescription>
-                                Não foi possível acessar a câmera ou o scanner falhou ao iniciar.
+                                Verifique as permissões de câmera do seu navegador.
                             </AlertDescription>
                         </Alert>
                     )}
                     <div id={regionId} className="w-full h-full"></div>
                     
-                    {/* Scanning Overlay */}
                     {hasPermission && (
                         <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                             <div className="w-[70%] h-[43%] border-2 border-white/50 rounded-lg relative overflow-hidden">
@@ -222,7 +283,7 @@ function BarcodeScannerModal({ isOpen, onOpenChange, onScan }: { isOpen: boolean
                     )}
                 </div>
                 <DialogFooter>
-                    <Button variant="outline" className="w-full" onClick={() => onOpenChange(false)}>Cancelar</Button>
+                    <Button variant="outline" className="w-full" onClick={() => onOpenChange(false)}>Fechar</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -252,8 +313,8 @@ function CustomerSelector({ onSelect }: { onSelect: (customer: Customer) => void
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-start">
-                    <UserPlus className="mr-2"/> Adicionar Cliente à Venda
+                <Button variant="outline" className="w-full justify-start text-xs h-8">
+                    <UserPlus className="mr-2 h-3.5 w-3.5"/> Adicionar Cliente à Venda
                 </Button>
             </PopoverTrigger>
             <PopoverContent className="w-[300px] p-0">
@@ -290,7 +351,7 @@ function CheckoutModal({
   onOpenChange: (isOpen: boolean) => void;
   cart: CartItem[];
   grandTotal: number;
-  onCheckout: (payments: PaymentDetail[], attendanceId?: string, customerId?: string) => Promise<void>;
+  onCheckout: (payments: PaymentDetail[], attendanceId?: string, customerId?: string, shouldPrint?: boolean) => Promise<string | void>;
   paymentConditions: PaymentCondition[];
   attendanceId?: string;
   customerId?: string;
@@ -429,13 +490,13 @@ function CheckoutModal({
     });
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (shouldPrint: boolean = false) => {
     if (Math.abs(remainingAmount) > 0.01) {
       toast({ title: 'Valor não bate', description: `A soma dos pagamentos deve ser igual ao total. Faltam R$${remainingAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, variant: 'destructive' });
       return;
     }
     setIsProcessing(true);
-    await onCheckout(payments, attendanceId, customerId);
+    await onCheckout(payments, attendanceId, customerId, shouldPrint);
     setIsProcessing(false);
     onOpenChange(false);
   };
@@ -571,10 +632,16 @@ function CheckoutModal({
                     </span>
                 </div>
             </div>
-            <Button onClick={handleSubmit} disabled={isProcessing} className="w-full sm:w-auto px-8 h-12 text-lg">
-                {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4"/>}
-                Finalizar [Enter]
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <Button variant="outline" onClick={() => handleSubmit(true)} disabled={isProcessing} className="px-4 h-12 text-sm font-bold border-primary/30 text-primary hover:bg-primary/5">
+                    <Printer className="mr-2 h-4 w-4"/>
+                    Finalizar e Imprimir
+                </Button>
+                <Button onClick={() => handleSubmit(false)} disabled={isProcessing} className="px-8 h-12 text-lg font-black">
+                    {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4"/>}
+                    Finalizar [Enter]
+                </Button>
+            </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -617,26 +684,24 @@ function PendingAttendancesTab({ onSelect }: { onSelect: (attendance: Attendance
         <ScrollArea className="h-[calc(100vh-18rem)]">
             {loading && <Skeleton className="h-full w-full"/>}
             {!loading && pending.length === 0 && (
-                <div className="flex h-full items-center justify-center text-muted-foreground">
-                    Nenhum atendimento com pagamento pendente.
+                <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+                    Nenhum atendimento pendente.
                 </div>
             )}
             <div className="space-y-2 p-2">
                 {pending.map(att => (
-                    <Card key={att.id} className="p-3">
+                    <Card key={att.id} className="p-3 border-muted/60 hover:border-primary/40 transition-colors">
                         <div className="flex justify-between items-center">
                             <div>
-                                <p className="font-semibold">{att.customerName}</p>
-                                <p className="text-sm text-muted-foreground">
-                                    Profissional: {att.professionalName}
-                                </p>
-                                 <p className="text-sm text-muted-foreground">
-                                    Data: {att.date && att.date.toDate ? format(att.date.toDate(), 'dd/MM/yyyy') : '...'}
-                                </p>
+                                <p className="font-bold text-sm">{att.customerName}</p>
+                                <div className="flex gap-3 text-[10px] text-muted-foreground mt-1">
+                                    <span className="flex items-center gap-1"><UserCheck className="h-3 w-3"/> {att.professionalName}</span>
+                                    <span className="flex items-center gap-1"><Calendar className="h-3 w-3"/> {att.date && att.date.toDate ? format(att.date.toDate(), 'dd/MM/yy') : '...'}</span>
+                                </div>
                             </div>
-                            <div className="text-right">
-                                <p className="font-bold text-lg">R$ {att.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                                <Button size="sm" onClick={() => onSelect(att)}>Pagar</Button>
+                            <div className="text-right flex flex-col items-end gap-1">
+                                <p className="font-black text-sm text-primary">{formatCurrency(att.total)}</p>
+                                <Button size="sm" className="h-7 text-[10px] px-3 font-bold" onClick={() => onSelect(att)}>RECEBER</Button>
                             </div>
                         </div>
                     </Card>
@@ -646,78 +711,125 @@ function PendingAttendancesTab({ onSelect }: { onSelect: (attendance: Attendance
     );
 }
 
-function SalesHistoryTab({ salesHistory, onCancelSale }: { salesHistory: Sale[], onCancelSale: (sale: Sale) => void }) {
+function SalesHistoryTab({ salesHistory, onCancelSale, onViewDetails }: { salesHistory: Sale[], onCancelSale: (sale: Sale) => void, onViewDetails: (sale: Sale) => void }) {
     const { user } = useAuth();
    
     return (
         <div className="flex flex-col h-[calc(100vh-18rem)]">
             <ScrollArea className="flex-grow">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Data</TableHead>
-                            <TableHead>Itens</TableHead>
-                            <TableHead>Pagamento</TableHead>
-                            <TableHead>Vendedor</TableHead>
-                            <TableHead className="text-right">Total</TableHead>
-                            <TableHead className="text-center w-[100px]">Ações</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {salesHistory.length > 0 ? (
-                            salesHistory.map(sale => (
-                                <TableRow key={sale.id} className={cn(sale.status === 'cancelled' && 'text-muted-foreground line-through')}>
-                                    <TableCell>{format(sale.date, 'dd/MM/yyyy HH:mm')}</TableCell>
-                                    <TableCell className="font-medium">
-                                        <div className="flex flex-col gap-1">
-                                            {sale.items?.map((item: any, index: number) => (
-                                                <div key={item.id + index}>
-                                                    <span className="font-semibold">{item.name}</span>
+                <div className="space-y-3 p-2">
+                    {salesHistory.length > 0 ? (
+                        salesHistory.map(sale => (
+                            <Card key={sale.id} className={cn(
+                                "group transition-all border-muted/60 hover:border-primary/30 shadow-sm",
+                                sale.status === 'cancelled' && 'opacity-60 bg-muted/20 grayscale'
+                            )}>
+                                <div className="p-3 space-y-3">
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex items-center gap-2">
+                                            <div className="bg-primary/10 p-1.5 rounded-lg shadow-inner">
+                                                <Receipt className="h-3.5 w-3.5 text-primary" />
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] font-black uppercase text-foreground tracking-tighter">Venda #{sale.id.substring(0, 8).toUpperCase()}</span>
+                                                <div className="flex items-center gap-2 text-[9px] font-bold text-muted-foreground uppercase">
+                                                    <span>{format(sale.date, 'HH:mm')}</span>
+                                                    <span>•</span>
+                                                    <span>{format(sale.date, 'dd/MM/yy')}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col items-end gap-1">
+                                            <span className={cn(
+                                                "font-black text-sm tracking-tighter",
+                                                sale.status === 'cancelled' ? 'text-muted-foreground line-through' : 'text-primary'
+                                            )}>
+                                                {formatCurrency(sale.total)}
+                                            </span>
+                                            {sale.status === 'cancelled' && (
+                                                <Badge variant="destructive" className="text-[8px] h-3.5 font-black uppercase px-1">Cancelada</Badge>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Itens da Venda */}
+                                    <div className="bg-muted/30 rounded-lg p-2.5 border border-muted/60 space-y-2">
+                                        <div className="text-[8px] uppercase font-black text-muted-foreground tracking-widest flex items-center gap-1.5 opacity-70">
+                                            <Package className="h-2.5 w-2.5" /> Conteúdo da Venda
+                                        </div>
+                                        <div className="space-y-2">
+                                            {sale.items?.map((item: any, idx: number) => (
+                                                <div key={idx} className="flex flex-col gap-1 pl-2 border-l-2 border-primary/20">
+                                                    <div className="flex justify-between items-center text-[10px]">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-black text-primary/80">{item.quantity}x</span>
+                                                            <span className="font-bold text-foreground/80 truncate max-w-[150px]">{item.name}</span>
+                                                        </div>
+                                                        <span className="font-mono text-muted-foreground">{formatCurrency(item.total || item.finalPrice)}</span>
+                                                    </div>
+                                                    
+                                                    {/* Detalhamento de Kit/Combo */}
                                                     {item.type === 'kit' && item.chosenProducts && (
-                                                        <span className="text-xs text-muted-foreground ml-1">
-                                                            ({item.chosenProducts.map((p: any) => p.name).join(', ')})
-                                                        </span>
+                                                        <div className="pl-4 text-[9px] text-muted-foreground/70 flex flex-wrap gap-x-2 italic">
+                                                            {item.chosenProducts.map((p: any, pIdx: number) => (
+                                                                <span key={pIdx}>• {p.name}</span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    {item.type === 'combo' && item.products && (
+                                                        <div className="pl-4 text-[9px] text-muted-foreground/70 flex flex-wrap gap-x-2 italic">
+                                                            {item.products.map((p: any, pIdx: number) => (
+                                                                <span key={pIdx}>• {p.quantity}x {p.productName}</span>
+                                                            ))}
+                                                        </div>
                                                     )}
                                                 </div>
                                             ))}
                                         </div>
-                                    </TableCell>
-                                     <TableCell>
-                                         <div className="flex flex-col gap-1">
+                                    </div>
+
+                                    <div className="flex justify-between items-center pt-1">
+                                        <div className="flex flex-wrap gap-1">
                                             {sale.payments?.map((p, i) => (
-                                                <Badge key={i} variant="outline">{p.conditionName}</Badge>
+                                                <div key={i} className="flex items-center gap-1 bg-background border border-muted-foreground/10 px-1.5 py-0.5 rounded shadow-sm">
+                                                    <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-tighter">{p.conditionName}:</span>
+                                                    <span className="text-[8px] font-black text-primary">{formatCurrency(p.amount)}</span>
+                                                </div>
                                             ))}
                                         </div>
-                                    </TableCell>
-                                    <TableCell>{sale.cashier}</TableCell>
-                                    <TableCell className="text-right">R${sale.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                                    <TableCell className="text-center">
-                                       {user?.enabledModules?.pos?.delete && sale.status !== 'cancelled' && (
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
-                                                        <MoreHorizontal />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent>
-                                                    <DropdownMenuItem onSelect={() => setTimeout(() => onCancelSale(sale), 0)} className="text-destructive focus:text-destructive">
-                                                        <Ban className="mr-2"/>
-                                                        Cancelar Venda
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        )}
-                                        {sale.status === 'cancelled' && <Badge variant="destructive">Cancelada</Badge>}
-                                    </TableCell>
-                                </TableRow>
-                            ))
-                        ) : (
-                            <TableRow>
-                                <TableCell colSpan={6} className="h-24 text-center">Nenhuma venda registrada ainda.</TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
+                                        
+                                        <div className="flex gap-1.5">
+                                            <Button variant="outline" size="sm" className="h-7 text-[9px] font-black uppercase tracking-widest border-primary/20 text-primary hover:bg-primary/5 px-2" onClick={() => onViewDetails(sale)}>
+                                                <Eye className="h-3 w-3 mr-1" /> Detalhes
+                                            </Button>
+                                            
+                                            {user?.enabledModules?.pos?.delete && sale.status !== 'cancelled' && (
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/5">
+                                                            <MoreHorizontal className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end" className="w-48 shadow-xl border-destructive/20">
+                                                        <DropdownMenuItem onSelect={() => setTimeout(() => onCancelSale(sale), 0)} className="text-destructive font-black text-[10px] uppercase focus:bg-destructive/10 focus:text-destructive cursor-pointer tracking-widest">
+                                                            <Ban className="mr-2 h-3 w-3"/>
+                                                            Estornar Venda
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </Card>
+                        ))
+                    ) : (
+                        <div className="h-32 flex flex-col items-center justify-center text-muted-foreground text-xs italic opacity-60">
+                            <History className="h-8 w-8 mb-2 stroke-[1px]" />
+                            Nenhuma venda registrada hoje.
+                        </div>
+                    )}
+                </div>
             </ScrollArea>
         </div>
     );
@@ -851,7 +963,7 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm, all
                         <h3 className="font-semibold">Sua Seleção ({selectedProducts.length} de {kit.numberOfItems})</h3>
                         <ScrollArea className="h-full rounded-md border p-4">
                            {selectedProducts.length === 0 ? (
-                                <div className="flex items-center justify-center h-full text-muted-foreground">
+                                <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                                     Selecione produtos da lista ao lado.
                                 </div>
                            ) : (
@@ -861,14 +973,14 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm, all
                                             <div className="flex items-center gap-2">
                                                 <Image src={p.imageUrl} alt={p.name} width={40} height={40} className="rounded-md" data-ai-hint="product image"/>
                                                 <div>
-                                                    <p className="font-medium">{p.name}</p>
+                                                    <p className="font-medium text-sm">{p.name}</p>
                                                     <p className="text-xs text-muted-foreground">R$ {p.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <span className="text-sm font-bold">x {p.count}</span>
-                                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeProduct(p.id)}>
-                                                    <Minus className="h-4 w-4"/>
+                                                <span className="text-sm font-bold text-primary">x {p.count}</span>
+                                                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => removeProduct(p.id)}>
+                                                    <X className="h-3.5 w-3.5"/>
                                                 </Button>
                                             </div>
                                         </div>
@@ -878,9 +990,9 @@ function KitSelectionModal({ kit, products, isOpen, onOpenChange, onConfirm, all
                         </ScrollArea>
                     </div>
                 </div>
-                <DialogFooter className="pt-4">
+                <DialogFooter className="pt-4 border-t">
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                    <Button onClick={handleConfirm}>Confirmar Seleção</Button>
+                    <Button onClick={handleConfirm} className="font-bold">Confirmar Seleção</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -960,7 +1072,7 @@ function WeightInputModal({ product, isOpen, onOpenChange, onConfirm }: { produc
                             <span className="w-full border-t" />
                         </div>
                         <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-background px-2 text-muted-foreground">Ou informe o valor</span>
+                            <span className="bg-background px-2 text-muted-foreground font-black">Ou informe o valor</span>
                         </div>
                     </div>
 
@@ -972,17 +1084,17 @@ function WeightInputModal({ product, isOpen, onOpenChange, onConfirm }: { produc
                             value={formatCurrency(totalValue)}
                             onChange={(e) => handleValueChange(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
-                            className="text-2xl h-14 text-center font-mono"
+                            className="text-2xl h-14 text-center font-mono text-primary"
                         />
                     </div>
 
                     {totalValue > 0 && (
-                        <div className="text-center p-4 bg-primary/10 rounded-lg border border-primary/20">
-                            <p className="text-sm text-muted-foreground">Resumo da Inclusão</p>
-                            <p className="text-2xl font-bold text-primary">
+                        <div className="text-center p-4 bg-primary/10 rounded-xl border border-primary/20 shadow-inner">
+                            <p className="text-sm text-muted-foreground uppercase font-black tracking-widest mb-1">Resumo da Inclusão</p>
+                            <p className="text-3xl font-black text-primary">
                                 {formatCurrency(totalValue)}
                             </p>
-                            <p className="text-xs opacity-70">
+                            <p className="text-[11px] opacity-70 font-mono mt-1">
                                 {quantity} {product.unitOfMeasure || 'unidade'} x {formatCurrency(product.price)}
                             </p>
                         </div>
@@ -990,7 +1102,7 @@ function WeightInputModal({ product, isOpen, onOpenChange, onConfirm }: { produc
                 </div>
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                    <Button onClick={handleConfirm} size="lg" className="w-full sm:w-auto">Confirmar Inclusão</Button>
+                    <Button onClick={handleConfirm} size="lg" className="w-full sm:w-auto font-black shadow-lg">Confirmar Inclusão</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -1011,22 +1123,24 @@ function UnitSelectionModal({ product, isOpen, onOpenChange, onConfirm }: { prod
                 <div className="grid gap-4 py-4">
                     <Button 
                         variant="outline" 
-                        className="h-20 flex flex-col items-center justify-center gap-1"
+                        className="h-20 flex flex-col items-center justify-center gap-1 border-primary/20 hover:bg-primary/5 group"
                         onClick={() => onConfirm('base')}
                     >
-                        <span className="font-bold">{product.unitOfMeasure || 'Unidade Base'}</span>
-                        <span className="text-sm text-muted-foreground">{formatCurrency(product.price)}</span>
+                        <span className="font-black text-lg group-hover:text-primary">{product.unitOfMeasure || 'Unidade Base'}</span>
+                        <span className="text-sm text-muted-foreground font-bold">{formatCurrency(product.price)}</span>
                     </Button>
                     {saleUnits.map((unit) => (
                         <Button 
                             key={unit.id}
                             variant="outline" 
-                            className="h-20 flex flex-col items-center justify-center gap-1"
+                            className="h-20 flex flex-col items-center justify-center gap-1 hover:bg-primary/5 transition-all group"
                             onClick={() => onConfirm(unit.id)}
                         >
-                            <span className="font-bold">{unit.name}</span>
-                            <span className="text-sm text-muted-foreground">{formatCurrency(unit.price)}</span>
-                            <span className="text-[10px] opacity-70">Multiplicador: x{unit.multiplier}</span>
+                            <span className="font-black text-lg group-hover:text-primary">{unit.name}</span>
+                            <div className="flex gap-3 items-center">
+                                <span className="text-sm text-muted-foreground font-bold">{formatCurrency(unit.price)}</span>
+                                <Badge variant="secondary" className="text-[10px] uppercase font-black tracking-tighter shadow-none bg-muted/50 group-hover:bg-primary/10">x{unit.multiplier}</Badge>
+                            </div>
                         </Button>
                     ))}
                 </div>
@@ -1045,6 +1159,7 @@ export default function POSPage() {
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [selectedKit, setSelectedKit] = useState<Kit | null>(null);
+  const [selectedSaleForDetails, setSelectedSaleForDetails] = useState<Sale | null>(null);
   const [currentAttendanceId, setCurrentAttendanceId] = useState<string | undefined>(undefined);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1074,17 +1189,13 @@ export default function POSPage() {
   // Barcode Scanner Listener (Physical Device)
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-        // Ignorar se algum modal estiver aberto (exceto se for o PDV limpo)
         if (isCheckoutModalOpen || isScannerOpen || !!selectedKit || isWeightModalOpen || isUnitModalOpen || isClosingSession || isSupervisorAuthOpen) return;
-        
-        // Ignorar se o foco estiver em um input (deixa o input tratar)
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
         const now = Date.now();
         const diff = now - lastKeyTimeRef.current;
         lastKeyTimeRef.current = now;
 
-        // Scanners físicos digitam muito rápido (geralmente < 50ms entre teclas)
         if (diff > 100) {
             barcodeBufferRef.current = '';
         }
@@ -1104,15 +1215,14 @@ export default function POSPage() {
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [isCheckoutModalOpen, isScannerOpen, selectedKit, isWeightModalOpen, isUnitModalOpen, isClosingSession, isSupervisorAuthOpen, products]);
+  
   const quantityInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { user, currentBranch, loading: authLoading, paymentConditions } = useAuth();
   const router = useRouter();
 
-  // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-        // Se o caixa estiver fechado, permite abrir com Enter
         if (!activeSession) {
             if (e.key === 'Enter' && !isOpeningSession) {
                 e.preventDefault();
@@ -1121,32 +1231,26 @@ export default function POSPage() {
             return;
         }
 
-        // Ignore if any modal is open
         if (isCheckoutModalOpen || isScannerOpen || !!selectedKit || isWeightModalOpen || isUnitModalOpen || isClosingSession) return;
 
-        // F2 - Focus Search
         if (e.key === 'F2') {
             e.preventDefault();
             searchInputRef.current?.focus();
         }
-        // Alt + Q - Focus Quantity
         if (e.altKey && (e.key === 'q' || e.key === 'Q')) {
             e.preventDefault();
             e.stopPropagation();
             quantityInputRef.current?.focus();
             quantityInputRef.current?.select();
         }
-        // F8 - Checkout
         if (e.key === 'F8' && cart.length > 0) {
             e.preventDefault();
             setIsCheckoutModalOpen(true);
         }
-        // F9 - Clear Cart
         if (e.key === 'F9' && cart.length > 0) {
             e.preventDefault();
             initiateCartClear();
         }
-        // Alt + 1-5 - Switch Tabs
         if (e.altKey && ['1', '2', '3', '4', '5'].includes(e.key)) {
             const tabs = ['pending', 'products', 'combos', 'kits', 'history'];
             const index = parseInt(e.key) - 1;
@@ -1159,7 +1263,7 @@ export default function POSPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isCheckoutModalOpen, isScannerOpen, selectedKit, isWeightModalOpen, isUnitModalOpen, cart.length]);
+  }, [isCheckoutModalOpen, isScannerOpen, selectedKit, isWeightModalOpen, isUnitModalOpen, cart.length, activeSession, isOpeningSession]);
 
   useEffect(() => {
     if (!user || !currentBranch) return;
@@ -1193,7 +1297,7 @@ export default function POSPage() {
     const productsQuery = query(collection(db, 'products'), where('organizationId', '==', user.organizationId));
     const combosQuery = query(collection(db, 'combos'), where('organizationId', '==', user.organizationId));
     const kitsQuery = query(collection(db, 'kits'), where('organizationId', '==', user.organizationId));
-    const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id));
+    const salesQuery = query(collection(db, 'sales'), where('branchId', '==', currentBranch.id), orderBy('date', 'desc'));
     const stockEntriesQuery = query(collection(db, 'stockEntries'), where('branchId', '==', currentBranch.id));
 
     let allProductsData: Product[] = [];
@@ -1207,7 +1311,6 @@ export default function POSPage() {
             )
         );
 
-        // Optimization: Use a map to sum stock in O(S) time
         const stockMap = new Map<string, number>();
         entriesData.forEach(e => {
             const current = stockMap.get(e.productId) || 0;
@@ -1243,8 +1346,7 @@ export default function POSPage() {
 
     const unsubscribeSales = onSnapshot(salesQuery, (salesSnapshot) => {
         const salesData = salesSnapshot.docs.map(doc => convertSaleDate({ id: doc.id, ...doc.data() }));
-        const sortedSales = salesData.sort((a,b) => b.date.getTime() - a.date.getTime());
-        setSalesHistory(sortedSales);
+        setSalesHistory(salesData);
     });
 
     const unsubscribeCombos = onSnapshot(combosQuery, (querySnapshot) => {
@@ -1279,7 +1381,12 @@ export default function POSPage() {
   }, [currentBranch, authLoading, user]);
 
   const filteredProducts = useMemo(() => {
-    return products.filter(p => p.isSalable && p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    return products.filter(p => 
+        p.isSalable && (
+            p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+            (p.barcode && p.barcode.toLowerCase().includes(searchQuery.toLowerCase()))
+        )
+    );
   }, [products, searchQuery]);
   
   const filteredCombos = useMemo(() => {
@@ -1301,7 +1408,7 @@ export default function POSPage() {
       }
 
       const cartItem: CartItem = {
-          id: `${kit.id}-${Date.now()}`, // Unique ID for each kit instance in cart
+          id: `${kit.id}-${Date.now()}`,
           name: `${kit.name} (Kit)`,
           itemType: 'kit',
           quantity: 1,
@@ -1323,14 +1430,10 @@ export default function POSPage() {
     if (!unitProduct) return;
     
     if (unitId === 'base') {
-        // Pass the current globalQuantity so it doesn't trigger the modal again
         addToCart(unitProduct, 'product', globalQuantity);
     } else {
         const unit = unitProduct.saleUnits?.find(u => u.id === unitId);
         if (unit) {
-            // Add as a special cart item representing the unit
-            // quantity is the billing quantity (e.g. 1 box)
-            // we add a custom property 'stockMultiplier' to handle stock deduction later
             const cartItem: any = {
                 ...unitProduct,
                 id: `${unitProduct.id}-${unit.id}`,
@@ -1355,24 +1458,17 @@ export default function POSPage() {
     }
 
     const allowNegative = currentBranch?.allowNegativeStock ?? false;
-    
-    // CRITICAL: We only use globalQuantity if it's NOT a product with units (because unit selection handles it)
-    // AND it's NOT a weight-based product (because weight modal handles it)
-    // AND forcedQuantity is not provided.
-    
     const product = type === 'product' ? item as ProductWithStock : null;
     const hasUnits = product?.saleUnits && product.saleUnits.length > 0;
     const isWeight = product?.saleType === 'weight';
 
     if (type === 'product' && product) {
-        // 1. Handle Unit Selection (Triggers modal)
         if (hasUnits && forcedQuantity === undefined) {
             setUnitProduct(product);
             setIsUnitModalOpen(true);
             return;
         }
 
-        // 2. Handle Weight Selection (Triggers modal)
         if (isWeight && forcedQuantity === undefined) {
             setWeightProduct(product);
             setIsWeightModalOpen(true);
@@ -1389,14 +1485,11 @@ export default function POSPage() {
         }
 
          setCart((prev) => {
-            // If we have a forcedTotal, we treat it as a unique line item
             if (forcedTotal !== undefined) {
                  return [...prev, { ...product, quantity: qtyToAdd, total: forcedTotal, itemType: 'product', id: `${product.id}-${Date.now()}` } as any];
             }
 
-            const itemKey = product.id; 
-
-            const existingItem = prev.find((cartItem) => cartItem.id === itemKey && cartItem.itemType === 'product');
+            const existingItem = prev.find((cartItem) => cartItem.id === product.id && cartItem.itemType === 'product');
             if (existingItem) {
                 if (existingItem.quantity + qtyToAdd > (existingItem as ProductWithStock).stock && !allowNegative) {
                      toast({ title: 'Limite de estoque atingido', description: `Você não pode adicionar mais de ${(existingItem as ProductWithStock).stock} unidades de ${existingItem.name}.`, variant: 'destructive'});
@@ -1410,7 +1503,6 @@ export default function POSPage() {
         });
     } else {
         const combo = item as Combo;
-        // Check stock for all products in combo
         if (!allowNegative) {
             for (const comboProduct of combo.products) {
                 const productInStore = products.find(p => p.id === comboProduct.productId);
@@ -1423,7 +1515,6 @@ export default function POSPage() {
         setCart(prev => {
             const existingItem = prev.find(ci => ci.id === combo.id && ci.itemType === 'combo');
             if (existingItem) {
-                // Check stock for subsequent additions of the same combo
                 if (!allowNegative) {
                     for (const comboProduct of combo.products) {
                         const productInStore = products.find(p => p.id === comboProduct.productId);
@@ -1445,16 +1536,11 @@ export default function POSPage() {
         });
     }
 
-    // Reset global quantity to 1 after adding
     if (forcedQuantity === undefined) {
         setGlobalQuantity(1);
     }
   };
   
-  useEffect(() => {
-    setHighlightedIndex(0);
-  }, [searchQuery, activeTab]);
-
   const filteredItemsInTab = useMemo(() => {
     if (activeTab === 'products') return filteredProducts;
     if (activeTab === 'combos') return filteredCombos;
@@ -1464,8 +1550,6 @@ export default function POSPage() {
 
   const handleScan = (barcode: string) => {
     setIsScannerOpen(false);
-    
-    // Check if barcode belongs to an alternative unit
     for (const p of products) {
         const unit = p.saleUnits?.find(u => u.barcode === barcode);
         if (unit) {
@@ -1502,7 +1586,6 @@ export default function POSPage() {
           const itemToRemove = cart.find(i => i.id === itemId && i.itemType === itemType);
           
           if (itemToRemove && user && currentBranch) {
-              // Record the audit log in Firestore
               try {
                   const logRef = doc(collection(db, 'auditLogs'));
                   await setDoc(logRef, {
@@ -1564,14 +1647,12 @@ export default function POSPage() {
   };
 
   const removeFromCart = (itemId: string, itemType: CartItem['itemType']) => {
-      // Check if current user has permission
       if (user?.organization?.posSettings?.requireSupervisorAuthorization === false || 
           user?.canAuthorizeCartItemRemoval || user?.role === 'admin' || user?.role === 'manager') {
           setCart(cart => cart.filter(item => !(item.id === itemId && item.itemType === itemType)));
           return;
       }
 
-      // Need supervisor authorization
       const item = cart.find(i => i.id === itemId && i.itemType === itemType);
       setSupervisorAuthAction({
           type: 'cart_removal',
@@ -1619,7 +1700,7 @@ export default function POSPage() {
   const tax = subtotal * ((currentBranch?.taxRate || 0) / 100);
   const grandTotal = subtotal + tax;
   
-  const handleCheckout = async (payments: PaymentDetail[], attendanceId?: string, customerId?: string) => {
+  const handleCheckout = async (payments: PaymentDetail[], attendanceId?: string, customerId?: string, shouldPrint?: boolean) => {
       if (cart.length === 0) {
           toast({ title: 'Carrinho Vazio', description: 'Adicione itens ao carrinho antes de finalizar.', variant: 'destructive'});
           return;
@@ -1633,12 +1714,11 @@ export default function POSPage() {
         const batch = writeBatch(db);
         const saleDate = serverTimestamp();
         
-        // Create stock entries first for products, combos, and kits
         for (const item of cart) {
             if (item.itemType === 'product') {
                  const multiplier = (item as any).stockMultiplier || 1;
                  const entry: Omit<StockEntry, 'id'> = {
-                    productId: (item as any).id.split('-')[0], // Get original product ID
+                    productId: (item as any).id.split('-')[0],
                     productName: item.name,
                     quantity: -(item.quantity * multiplier),
                     type: 'sale',
@@ -1670,7 +1750,7 @@ export default function POSPage() {
                     const entry: Omit<StockEntry, 'id'> = {
                         productId: product.id,
                         productName: product.name,
-                        quantity: -1, // Each chosen product is one unit from stock
+                        quantity: -1,
                         type: 'sale',
                         date: saleDate,
                         userId: user.id,
@@ -1693,21 +1773,27 @@ export default function POSPage() {
             }
             if (item.itemType === 'kit') {
                 baseItem.chosenProducts = item.chosenProducts.map(p => ({id: p.id, name: p.name, price: p.price}));
-                baseItem.total = item.total;
+                baseItem.total = item.total * item.quantity;
             }
             if (item.itemType === 'combo') {
                 baseItem.originalPrice = item.originalPrice;
                 baseItem.finalPrice = item.finalPrice;
+                baseItem.products = item.products.map(p => ({
+                    productId: p.productId,
+                    productName: p.productName,
+                    quantity: p.quantity,
+                    productPrice: p.productPrice
+                }));
             }
             return baseItem;
         });
 
-        // Create one consolidated sale document
         const saleRef = doc(collection(db, "sales"));
         const saleId = saleRef.id;
         const saleData: Omit<Sale, 'id'> = {
             items: saleItems,
             total: grandTotal,
+            discount: totalDiscount,
             date: new Date(),
             cashier: user.name,
             branchId: currentBranch.id,
@@ -1718,9 +1804,8 @@ export default function POSPage() {
             ...(attendanceId && { attendanceId: attendanceId }),
             ...(customerId && { customerId: customerId }),
         };
-        batch.set(saleRef, { ...saleData, date: saleDate }); // Use server timestamp for sale as well
+        batch.set(saleRef, { ...saleData, date: saleDate });
         
-        // Handle Cash Transactions and Session Totals
         if (activeSession) {
             let cashInflow = 0;
             const sessionUpdates: Record<string, any> = {};
@@ -1754,16 +1839,27 @@ export default function POSPage() {
             });
         }
         
-        // If it's a payment for an attendance, update its status
         if (attendanceId) {
             const attendanceRef = doc(db, 'attendances', attendanceId);
             batch.update(attendanceRef, { paymentStatus: 'paid' });
         }
 
         await batch.commit();
-
         toast({ title: 'Compra finalizada com sucesso!', description: `Total: R$${grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`});
+        
+        if (shouldPrint) {
+            const saleToPrint: Sale = {
+                id: saleId,
+                ...saleData,
+            };
+            setSelectedSaleForDetails(saleToPrint);
+            setTimeout(() => {
+                window.print();
+            }, 500);
+        }
+
         handleClearCart();
+        return saleId;
 
       } catch (error) {
           console.error("Checkout error: ", error);
@@ -1806,7 +1902,6 @@ export default function POSPage() {
         const batch = writeBatch(db);
         const saleDate = serverTimestamp();
 
-        // Revert stock
         for (const item of sale.items) {
             if (item.type === 'product') {
                  const entry: Omit<StockEntry, 'id'> = {
@@ -1846,7 +1941,7 @@ export default function POSPage() {
                      const entry: Omit<StockEntry, 'id'> = {
                         productId: product.id,
                         productName: product.name,
-                        quantity: 1 * item.quantity, // Each chosen product is one unit
+                        quantity: 1 * item.quantity,
                         type: 'cancellation',
                         date: saleDate,
                         userId: user.id,
@@ -1860,11 +1955,9 @@ export default function POSPage() {
             }
         }
 
-        // Update sale status
         const saleRef = doc(db, 'sales', sale.id);
         batch.update(saleRef, { status: 'cancelled' as SaleStatus });
 
-        // Revert Cash Session Totals if applicable
         if (sale.sessionId) {
             let cashToRevert = 0;
             const sessionUpdates: Record<string, any> = {};
@@ -1944,19 +2037,19 @@ export default function POSPage() {
     <>
     {!activeSession ? (
         <div className="flex h-[calc(100vh-8rem)] items-center justify-center">
-            <Card className="max-w-md w-full">
-                <CardHeader className="text-center">
-                    <CardTitle className="text-2xl">Caixa Fechado</CardTitle>
-                    <CardDescription>Você precisa abrir o caixa para começar a vender.</CardDescription>
+            <Card className="max-w-md w-full border-muted/60 shadow-xl">
+                <CardHeader className="text-center bg-muted/20 pb-8">
+                    <CardTitle className="text-2xl font-black uppercase tracking-tight">Caixa Fechado</CardTitle>
+                    <CardDescription className="text-sm">Inicie uma nova sessão para começar a vender.</CardDescription>
                 </CardHeader>
-                <CardContent className="flex justify-center py-6">
-                    <div className="rounded-full bg-primary/10 p-6">
-                        <DollarSign className="h-12 w-12 text-primary" />
+                <CardContent className="flex justify-center py-10">
+                    <div className="rounded-full bg-primary/10 p-8 shadow-inner">
+                        <DollarSign className="h-16 w-12 text-primary" />
                     </div>
                 </CardContent>
-                <CardFooter>
-                    <Button className="w-full h-12 text-lg" onClick={() => setIsOpeningSession(true)}>
-                        <Play className="mr-2 h-5 w-5" /> Abrir Caixa Agora [Enter]
+                <CardFooter className="bg-muted/10 pt-6">
+                    <Button className="w-full h-14 text-lg font-black uppercase tracking-wider shadow-lg" onClick={() => setIsOpeningSession(true)}>
+                        <Play className="mr-2 h-6 w-6" /> Abrir Caixa Agora [Enter]
                     </Button>
                 </CardFooter>
             </Card>
@@ -1964,97 +2057,99 @@ export default function POSPage() {
         </div>
     ) : (
         <div className="flex flex-col h-[calc(100vh-120px)] overflow-hidden -mt-4">
-            <div className="flex justify-between items-center mb-2 shrink-0">
+            <div className="flex justify-between items-center mb-2 shrink-0 px-1">
                 <div className="flex items-center gap-3">
-                    <Badge variant="outline" className="text-xs py-0.5 px-2 bg-green-50 text-green-700 border-green-200">
+                    <Badge variant="outline" className="text-[10px] font-black uppercase py-0.5 px-2 bg-green-50 text-green-700 border-green-200 shadow-sm">
                         <div className="h-1.5 w-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse" />
                         Caixa: {activeSession.userName}
                     </Badge>
-                    <span className="text-xs text-muted-foreground">
-                        Início: {activeSession.openedAt?.toDate ? format(activeSession.openedAt.toDate(), 'HH:mm') : '...'}
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase">
+                        Aberto às {activeSession.openedAt?.toDate ? format(activeSession.openedAt.toDate(), 'HH:mm') : '...'}
                     </span>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" size="xs" onClick={initiateCashAdjustment} className="h-7 text-xs py-0 px-2">
-                        <ArrowDownCircle className="mr-1 h-3 w-3 text-orange-500" /> Ajuste de Caixa
+                    <Button variant="outline" size="xs" onClick={initiateCashAdjustment} className="h-7 text-[10px] font-bold uppercase py-0 px-2.5 border-muted/60 hover:bg-orange-50 hover:text-orange-600 transition-colors">
+                        <ArrowDownCircle className="mr-1.5 h-3 w-3 text-orange-500" /> Ajuste
                     </Button>
-                    <Button variant="outline" size="xs" onClick={initiateCashClose} className="h-7 text-xs text-destructive hover:text-destructive py-0 px-2">
-                        <StopCircle className="mr-1 h-3 w-3" /> Fechar Caixa
+                    <Button variant="outline" size="xs" onClick={initiateCashClose} className="h-7 text-[10px] font-black uppercase text-destructive hover:text-white hover:bg-destructive py-0 px-2.5 transition-all">
+                        <StopCircle className="mr-1.5 h-3 w-3" /> Fechar Caixa
                     </Button>
                 </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1 min-h-0 overflow-hidden">
               <div className="md:col-span-2 flex flex-col min-h-0">
-                <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                  <CardHeader className="py-2 px-4 shrink-0">
+                <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-muted/60 shadow-sm">
+                  <CardHeader className="py-2.5 px-4 shrink-0 bg-muted/10 border-b">
                       <div className="flex justify-between items-center">
                         <div>
-                            <CardTitle className="text-base">Frente de Caixa</CardTitle>
-                            <CardDescription className="text-xs">Selecione itens para vender.</CardDescription>
+                            <CardTitle className="text-sm font-black uppercase tracking-widest text-primary/80">Operação de Venda</CardTitle>
                         </div>
                       </div>
                   </CardHeader>
                   <CardContent className="flex-1 flex flex-col min-h-0 p-2 pt-0">
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-                         <TabsList className="grid w-full grid-flow-col auto-cols-fr h-8 shrink-0">
-                            {user?.enabledModules?.appointments?.view && <TabsTrigger value="pending" className="text-xs px-1"><UserCheck className="mr-1 h-3 w-3"/><span className="hidden sm:inline">Atend.</span></TabsTrigger>}
-                            <TabsTrigger value="products" className="text-xs px-1"><Package className="mr-1 h-3 w-3"/><span className="hidden sm:inline">Prod.</span></TabsTrigger>
-                            {user?.enabledModules?.combos?.view && <TabsTrigger value="combos" className="text-xs px-1"><Gift className="mr-1 h-3 w-3"/><span className="hidden sm:inline">Combos</span></TabsTrigger>}
-                            {user?.enabledModules?.kits?.view && <TabsTrigger value="kits" className="text-xs px-1"><Component className="mr-1 h-3 w-3"/><span className="hidden sm:inline">Kits</span></TabsTrigger>}
-                            <TabsTrigger value="history" className="text-xs px-1"><History className="mr-1 h-3 w-3"/><span className="hidden sm:inline">Hist.</span></TabsTrigger>
+                         <TabsList className="grid w-full grid-flow-col auto-cols-fr h-9 shrink-0 bg-muted/40 p-1">
+                            {user?.enabledModules?.appointments?.view && <TabsTrigger value="pending" className="text-[10px] font-black uppercase"><UserCheck className="mr-1.5 h-3.5 w-3.5"/><span className="hidden sm:inline">Serviços</span></TabsTrigger>}
+                            <TabsTrigger value="products" className="text-[10px] font-black uppercase"><Package className="mr-1.5 h-3.5 w-3.5"/><span className="hidden sm:inline">Produtos</span></TabsTrigger>
+                            {user?.enabledModules?.combos?.view && <TabsTrigger value="combos" className="text-[10px] font-black uppercase"><Gift className="mr-1.5 h-3.5 w-3.5"/><span className="hidden sm:inline">Combos</span></TabsTrigger>}
+                            {user?.enabledModules?.kits?.view && <TabsTrigger value="kits" className="text-[10px] font-black uppercase"><Component className="mr-1.5 h-3.5 w-3.5"/><span className="hidden sm:inline">Kits</span></TabsTrigger>}
+                            <TabsTrigger value="history" className="text-[10px] font-black uppercase"><History className="mr-1.5 h-3.5 w-3.5"/><span className="hidden sm:inline">Histórico</span></TabsTrigger>
                         </TabsList>
-                        <div className="relative py-2 flex gap-2 shrink-0">
-                            <div className="w-16">
-                                <Input
-                                    ref={quantityInputRef}
-                                    type="number"
-                                    min="1"
-                                    value={globalQuantity}
-                                    onChange={(e) => setGlobalQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                                    className="text-center font-bold h-8 text-sm px-1"
-                                    title="Qtd [Alt+Q]"
-                                />
-                            </div>
-                            <div className="relative flex-grow">
-                                <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                    ref={searchInputRef}
-                                    type="search"
-                                    placeholder="Buscar... [F2]"
-                                    className="w-full h-8 rounded-lg bg-background pl-8 text-sm"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'ArrowDown') {
-                                            e.preventDefault();
-                                            setHighlightedIndex(prev => Math.min(prev + 1, filteredItemsInTab.length - 1));
-                                        } else if (e.key === 'ArrowUp') {
-                                            e.preventDefault();
-                                            setHighlightedIndex(prev => Math.max(prev - 1, 0));
-                                        } else if (e.key === 'Enter' && searchQuery.trim() !== '') {
-                                            e.preventDefault();
-                                            const items = filteredItemsInTab;
-                                            if (items.length > 0 && highlightedIndex < items.length) {
-                                                const item = items[highlightedIndex];
-                                                if (activeTab === 'products') {
-                                                    addToCart(item as ProductWithStock, 'product');
-                                                } else if (activeTab === 'combos') {
-                                                    addToCart(item as Combo, 'combo');
-                                                } else if (activeTab === 'kits') {
-                                                    setSelectedKit(item as Kit);
+                        
+                        {activeTab !== 'history' && (
+                            <div className="relative py-2 flex gap-2 shrink-0 px-1">
+                                <div className="w-20">
+                                    <Input
+                                        ref={quantityInputRef}
+                                        type="number"
+                                        min="1"
+                                        value={globalQuantity}
+                                        onChange={(e) => setGlobalQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                                        className="text-center font-black h-9 text-base px-1 border-primary/20 bg-primary/5 focus:bg-background transition-colors shadow-inner"
+                                        title="Quantidade [Alt+Q]"
+                                    />
+                                </div>
+                                <div className="relative flex-grow">
+                                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        ref={searchInputRef}
+                                        type="search"
+                                        placeholder="Pesquisar itens... [F2]"
+                                        className="w-full h-9 rounded-xl bg-background pl-10 text-sm shadow-sm"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'ArrowDown') {
+                                                e.preventDefault();
+                                                setHighlightedIndex(prev => Math.min(prev + 1, filteredItemsInTab.length - 1));
+                                            } else if (e.key === 'ArrowUp') {
+                                                e.preventDefault();
+                                                setHighlightedIndex(prev => Math.max(prev - 1, 0));
+                                            } else if (e.key === 'Enter' && searchQuery.trim() !== '') {
+                                                e.preventDefault();
+                                                const items = filteredItemsInTab;
+                                                if (items.length > 0 && highlightedIndex < items.length) {
+                                                    const item = items[highlightedIndex];
+                                                    if (activeTab === 'products') {
+                                                        addToCart(item as ProductWithStock, 'product');
+                                                    } else if (activeTab === 'combos') {
+                                                        addToCart(item as Combo, 'combo');
+                                                    } else if (activeTab === 'kits') {
+                                                        setSelectedKit(item as Kit);
+                                                    }
+                                                    toast({ title: "Item adicionado!", description: `${item.name} adicionado.` });
+                                                    setSearchQuery('');
+                                                    setHighlightedIndex(0);
                                                 }
-                                                toast({ title: "Item adicionado!", description: `${item.name} adicionado ao carrinho.` });
-                                                setSearchQuery('');
-                                                setHighlightedIndex(0);
                                             }
-                                        }
-                                    }}
-                                />
+                                        }}
+                                    />
+                                </div>
+                                <Button variant="outline" size="icon" onClick={() => setIsScannerOpen(true)} className="h-9 w-9 rounded-xl border-primary/30 text-primary hover:bg-primary hover:text-white transition-all shadow-md">
+                                    <Barcode className="h-5 w-5" />
+                                </Button>
                             </div>
-                            <Button variant="outline" size="icon" onClick={() => setIsScannerOpen(true)} className="h-8 w-8">
-                                <Barcode className="h-4 w-4" />
-                            </Button>
-                        </div>
+                        )}
 
                          <TabsContent value="pending" className="mt-0 flex-1 min-h-0 overflow-hidden">
                             <PendingAttendancesTab onSelect={handleSelectAttendance} />
@@ -2062,36 +2157,31 @@ export default function POSPage() {
                         <TabsContent value="products" className="mt-0 flex-1 min-h-0 overflow-hidden">
                             <ScrollArea className="h-full">
                                 {loading ? (
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 p-1">
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 p-2">
                                     {Array.from({ length: 10 }).map((_, i) => (
-                                        <Card key={i} className="h-28">
-                                        <CardContent className="p-1 flex flex-col items-center justify-center h-full">
-                                            <Skeleton className="h-16 w-16 rounded-md" />
-                                            <Skeleton className="h-3 w-14 mt-1"/>
-                                        </CardContent>
-                                        </Card>
+                                        <Card key={i} className="h-32 border-none bg-muted/20 animate-pulse" />
                                     ))}
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 p-1">
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 p-2">
                                     {filteredProducts.map((product, index) => (
                                         <Card 
                                         key={product.id} 
                                         onClick={() => addToCart(product, 'product')} 
                                         className={cn(
-                                            "cursor-pointer hover:shadow-md transition-all relative h-32 flex flex-col",
-                                            index === highlightedIndex && activeTab === 'products' && "ring-2 ring-primary shadow-md bg-accent/10 z-10"
+                                            "cursor-pointer hover:shadow-lg transition-all relative h-36 flex flex-col group border-muted/60",
+                                            index === highlightedIndex && activeTab === 'products' && "ring-2 ring-primary shadow-lg bg-primary/5 z-10"
                                         )}
                                         >
-                                        <Badge className="absolute top-0.5 right-0.5 text-[10px] px-1 h-4" variant={product.stock > 0 ? "secondary" : "destructive"}>
+                                        <Badge className="absolute top-1.5 right-1.5 text-[9px] px-1.5 h-4 font-black shadow-sm" variant={product.stock > 0 ? "secondary" : "destructive"}>
                                             {product.stock > 0 ? product.stock : '0'}
                                         </Badge>
-                                        <CardContent className="p-1 flex-1 flex flex-col items-center justify-center overflow-hidden">
-                                            <div className="relative w-12 h-12 flex-shrink-0">
-                                                <Image src={product.imageUrl} alt={product.name} fill className="rounded-md object-cover" data-ai-hint="product image"/>
+                                        <CardContent className="p-2 flex-1 flex flex-col items-center justify-center overflow-hidden">
+                                            <div className="relative w-16 h-16 flex-shrink-0 transition-transform group-hover:scale-110 duration-300">
+                                                <Image src={product.imageUrl || '/placeholder-product.png'} alt={product.name} fill className="rounded-xl object-cover shadow-sm" data-ai-hint="product image"/>
                                             </div>
-                                            <p className="font-semibold text-[11px] mt-1 text-center line-clamp-2 leading-tight">{product.name}</p>
-                                            <p className="text-[10px] text-muted-foreground mt-0.5">R${product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                            <p className="font-bold text-[11px] mt-2 text-center line-clamp-2 leading-tight uppercase tracking-tighter">{product.name}</p>
+                                            <p className="text-[10px] font-black text-primary mt-1">{formatCurrency(product.price)}</p>
                                         </CardContent>
                                         </Card>
                                     ))}
@@ -2101,22 +2191,22 @@ export default function POSPage() {
                         </TabsContent>
                         <TabsContent value="combos" className="mt-0 flex-1 min-h-0 overflow-hidden">
                             <ScrollArea className="h-full">
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 p-1">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 p-2">
                                 {filteredCombos.map((combo, index) => (
                                     <Card 
                                     key={combo.id} 
                                     onClick={() => addToCart(combo, 'combo')} 
                                     className={cn(
-                                        "cursor-pointer hover:shadow-md transition-all relative h-32 flex flex-col",
-                                        index === highlightedIndex && activeTab === 'combos' && "ring-2 ring-primary shadow-md bg-accent/10 z-10"
+                                        "cursor-pointer hover:shadow-lg transition-all relative h-36 flex flex-col border-orange-200",
+                                        index === highlightedIndex && activeTab === 'combos' && "ring-2 ring-orange-500 shadow-lg bg-orange-50 z-10"
                                     )}
                                     >
-                                    <CardContent className="p-1 flex-1 flex flex-col items-center justify-center overflow-hidden">
-                                        <div className="relative w-12 h-12 flex-shrink-0">
-                                            <Image src={combo.imageUrl} alt={combo.name} fill className="rounded-md object-cover" data-ai-hint="combo offer"/>
+                                    <CardContent className="p-2 flex-1 flex flex-col items-center justify-center overflow-hidden">
+                                        <div className="relative w-16 h-16 flex-shrink-0">
+                                            <Image src={combo.imageUrl || '/placeholder-combo.png'} alt={combo.name} fill className="rounded-xl object-cover shadow-sm" data-ai-hint="combo offer"/>
                                         </div>
-                                        <p className="font-semibold text-[11px] mt-1 text-center line-clamp-2 leading-tight">{combo.name}</p>
-                                        <p className="text-[10px] text-muted-foreground mt-0.5">R${combo.finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                        <p className="font-bold text-[11px] mt-2 text-center line-clamp-2 leading-tight uppercase tracking-tighter">{combo.name}</p>
+                                        <p className="text-[10px] font-black text-orange-600 mt-1">{formatCurrency(combo.finalPrice)}</p>
                                     </CardContent>
                                     </Card>
                                 ))}
@@ -2125,22 +2215,22 @@ export default function POSPage() {
                         </TabsContent>
                         <TabsContent value="kits" className="mt-0 flex-1 min-h-0 overflow-hidden">
                             <ScrollArea className="h-full">
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 p-1">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 p-2">
                                 {filteredKits.map((kit, index) => (
                                     <Card 
                                     key={kit.id} 
                                     onClick={() => setSelectedKit(kit)} 
                                     className={cn(
-                                        "cursor-pointer hover:shadow-md transition-all relative h-32 flex flex-col",
-                                        index === highlightedIndex && activeTab === 'kits' && "ring-2 ring-primary shadow-md bg-accent/10 z-10"
+                                        "cursor-pointer hover:shadow-lg transition-all relative h-36 flex flex-col border-blue-200",
+                                        index === highlightedIndex && activeTab === 'kits' && "ring-2 ring-blue-500 shadow-lg bg-blue-50 z-10"
                                     )}
                                     >
-                                    <CardContent className="p-1 flex-1 flex flex-col items-center justify-center overflow-hidden">
-                                        <div className="relative w-12 h-12 flex-shrink-0">
-                                            <Image src={kit.imageUrl} alt={kit.name} fill className="rounded-md object-cover" data-ai-hint="kit offer"/>
+                                    <CardContent className="p-2 flex-1 flex flex-col items-center justify-center overflow-hidden text-center">
+                                        <div className="relative w-16 h-16 flex-shrink-0">
+                                            <Image src={kit.imageUrl || '/placeholder-kit.png'} alt={kit.name} fill className="rounded-xl object-cover shadow-sm" data-ai-hint="kit offer"/>
                                         </div>
-                                        <p className="font-semibold text-[11px] mt-1 text-center line-clamp-2 leading-tight">{kit.name}</p>
-                                        <p className="text-[10px] text-muted-foreground mt-0.5">Monte seu kit!</p>
+                                        <p className="font-bold text-[11px] mt-2 line-clamp-2 uppercase tracking-tighter">{kit.name}</p>
+                                        <Badge variant="outline" className="text-[8px] mt-1 font-black uppercase text-blue-600 border-blue-200">Monte Agora!</Badge>
                                     </CardContent>
                                     </Card>
                                 ))}
@@ -2148,7 +2238,11 @@ export default function POSPage() {
                             </ScrollArea>
                         </TabsContent>
                         <TabsContent value="history" className="mt-0 flex-1 min-h-0 overflow-hidden">
-                                <SalesHistoryTab salesHistory={salesHistory} onCancelSale={handleCancelSale} />
+                                <SalesHistoryTab 
+                                    salesHistory={salesHistory} 
+                                    onCancelSale={handleCancelSale} 
+                                    onViewDetails={setSelectedSaleForDetails}
+                                />
                         </TabsContent>
                     </Tabs>
                   </CardContent>
@@ -2156,71 +2250,95 @@ export default function POSPage() {
               </div>
               
               <div className="md:col-span-1 flex flex-col min-h-0">
-                <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                  <CardHeader className="py-2 px-4 shrink-0">
+                <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-muted/60 shadow-lg">
+                  <CardHeader className="py-3 px-4 shrink-0 bg-primary/5 border-b">
                      <div className="flex justify-between items-center">
-                         <CardTitle className="text-base">Carrinho</CardTitle>
-                         {cart.length > 0 && <Button variant="ghost" size="xs" onClick={initiateCartClear} className="h-7 text-xs px-2">Limpar [F9]</Button>}
-
+                         <div className="flex items-center gap-2">
+                            <ShoppingCart className="h-4 w-4 text-primary" />
+                            <CardTitle className="text-sm font-black uppercase tracking-widest">Carrinho</CardTitle>
+                         </div>
+                         {cart.length > 0 && (
+                            <Button variant="ghost" size="xs" onClick={initiateCartClear} className="h-6 text-[10px] font-bold uppercase text-muted-foreground hover:text-destructive px-2">
+                                Limpar [F9]
+                            </Button>
+                         )}
                      </div>
-                     {currentAttendanceId && <CardDescription className="text-[10px]">Atendimento pendente</CardDescription>}
-                     {selectedCustomer && !currentAttendanceId && (
-                        <CardDescription className="flex items-center gap-1 text-[10px] truncate">
-                            Para: <span className="font-medium truncate">{selectedCustomer.name}</span>
-                        </CardDescription>
-                     )}
+                     {currentAttendanceId && <Badge variant="secondary" className="text-[9px] font-black uppercase w-fit mt-1.5 shadow-none bg-primary/10 text-primary">Serviço em Aberto</Badge>}
                   </CardHeader>
+                  
+                  <div className="p-2 bg-muted/10 no-print">
+                     {!currentAttendanceId && user?.enabledModules?.customers?.view && <CustomerSelector onSelect={setSelectedCustomer} />}
+                     {selectedCustomer && !currentAttendanceId && (
+                        <div className="flex items-center justify-between mt-2 px-2 py-1.5 bg-background border rounded-lg shadow-inner">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <UserCheck className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
+                                <span className="text-xs font-black truncate text-foreground/80 uppercase">{selectedCustomer.name}</span>
+                            </div>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={() => setSelectedCustomer(null)}>
+                                <X className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
+                     )}
+                  </div>
+
                   <CardContent className="flex-1 p-2 pt-0 min-h-0 overflow-hidden">
-                    <ScrollArea className="h-full">
+                    <ScrollArea className="h-full pr-1">
                         {cart.length === 0 ? (
-                            <div className="text-muted-foreground text-center space-y-2 py-4">
-                                <p className="text-xs">Carrinho vazio</p>
-                                {!currentAttendanceId && user?.enabledModules?.customers?.view && <CustomerSelector onSelect={setSelectedCustomer} />}
+                            <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-center space-y-3 opacity-60 py-10">
+                                <ShoppingCart className="h-10 w-10 stroke-[1.5px]" />
+                                <p className="text-xs font-medium px-4">Seu carrinho está vazio.</p>
                             </div>
                         ) : (
-                            <div className="space-y-2">
-                                {cart.map((item, index) => (
-                                    <div key={`${item.id}-${index}`} className="flex justify-between items-start gap-2 border-b pb-1 last:border-0">
-                                        <div className="min-w-0 flex-1">
-                                            <p className="font-medium text-xs truncate leading-none">
-                                                {item.name}
-                                            </p>
-                                            <p className="text-[10px] text-muted-foreground mt-0.5">
-                                                {item.itemType === 'kit'
-                                                    ? `R$${item.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                                                    : `R$${getCartItemPrice(item).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} x ${item.quantity}`
-                                                }
-                                            </p>
+                            <div className="space-y-1.5 mt-1">
+                                {cart.map((item, index) => {
+                                    const itemPrice = getCartItemPrice(item);
+                                    return (
+                                        <div key={`${item.id}-${index}`} className="group flex justify-between items-start gap-2 p-2.5 bg-background hover:bg-muted/10 border border-muted/40 rounded-xl transition-all shadow-sm">
+                                            <div className="min-w-0 flex-1">
+                                                <p className="font-bold text-[11px] truncate leading-tight text-foreground uppercase tracking-tight">
+                                                    {item.name}
+                                                </p>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <span className="text-[10px] font-black text-primary/70">{formatCurrency(itemPrice)}</span>
+                                                    <span className="text-[10px] text-muted-foreground font-mono">x{item.quantity}</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <p className="font-black text-[11px] text-foreground">
+                                                    {formatCurrency(itemPrice * item.quantity)}
+                                                </p>
+                                                {!currentAttendanceId && (
+                                                <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/5" onClick={() => removeFromCart(item.id, item.itemType)}>
+                                                    <Trash2 className="h-3.5 w-3.5"/>
+                                                </Button>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-1 shrink-0">
-                                            <p className="font-semibold text-xs">
-                                                R$${(getCartItemPrice(item) * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                            </p>
-                                            {!currentAttendanceId && (
-                                            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => removeFromCart(item.id, item.itemType)}>
-                                                <X className="h-3 w-3 text-destructive"/>
-                                            </Button>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </ScrollArea>
                   </CardContent>
-                  <CardFooter className="flex-col !p-4 border-t shrink-0">
-                     <div className="w-full space-y-1">
+                  <CardFooter className="flex-col !p-4 bg-muted/10 border-t shrink-0">
+                     <div className="w-full space-y-1.5 mb-2">
                          {totalDiscount > 0 && (
-                             <div className="flex justify-between text-destructive text-[10px]">
-                                 <p>Descontos</p>
-                                 <p>-R${totalDiscount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                             <div className="flex justify-between items-center text-destructive text-[10px] font-black uppercase tracking-tighter">
+                                 <span>Economia Total</span>
+                                 <span>- {formatCurrency(totalDiscount)}</span>
                              </div>
                          )}
-                         <div className="flex justify-between text-[11px]"><p>Subtotal</p><p>R${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p></div>
-                         <div className="flex justify-between text-[11px] font-bold"><p>Total</p><p className="text-base text-primary">R${grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p></div>
+                         <div className="flex justify-between items-center text-[11px] font-bold text-muted-foreground uppercase">
+                             <span>Subtotal</span>
+                             <span>{formatCurrency(subtotal)}</span>
+                         </div>
+                         <div className="flex justify-between items-center pt-1 mt-1 border-t border-muted/60">
+                             <span className="text-xs font-black uppercase tracking-widest text-foreground/70">Total</span>
+                             <span className="text-2xl font-black text-primary tracking-tighter">{formatCurrency(grandTotal)}</span>
+                         </div>
                      </div>
-                     <Button className="w-full mt-2 h-10 text-base" size="sm" onClick={() => setIsCheckoutModalOpen(true)} disabled={cart.length === 0}>
-                         <CreditCard className="mr-2 h-4 w-4" />
+                     <Button className="w-full h-14 text-base font-black uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.02] transition-transform active:scale-[0.98]" size="lg" onClick={() => setIsCheckoutModalOpen(true)} disabled={cart.length === 0}>
+                         <CreditCard className="mr-3 h-5 w-5" />
                          Finalizar [F8]
                      </Button>
                   </CardFooter>
@@ -2285,7 +2403,13 @@ export default function POSPage() {
         itemName={supervisorAuthAction?.type === 'cart_removal' ? cart.find(i => i.id === supervisorAuthAction.data?.itemId)?.name : undefined}
         totalAmount={subtotal}
     />
+    <SaleDetailsDialog 
+        sale={selectedSaleForDetails}
+        isOpen={!!selectedSaleForDetails}
+        onOpenChange={(open) => !open && setSelectedSaleForDetails(null)}
+        organizationName={user?.organization?.name}
+        branchName={currentBranch?.name}
+    />
     </>
   );
 }
-

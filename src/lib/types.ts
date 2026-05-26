@@ -294,6 +294,7 @@ export interface Sale {
   id:string;
   items: SaleItem[];
   total: number;
+  discount?: number;
   date: Date;
   cashier: string;
   branchId: string;
@@ -302,6 +303,8 @@ export interface Sale {
   status: SaleStatus;
   attendanceId?: string; // Link to the attendance if sale came from one
   customerId?: string; // Link to customer for direct sales
+  customerName?: string; // Cache customer name for receipt
+  notes?: string; // Notes for the sale
   sessionId?: string; // Link to the cash session
 }
 

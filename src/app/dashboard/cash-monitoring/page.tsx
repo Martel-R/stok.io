@@ -86,8 +86,8 @@ export default function CashMonitoringPage() {
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const sessionsData = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
+                ...doc.data(),
+                id: doc.id
             } as CashSession));
             setSessions(sessionsData);
             setLoading(false);
@@ -101,7 +101,8 @@ export default function CashMonitoringPage() {
 
     const filteredSessions = useMemo(() => {
         return sessions.filter(session => {
-            const matchesSearch = session.userName.toLowerCase().includes(searchQuery.toLowerCase());
+            const userName = session.userName || "Usuário Desconhecido";
+            const matchesSearch = userName.toLowerCase().includes(searchQuery.toLowerCase());
             const matchesStatus = statusFilter === 'all' || session.status === statusFilter;
             return matchesSearch && matchesStatus;
         });
@@ -118,8 +119,8 @@ export default function CashMonitoringPage() {
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const txData = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
+                ...doc.data(),
+                id: doc.id
             } as CashTransaction));
             
             const sortedTx = txData.sort((a, b) => {
@@ -144,7 +145,7 @@ export default function CashMonitoringPage() {
         const unsubscribeSales = onSnapshot(salesQuery, (snapshot) => {
             const salesMap: Record<string, Sale> = {};
             snapshot.docs.forEach(doc => {
-                salesMap[doc.id] = { id: doc.id, ...doc.data() } as Sale;
+                salesMap[doc.id] = { ...doc.data(), id: doc.id } as Sale;
             });
             setSales(salesMap);
         });
